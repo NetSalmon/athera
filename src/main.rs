@@ -14,13 +14,12 @@ mod trap;
 mod usr;
 mod proc;
 
-use crate::arch::registers::WritableRegister;
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::mem::addr::{PhysicalAddr, VirtualAddr};
-use crate::mem::page_table::{PageTable, ROOT_PAGE_TABLE, equal_mapping, map};
-use core::arch::{asm, global_asm};
+use crate::mem::page_table::{PageTable, ROOT_PAGE_TABLE, equal_mapping};
+use core::arch::global_asm;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use crate::elf::{EIdent, EMachine, Elf64Ehdr, Elf64Phdr};
 
 global_asm!(include_str!("entry.asm"));
 
@@ -51,16 +50,32 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     debug!("page table setup ok");
 
-    // get_tag_address!(user_program: usize = "user_mode_test");
-    // map(VirtualAddr::from(user_program), PhysicalAddr::from(user_program), true, true);
-    //
-    // debug!("set user program permission");
-    //
-    // usr::into_u_mode();
-    // turn_to_user_program!("user_mode_test");
+    assert_eq!(size_of::<EIdent>(), 16);
+    assert_eq!(size_of::<EMachine>(), 2);
+    assert_eq!(size_of::<Elf64Ehdr>(), 64);
+    assert_eq!(core::mem::offset_of!(Elf64Ehdr, e_machine), 18);
 
-    let root_page_table = unsafe { ((*ROOT_PAGE_TABLE.force()) as *mut PageTable).read_volatile() };
-    println!("{:#?}", root_page_table);
+    debug!("read elf header");
+    let header = unsafe { (&ELF as *const Elf as *const Elf64Ehdr).read() };
+
+    debug!("endianness: {:?}", header.e_ident.data());
+    debug!("elf os abi: {:?}", header.e_ident.os_abi());
+    debug!("elf version: {:?}", header.e_ident.version());
+    debug!("elf type: {:?}", header.e_type);
+    debug!("elf version: {:?}", header.e_version);
+    debug!("elf entry addr: {:#x}", header.e_entry);
+    debug!("elf ph offset: {:#x}", header.e_phoff);
+    debug!("elf ph sz: {:#x}", header.e_phnum);
+    debug!("elf machine: {:#?}", header.e_machine);
+
+    assert_eq!(size_of::<Elf64Phdr>(), 56);
+
+    let ptr = ELF.0.as_ptr();
+
+    for i in 0..header.e_phnum as usize {
+        let ph1 = unsafe { (ptr.add(header.e_phoff as usize + i * size_of::<Elf64Phdr>()) as *const Elf64Phdr).read() };
+        debug!("ph{i}: {:#x?}", ph1);
+    }
 
     // save time
     system_reset(ResetType::Shutdown, ResetReason::None);
@@ -90,9 +105,13 @@ fn panic_handle(info: &PanicInfo) -> ! {
         error!("panic: {}", info.message());
     }
 
-    let _ = system_reset(ResetType::Shutdown, ResetReason::None);
+    let _ = system_reset(ResetType::Shutdown, ResetReason::SysFail);
 
     loop {
         core::hint::spin_loop();
     }
 }
+
+#[repr(align(8))]
+struct Elf ([u8;include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world").len()]);
+static ELF: Elf = Elf(*include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world"));

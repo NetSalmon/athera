@@ -2,7 +2,6 @@ use crate::dev::DEV_TREE;
 use crate::locks::{LazyLock, SpinLock};
 use crate::mem::buddy_system::BuddyAllocator;
 use crate::{_end, debug};
-use core::ops::Range;
 
 pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|| {
     let mut allocator = BuddyAllocator::new();

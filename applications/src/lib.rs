@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::arch::asm;
+use core::panic::PanicInfo;
 
 pub fn read(fd: u64, buf: &mut [u8]) -> isize {
     unsafe {
@@ -55,4 +56,9 @@ pub fn exit(code: u64) -> ! {
     }
 
     loop { core::hint::spin_loop() }
+}
+
+#[panic_handler]
+pub fn panic_handle(_info: &PanicInfo) -> ! {
+    exit(1);
 }

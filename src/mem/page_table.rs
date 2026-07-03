@@ -8,7 +8,6 @@ use crate::mem::addr::{PhysicalAddr, VirtualAddr};
 use crate::mem::frame_allocator::alloc_frame;
 use crate::{bits, debug};
 use core::arch::asm;
-use core::ops::Deref;
 
 bits! {
     pub type PageTableEntry: u64 {

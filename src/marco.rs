@@ -273,10 +273,11 @@ macro_rules! get_tag_address {
 /// ```
 #[macro_export]
 macro_rules! numeric {
-    ($( #[$attr:meta] )* pub enum $name:ident : $t:ty { $( $item:ident = $value:expr ),* $(,)? }) => {
+    ($v:vis enum $name:ident : $t:ty { $( $item:ident = $value:expr ),* $(,)? }) => {
         paste::paste! {
-            $( #[$attr] )*
-            pub enum $name {
+            #[repr($t)]
+            #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+            $v enum $name {
                 $( $item ),*
             }
 
@@ -301,10 +302,11 @@ macro_rules! numeric {
             }
         }
     };
-    (@fallback $( #[$attr:meta] )* pub enum $name:ident : $t:ty { $( $item:ident = $value:expr ),* $(,)? }) => {
+    (@fallback $v:vis enum $name:ident : $t:ty { $( $item:ident = $value:expr ),* $(,)? }) => {
         paste::paste! {
-            $( #[$attr] )*
-            pub enum $name {
+            #[repr($t)]
+            #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+            $v enum $name {
                 Reserved($t),
                 $( $item ),*
             }
@@ -483,14 +485,14 @@ macro_rules! array_struct {
     };
     (@setter $item:ident, $index:expr, $t:ty, ) => {
         paste::paste! {
-            pub fn [<set_ $index:snake>](&mut self, value: $t) {
+            pub fn [<set_ $item:snake>](&mut self, value: $t) {
                 self.0[$index] = value;
             }
         }
     };
     (@setter $item:ident, $index:expr, $t:ty, $to_ty:ty) => {
         paste::paste! {
-            pub fn [<set_ $index:snake>](&mut self, value: $to_ty) {
+            pub fn [<set_ $item:snake>](&mut self, value: $to_ty) {
                 self.0[$index] = value.into();
             }
         }
@@ -498,6 +500,7 @@ macro_rules! array_struct {
     ($v:vis struct $name:ident : [$t:ty; $l:expr] { $($item:ident $(: $(@ $try:tt)? $to_ty:ty)? => $index:expr),+$(,)? }) => {
         paste::paste! {
             #[repr(transparent)]
+            #[derive(Debug)]
             $v struct $name ( pub [$t; $l] );
 
             impl $name {
@@ -508,4 +511,27 @@ macro_rules! array_struct {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! enumeration {
+    ($v:vis enum $name:ident : $t:ty { $( $item:ident = $value:expr ),*$(,)? }) => {
+        #[repr(transparent)]
+        #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        $v struct $name (pub $t);
+
+        impl $name {
+            $( $v const $item : Self = Self($value); )*
+        }
+
+        #[allow(unused)]
+        impl Debug for $name {
+            fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+                match *self {
+                    $( Self::$item => f.write_str(concat!( stringify!($name), "::", stringify!($item))), )*
+                    _ => f.write_str("unknown"),
+                }
+            }
+        }
+    }
 }

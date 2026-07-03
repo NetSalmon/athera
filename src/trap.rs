@@ -7,7 +7,6 @@ const INTERRUPT_MASK: i64 = 1 << 63;
 
 numeric! {
     @fallback
-    #[derive(Debug, Clone, Copy)]
     pub enum Interrupt: i64 {
         UModeSoftware = INTERRUPT_MASK,
         SModeSoftware = INTERRUPT_MASK | 1,
@@ -23,7 +22,6 @@ numeric! {
 
 numeric! {
     @fallback
-    #[derive(Debug, Clone, Copy)]
     pub enum Exception: i64 {
         InstructionAddressMisaligned = 0,
         InstructionAccessFault = 1,
