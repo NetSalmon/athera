@@ -219,6 +219,13 @@ macro_rules! csr {
                     }
                 }
             }
+            
+            impl [<$name:camel>] {
+                #[inline]
+                pub fn modify<T>(func: T) where T: FnOnce(u64) -> u64 {
+                    [<$name:camel>]::write(func([<$name:camel>]::read()))
+                }
+            }
         }
     };
 }

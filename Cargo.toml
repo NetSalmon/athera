@@ -18,7 +18,6 @@ bench = false
 [dependencies]
 paste = "1.0.15"
 fdt = "0.1.5"
-log = "0.4.32"
 
 [features]
 alloc = []

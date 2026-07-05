@@ -55,9 +55,11 @@ pub fn exit(code: u64) -> ! {
         )
     }
 
+    // 保底
     loop { core::hint::spin_loop() }
 }
 
+/// 如果`panic`直接退出程序
 #[panic_handler]
 pub fn panic_handle(_info: &PanicInfo) -> ! {
     exit(1);

@@ -1,6 +1,7 @@
-use crate::mem::linked_list::{LinkedList, RawLinkedList};
+use crate::mem::linked_list::LinkedList;
 
 pub struct SlubPage {
+    next: *mut SlubPage,
     free_list: LinkedList,
     inuse: usize,
     objects: usize,
@@ -10,7 +11,7 @@ pub struct SlubPage {
 pub struct Cache {
     page_size: usize,
     objects_size: usize,
-    free_slubs: RawLinkedList<SlubPage>,
-    partal_slubs: RawLinkedList<SlubPage>,
-    full_slubs: RawLinkedList<SlubPage>,
+    free_slubs: *mut SlubPage,
+    partial_slubs: *mut SlubPage,
+    full_slubs: *mut SlubPage,
 }

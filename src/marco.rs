@@ -71,7 +71,6 @@ macro_rules! bits {
             (self.0 & MASK) != 0
         }
     };
-
     (@set $v:vis $part_name:ident, $from:expr, $to:expr, $ori_type:ty) => {
         paste::paste! {
             #[inline]
@@ -92,7 +91,6 @@ macro_rules! bits {
             }
         }
     };
-
     (
         $v:vis type $type_name:ident : $ori_type:ty {
             $($part_name:ident : $from:expr $(=> $to:expr)?),* $(,)?

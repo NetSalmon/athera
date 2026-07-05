@@ -1,6 +1,5 @@
-use core::fmt::{Debug, Formatter};
 use crate::{array_struct, bits, enumeration, numeric};
-use crate::arch::sbi::Eid;
+use core::fmt::{Debug, Display, Formatter, Write};
 
 #[repr(C)]
 pub struct Elf32Ehdr {
@@ -251,7 +250,7 @@ numeric! {
 array_struct! {
     pub struct EIdent : [u8; 16] {
         class: @try Class => 4,
-        data: @try Endianess => 5,
+        data: @try Endianness => 5,
         version => 6,
         os_abi: OsAbi => 7,
         abi_version => 8,
@@ -297,7 +296,7 @@ numeric! {
 }
 
 numeric! {
-    pub enum Endianess: u8 {
+    pub enum Endianness: u8 {
         None = 0,
         Lsb = 1,
         Msb = 2,
@@ -357,5 +356,21 @@ bits! {
         read: 0,
         write: 1,
         execute: 2,
+    }
+}
+
+impl Display for PFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        if self.read() {
+            f.write_str("R")?
+        }
+        if self.write() {
+            f.write_str("W")?
+        }
+        if self.execute() {
+            f.write_str("X")?
+        }
+        
+        f.write_str("")
     }
 }
