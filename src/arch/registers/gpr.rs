@@ -21,29 +21,26 @@
 use crate::arch::registers::*;
 
 macro_rules! gpr {
+    (@read $name:ident) => {
+        #[inline]
+        pub fn write(value: u64) {
+            unsafe { core::arch::asm!( concat!("mv ", stringify!($name), ", {}"), in(reg) value); }
+        }
+    };
+    (@write $name:ident) => {
+        #[inline]
+        pub fn read() -> u64 {
+            let value: u64;
+            unsafe { core::arch::asm!( concat!("mv {}, ", stringify!($name)), out(reg) value); }
+            value
+        }
+    };
     ($name:ident $(-)? $($alias:ident),* => r) => {
         paste::paste! {
             pub struct [<$name:camel>];
             $(pub type [<$alias:camel>] = [<$name:camel>];)*
-            impl ReadableRegister for [<$name:camel>] {
-                #[inline]
-                fn read() -> u64 {
-                    let value: u64;
-                    unsafe { core::arch::asm!( concat!("mv {}, ", stringify!($name)), out(reg) value); }
-                    value
-                }
-            }
-        }
-    };
-    ($name:ident $(-)? $($alias:ident),* => w) => {
-        paste::paste! {
-            pub struct [<$name:camel>];
-            $(pub type [<$alias:camel>] = [<$name:camel>];)*
-            impl WritableRegister for [<$name:camel>] {
-                #[inline]
-                fn write(value: u64) {
-                    unsafe { core::arch::asm!( concat!("mv ", stringify!($name), ", {}"), in(reg) value); }
-                }
+            impl [<$name:camel>] {
+                gpr!(@read $name);
             }
         }
     };
@@ -52,19 +49,12 @@ macro_rules! gpr {
             pub struct [<$name:camel>];
             $(pub type [<$alias:camel>] = [<$name:camel>];)*
 
-            impl WritableRegister for [<$name:camel>] {
-                #[inline]
-                fn write(value: u64) {
-                    unsafe { core::arch::asm!( concat!("mv ", stringify!($name), ", {}"), in(reg) value); }
-                }
-            }
+            impl [<$name:camel>] {
+                gpr!(@write $name);
+                gpr!(@read $name);
 
-            impl ReadableRegister for [<$name:camel>] {
-                #[inline]
-                fn read() -> u64 {
-                    let value: u64;
-                    unsafe { core::arch::asm!( concat!("mv {}, ", stringify!($name)), out(reg) value); }
-                    value
+                pub fn modify<T>(func: T) where T: FnOnce(u64) -> u64 {
+                    [<$name:camel>]::write(func([<$name:camel>]::read()))
                 }
             }
         }

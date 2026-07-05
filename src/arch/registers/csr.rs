@@ -121,106 +121,61 @@ pub enum Mode {
 }
 
 macro_rules! csr {
-    (# $number:expr, $name:ident - $mode:expr => r) => {
-        paste::paste! {
-            pub struct [<$name:camel>];
+    (@core $name:ident, $number:expr, $mode:expr) => {
+        pub struct $name;
 
-            impl CsrRegister for [<$name:camel>] {
-                fn mode() -> Mode {
-                    $mode
-                }
-
-                fn number() -> u16 {
-                    $number
-                }
+        impl CsrRegister for $name {
+            fn mode() -> Mode {
+                $mode
             }
 
-            impl ReadableRegister for [<$name:camel>] {
-                #[inline]
-                fn read() -> u64 {
-                    let value: u64;
-                    unsafe {
-                        asm!(
-                        concat!("csrr {}, ", stringify!($name)),
-                        out(reg) value,
-                        );
-                    }
-
-                    value
-                }
+            fn number() -> u16 {
+                $number
             }
         }
     };
-    (# $number:expr, $name:ident - $mode:expr => w) => {
-        paste::paste! {
-            pub struct [<$name:camel>];
-
-            impl CsrRegister for [<$name:camel>] {
-                fn mode() -> Mode {
-                    $mode
-                }
-
-                fn number() -> u16 {
-                    $number
-                }
+    (@read $name:ident) => {
+        #[inline]
+        pub fn read() -> u64 {
+            let value: u64;
+            unsafe {
+                asm!(
+                concat!("csrr {}, ", stringify!($name)),
+                out(reg) value,
+                );
             }
 
-            impl WritableRegister for [<$name:camel>] {
-                #[inline]
-                fn write(value: u64) {
-                    unsafe {
-                        asm!(
-                        concat!("csrw ", stringify!($name), ", {}"),
-                        in(reg) value,
-                        );
-                    }
-                }
+            value
+        }
+    };
+    (@write $name:ident) => {
+        #[inline]
+        pub fn write(value: u64) {
+            unsafe {
+                asm!(
+                concat!("csrw ", stringify!($name), ", {}"),
+                in(reg) value,
+                );
+            }
+        }
+    };
+    (# $number:expr, $name:ident - $mode:expr => r) => {
+        paste::paste! {
+            csr!(@core [<$name:camel>], $number, $mode);
+
+            impl [<$name:camel>] {
+                csr!(@read $name);
             }
         }
     };
     (# $number:expr, $name:ident - $mode:expr => rw) => {
         paste::paste! {
-            pub struct [<$name:camel>];
-
-            impl CsrRegister for [<$name:camel>] {
-                fn mode() -> Mode {
-                    $mode
-                }
-
-                fn number() -> u16 {
-                    $number
-                }
-            }
-
-            impl ReadableRegister for [<$name:camel>] {
-                #[inline]
-                fn read() -> u64 {
-                    let value: u64;
-                    unsafe {
-                        asm!(
-                        concat!("csrr {}, ", stringify!($name)),
-                        out(reg) value,
-                        );
-                    }
-
-                    value
-                }
-            }
-
-
-            impl WritableRegister for [<$name:camel>] {
-                #[inline]
-                fn write(value: u64) {
-                    unsafe {
-                        asm!(
-                        concat!("csrw ", stringify!($name), ", {}"),
-                        in(reg) value,
-                        );
-                    }
-                }
-            }
+            csr!(@core [<$name:camel>], $number, $mode);
 
             impl [<$name:camel>] {
+                csr!(@write $name);
+                csr!(@read $name);
+
                 #[inline]
                 pub fn modify<T>(func: T) where T: FnOnce(u64) -> u64 {
                     [<$name:camel>]::write(func([<$name:camel>]::read()))

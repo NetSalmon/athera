@@ -1,5 +1,14 @@
 use crate::dev::DEV_TREE;
-use crate::{numeric, print, println};
+use crate::usr::SStatusBits;
+use crate::{arch, debug, kernel_do_no_thing, numeric, print};
+
+numeric! {
+    pub enum ErrorCode : u64 {
+        EINVAL = !22 + 1,
+        EIO = !5 + 1,
+        ENOSYS = !38 + 1,
+    }
+}
 
 numeric! {
     pub enum Syscall: u64 {
@@ -9,46 +18,53 @@ numeric! {
     }
 }
 
-fn read(_fd: u64, buf: &mut [u8]) -> isize {
+fn read(_fd: u64, buf: &mut [u8]) -> u64 {
     let uart = match DEV_TREE.force().ns16550a.as_ref() {
         Some(u) => u,
-        None => return -1,
+        None => return ErrorCode::EIO.into(),
     };
+
+    let mut bytes_read = 0;
     for i in buf.iter_mut() {
-        let ch = if let Some(ch) = uart.lock().getchar() {
-            ch
+        if let Some(ch) = uart.lock().getchar() {
+            *i = ch;
+            bytes_read += 1;
         } else {
-            return -1;
-        };
-        *i = ch;
+            break;
+        }
     }
-    0
+    bytes_read
 }
 
-fn write(_fd: u64, buf: &[u8]) -> isize {
+fn write(_fd: u64, buf: &[u8]) -> u64 {
     for i in buf.iter() {
         print!("{}", *i as char);
     }
-    0
+    buf.len() as u64
 }
 
-pub fn handle(args: [u64; 8]) -> u64 {
-    match args[7].into() {
+pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
+    match Syscall::from(args[7]) {
         Syscall::READ => {
             let ptr = args[1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, args[2] as usize);
-            read(args[0], unsafe { &mut *buf }) as u64
+            let ret = read(args[0], unsafe { &mut *buf });
+            (ret, sepc + 4)
         }
         Syscall::WRITE => {
             let ptr = args[1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, args[2] as usize);
             let buf = unsafe { &*buf };
-            write(args[0], buf) as u64
+            let ret = write(args[0], buf);
+            (ret, sepc + 4)
         }
         Syscall::EXIT => {
-            println!("[Kernel] user program exit, code: {}", args[0] as i32);
-            args[0]
+            debug!("user program exit, code: {}", args[0] as i32);
+            let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
+            s.set_spp(true);
+            arch::registers::csr::Sstatus::write(s.into());
+            (args[0], kernel_do_no_thing as *const () as u64)
         }
-        _ => panic!("Unsupported syscall"),
+        _ => (ErrorCode::ENOSYS.into(), sepc + 4),
     }
 }

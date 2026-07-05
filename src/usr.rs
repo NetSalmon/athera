@@ -1,7 +1,7 @@
 use crate::arch::registers::csr::Sstatus;
 use crate::bits;
 use crate::debug;
-use crate::elf::{Elf64Ehdr, Elf64Phdr, Endianness, PType};
+use crate::elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType};
 use crate::mem::PAGE_SIZE;
 use crate::mem::frame_allocator::{AllocPage, FRAME_ALLOCATOR};
 use core::ptr;
@@ -17,9 +17,17 @@ bits! {
 pub fn exec(elf: &[u8]) {
     let ptr = elf.as_ptr();
     let header = unsafe { &*(ptr as *const Elf64Ehdr) };
-    
+
+    if !header.e_ident.is_elf() {
+        panic!("not a ELF");
+    }
+
+    if header.e_ident.class() != Class::CLASS64 {
+        panic!("not a 64-bit ELF");
+    }
+
     if header.e_ident.data() != Endianness::LSB {
-        panic!("Unsupported endianness")
+        panic!("not a lsb ELF")
     }
 
     let ph_offset = header.e_phoff;
@@ -111,7 +119,7 @@ pub fn alloc_user_stack() -> AllocPage {
 //    ├──> 3. 将 ELF 中的代码/数据复制到对应的物理页中（处理好 .bss 清零）
 //    └──> 4. 申请用户栈物理页，在页表中映射为用户栈虚拟地址
 //
-// [准备上下文 (Trapframe)]
+// [准备上下文 (TrapFrame)]
 //    │
 //    ├──> 5. 在内存中初始化该进程的上下文（寄存器镜像）
 //    │       ├── sepc  <- ELF 入口地址 (Entry Point)

@@ -136,125 +136,6 @@ macro_rules! bits {
     };
 }
 
-/// Read a linker-defined symbol address into a local variable via inline assembly.
-///
-/// This macro generates a `let` binding whose value is the address of a symbol defined
-/// in the linker script (e.g. `user_stack_top`, `kernel_do_no_thing`). It uses the
-/// RISC-V `la` (load address) pseudo-instruction to obtain the address at runtime.
-///
-/// The type of the variable defaults to the architecture's pointer type but can be
-/// explicitly specified (e.g. `u64`).
-///
-/// # Syntax
-/// ```ignore
-/// get_tag_address!(varname: Type = "symbol_name");
-/// get_tag_address!(varname = "symbol_name");
-/// ```
-///
-/// # Safety
-/// This macro emits inline assembly (`core::arch::asm!`) which is inherently unsafe.
-/// The caller must ensure the symbol name exists in the final linked binary.
-///
-/// # Example
-/// ```ignore
-/// // Read the address of the user stack top
-/// get_tag_address!(stack: u64 = "user_stack_top");
-/// arch::registers::gpr::Sp::write(stack);
-///
-/// // Read with inferred type
-/// get_tag_address!(addr = "kernel_do_no_thing");
-/// arch::registers::csr::Sepc::write(addr);
-/// ```
-#[macro_export]
-macro_rules! get_tag_address {
-    ($var:ident $(: $t:ty)? = $tag:literal) => {
-        let $var $(: $t)?;
-        unsafe { core::arch::asm!( concat!("la {}, ", $tag), out(reg) $var ) }
-    };
-}
-
-/// Reads multiple values from a base pointer using offset-based raw pointer arithmetic.
-///
-/// Each variable is assigned the result of reading from `base.add(offset)` via `unsafe`.
-/// The type of each variable can be optionally specified; if omitted it will be inferred
-/// from context (`let x = ...`).
-///
-/// # Syntax
-/// ```ignore
-/// mem_read!(base_ptr, var1: Type => offset1, var2 => offset2, ...);
-/// ```
-///
-/// # Safety
-/// This macro uses raw pointer reads without bounds checking. The caller must ensure that
-/// all offsets point to valid, properly-aligned memory within the same allocation.
-///
-/// # Example
-/// ```ignore
-/// let buf: [u8; 16] = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
-/// let base = buf.as_ptr();
-/// mem_read!(
-///     base,
-///     a: u32 => 0,   // read u32 from offset 0
-///     b: u16 => 4,   // read u16 from offset 4
-///     c: u8 => 8,    // read u8 from offset 8
-///     d => 12,       // type inferred
-/// );
-/// ```
-#[macro_export]
-macro_rules! mem_read {
-    ($base:expr, $($var:ident $(: $t:ty)? => $offset:expr),+$(,)?) => {
-        $( let $var $(: $t)? = unsafe { $base.add($offset).read() }; )+
-    };
-}
-
-/// Read a contiguous array of values from a base pointer into a local stack array.
-///
-/// This macro declares a fixed-size array (`[T; N]`) and fills it by reading `N`
-/// consecutive values of type `T` starting from a given base pointer. An optional
-/// element-index offset can be provided to start reading partway into the data.
-///
-/// # Syntax
-/// ```ignore
-/// // Without element offset (starts at base):
-/// read_as_array!(var_name: Type => base_ptr => count);
-///
-/// // With element offset (starts at base_ptr + offset * size_of::<T>()):
-/// read_as_array!(var_name: Type => base_ptr, element_offset => count);
-/// ```
-///
-/// # Safety
-/// Each element is read via `unsafe { ptr.add(i).read() }`. The caller must ensure
-/// that the memory region `[base, base + (offset + count) * size_of::<T>())` is
-/// valid and properly aligned for type `T`.
-///
-/// # Example
-/// ```ignore
-/// let sp: *const u8 = ...;   // trap frame stack pointer
-/// read_as_array!(args: u64 => sp, 10 => 8);  // read 8 × u64 starting at sp + 10*8
-/// println!("syscall args: {:?}", args);
-/// ```
-#[macro_export]
-macro_rules! read_as_array {
-    (@base $base:expr, $t:ty, $offset:expr) => {
-        {
-            let offset = $offset;
-            let base = $base as *const $t;
-            unsafe { base.add(offset) }
-        }
-    };
-    (@base $base:expr, $t:ty) => {
-        $base as *const $t
-    };
-    ($var:ident : $t:ty => $base:expr $(, $offset:expr)? => $len:expr) => {
-        let mut $var : [$t; $len] = [0; $len];
-        let base = read_as_array!(@base $base, $t $(, $offset)?);
-
-        for i in 0..$len {
-            $var[i] = unsafe { base.add(i).read() };
-        }
-    };
-}
-
 /// Define a transparent wrapper struct over a fixed-size array with named field accessors.
 ///
 /// This macro generates a `#[repr(transparent)]` struct wrapping a public array (`[T; N]`)
@@ -343,6 +224,7 @@ macro_rules! array_struct {
             #[derive(Debug)]
             $v struct $name ( pub [$t; $l] );
 
+            #[allow(unused)]
             impl $name {
                 $(
                 array_struct!(@getter $item, $index, $t, $($(@ $try)? $to_ty)?);
@@ -355,6 +237,88 @@ macro_rules! array_struct {
 
 #[macro_export]
 macro_rules! numeric {
+    ($v:vis enum $name:ident with ops : $t:ty { $( $item:ident = $value:expr ),*$(,)? }) => {
+        numeric!($v enum $name : $t { $( $item = $value, )* });
+
+        impl core::ops::Add for $name {
+            type Output = $name;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                $name(self.0 + rhs.0)
+            }
+        }
+
+        impl core::ops::Sub for $name {
+            type Output = $name;
+            fn sub(self, rhs: Self) -> Self::Output {
+                $name(self.0 - rhs.0)
+            }
+        }
+
+        impl core::ops::Add<$t> for $name {
+            type Output = $t;
+
+            fn add(self, rhs: $t) -> Self::Output {
+                self.0 + rhs
+            }
+        }
+
+        impl core::ops::Add<$name> for $t {
+            type Output = $t;
+
+            fn add(self, rhs: $name) -> Self::Output {
+                rhs.0 + self
+            }
+        }
+
+        impl core::ops::Sub<$t> for $name {
+            type Output = $t;
+
+            fn sub(self, rhs: $t) -> Self::Output {
+                self.0 - rhs
+            }
+        }
+
+        impl core::ops::Sub<$name> for $t {
+            type Output = $t;
+
+            fn sub(self, rhs: $name) -> Self::Output {
+                rhs.0 - self
+            }
+        }
+
+        impl core::ops::Mul<$t> for $name {
+            type Output = $t;
+
+            fn mul(self, rhs: $t) -> Self::Output {
+                self.0 * rhs
+            }
+        }
+
+        impl core::ops::Mul<$name> for $t {
+            type Output = $t;
+
+            fn mul(self, rhs: $name) -> Self::Output {
+                rhs.0 * self
+            }
+        }
+
+        impl core::ops::Div<$t> for $name {
+            type Output = $t;
+
+            fn div(self, rhs: $t) -> Self::Output {
+                self.0 / rhs
+            }
+        }
+
+        impl core::ops::Div<$name> for $t {
+            type Output = $t;
+
+            fn div(self, rhs: $name) -> Self::Output {
+                self / rhs.0
+            }
+        }
+    };
     ($v:vis enum $name:ident : $t:ty { $( $item:ident = $value:expr ),*$(,)? }) => {
         #[repr(transparent)]
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -373,13 +337,13 @@ macro_rules! numeric {
                 }
             }
         }
-        
+
         impl From<$t> for $name {
             fn from(value: $t) -> Self {
                 $name(value)
             }
         }
-        
+
         impl From<$name> for $t {
             fn from(value: $name) -> Self {
                 value.0

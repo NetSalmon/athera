@@ -1,5 +1,5 @@
-use core::fmt::{Display, Formatter};
 use crate::{array_struct, bits, numeric};
+use core::fmt::{Display, Formatter};
 
 #[repr(C)]
 pub struct Elf32Ehdr {

@@ -1,5 +1,5 @@
+use crate::debug;
 use crate::mem::linked_list::LinkedList;
-use crate::{debug, print, println};
 use core::ops::Range;
 
 pub const MAX_ORDER: usize = 11;
@@ -87,13 +87,6 @@ impl BuddyAllocator {
     pub fn dealloc_frame(&mut self, start: usize, size: usize) {
         let order = size_to_order(size);
         self.dealloc(start, order)
-    }
-
-    pub fn debug(&self) {
-        for (idx, order) in self.free_list.iter().enumerate() {
-            print!("Order {:0>2}: {:?}", idx, order);
-            println!();
-        }
     }
 }
 

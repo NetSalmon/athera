@@ -1,4 +1,3 @@
-use crate::arch::registers::WritableRegister;
 use crate::arch::registers::csr::Satp;
 use crate::arch::registers::values::{SatpMode, SatpValue};
 use crate::dev::DEV_TREE;

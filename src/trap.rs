@@ -1,7 +1,5 @@
-use crate::arch::registers::{ReadableRegister, WritableRegister};
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::usr::SStatusBits;
-use crate::{arch, debug, numeric, get_tag_address, read_as_array, syscall};
+use crate::{arch, debug, numeric, syscall};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -29,9 +27,9 @@ numeric! {
         LOAD_ACCESS_FAULT = 5,
         STORE_ADDRESS_MISALIGNED = 6,
         STORE_ACCESS_FAULT = 7,
-        UMODE_ECALL = 8,
-        SMODE_ECALL = 9,
-        MMODE_ECALL = 11,
+        U_MODE_ECALL = 8,
+        S_MODE_ECALL = 9,
+        M_MODE_ECALL = 11,
         INSTRUCTION_PAGE_FAULT = 12,
         LOAD_PAGE_FAULT = 13,
         STORE_PAGE_FAULT = 15,
@@ -83,28 +81,21 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
         Trap::Interrupt(Interrupt::SUPERVISOR_TIMER) => {
             set_time();
         }
-        Trap::Exception(Exception::UMODE_ECALL) => {
-            read_as_array!(args: u64 => trap_frame_sp, 10 => 8);
+        Trap::Exception(Exception::U_MODE_ECALL) => {
+            let args = unsafe { &*((trap_frame_sp + 80) as *const [u64; 8]) };
 
             debug!("args: {:?}", args);
 
-            let ret = syscall::handle(args);
+            let (ret, next) = syscall::handle(args, sepc);
+
             unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
 
-            if args[7] == 60 {
-                get_tag_address!(addr: u64 = "kernel_do_no_thing");
-                arch::registers::csr::Sepc::write(addr);
-                let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
-                s.set_spp(true);
-                arch::registers::csr::Sstatus::write(s.into());
-            } else {
-                arch::registers::csr::Sepc::write(sepc + 4);
-            }
+            arch::registers::csr::Sepc::write(next);
         }
         Trap::Exception(Exception::BREAKPOINT) => {
             arch::registers::csr::Sepc::write(sepc + 4);
         }
-        Trap::Exception(Exception::SMODE_ECALL | Exception::MMODE_ECALL) => {
+        Trap::Exception(Exception::S_MODE_ECALL | Exception::M_MODE_ECALL) => {
             arch::registers::csr::Sepc::write(sepc + 4);
         }
         Trap::Exception(Exception::ILLEGAL_INSTRUCTION) => {
@@ -114,6 +105,7 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
         Trap::Exception(
             Exception::LOAD_ACCESS_FAULT
             | Exception::LOAD_PAGE_FAULT
+            | Exception::STORE_ACCESS_FAULT
             | Exception::INSTRUCTION_ACCESS_FAULT,
         ) => {
             system_reset(ResetType::Shutdown, ResetReason::SysFail);

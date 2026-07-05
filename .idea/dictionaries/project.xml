@@ -2,9 +2,22 @@
   <dictionary name="project">
     <words>
       <w>Denso</w>
+      <w>Ehdr</w>
       <w>Infineon</w>
       <w>Matsushita</w>
+      <w>Phdr</w>
+      <w>ehsize</w>
+      <w>filesz</w>
+      <w>memsz</w>
+      <w>paddr</w>
+      <w>phentsize</w>
+      <w>phnum</w>
+      <w>phoff</w>
       <w>satp</w>
+      <w>shentsize</w>
+      <w>shnum</w>
+      <w>shoff</w>
+      <w>shstrndx</w>
       <w>stvec</w>
     </words>
   </dictionary>
