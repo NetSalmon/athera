@@ -12,9 +12,9 @@ numeric! {
 
 numeric! {
     pub enum Syscall: u64 {
-        READ = 0,
-        WRITE = 1,
-        EXIT = 60,
+        READ = 63,
+        WRITE = 64,
+        EXIT = 93,
     }
 }
 

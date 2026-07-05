@@ -25,15 +25,7 @@ global_asm!(include_str!("entry.asm"));
 pub static FDT_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 pub static ROOT_PAGE_TABLE_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 
-unsafe extern "C" {
-    pub fn _end();
-    pub static PAGE_OFFSET: usize;
-}
-
-#[inline]
-pub fn page_offset() -> usize {
-    unsafe { PAGE_OFFSET }
-}
+unsafe extern "C" { pub fn _end(); }
 
 #[unsafe(no_mangle)]
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {

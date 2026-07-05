@@ -6,6 +6,9 @@
       <w>Infineon</w>
       <w>Matsushita</w>
       <w>Phdr</w>
+      <w>balign</w>
+      <w>csrs</w>
+      <w>csrsi</w>
       <w>ehsize</w>
       <w>filesz</w>
       <w>memsz</w>
