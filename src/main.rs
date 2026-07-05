@@ -9,13 +9,13 @@ mod locks;
 mod log;
 mod marco;
 mod mem;
+mod proc;
 mod syscall;
 mod trap;
 mod usr;
-mod proc;
 
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::mem::page_table::{equal_mapping};
+use crate::mem::page_table::equal_mapping;
 use core::arch::global_asm;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -90,16 +90,22 @@ fn panic_handle(info: &PanicInfo) -> ! {
 }
 
 #[repr(align(8))]
-struct Elf ([u8;include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world").len()]);
-static ELF: Elf = Elf(*include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world"));
+struct Elf(
+    [u8; include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world")
+        .len()],
+);
+
+static ELF: Elf = Elf(*include_bytes!(
+    "../applications/target/riscv64gc-unknown-none-elf/release/hello_world"
+));
 
 fn structs_layout_tests() {
-    use core::mem::{align_of, offset_of, size_of};
     use crate::dev::virtio_blk::queue::{
         Queue, VirtioAvail, VirtioDesc, VirtioDescTable, VirtioUsed, VirtioUsedElem,
     };
     use crate::elf::{Elf32Ehdr, Elf32Phdr, Elf64Ehdr, Elf64Phdr};
     use crate::mem::page_table::PageTable;
+    use core::mem::{align_of, offset_of, size_of};
 
     // Elf32Ehdr: repr(C), size=52, align=4
     assert_eq!(size_of::<Elf32Ehdr>(), 52);

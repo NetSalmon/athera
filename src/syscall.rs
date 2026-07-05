@@ -3,9 +3,9 @@ use crate::{numeric, print, println};
 
 numeric! {
     pub enum Syscall: u64 {
-        Read = 0,
-        Write = 1,
-        Exit = 60,
+        READ = 0,
+        WRITE = 1,
+        EXIT = 60,
     }
 }
 
@@ -33,21 +33,22 @@ fn write(_fd: u64, buf: &[u8]) -> isize {
 }
 
 pub fn handle(args: [u64; 8]) -> u64 {
-    match args[7].try_into().unwrap() {
-        Syscall::Read => {
+    match args[7].into() {
+        Syscall::READ => {
             let ptr = args[1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, args[2] as usize);
             read(args[0], unsafe { &mut *buf }) as u64
         }
-        Syscall::Write => {
+        Syscall::WRITE => {
             let ptr = args[1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, args[2] as usize);
             let buf = unsafe { &*buf };
             write(args[0], buf) as u64
         }
-        Syscall::Exit => {
+        Syscall::EXIT => {
             println!("[Kernel] user program exit, code: {}", args[0] as i32);
             args[0]
         }
+        _ => panic!("Unsupported syscall"),
     }
 }

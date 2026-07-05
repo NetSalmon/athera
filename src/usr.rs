@@ -1,10 +1,10 @@
-use core::ptr;
 use crate::arch::registers::csr::Sstatus;
 use crate::bits;
 use crate::debug;
 use crate::elf::{Elf64Ehdr, Elf64Phdr, Endianness, PType};
-use crate::mem::frame_allocator::FRAME_ALLOCATOR;
 use crate::mem::PAGE_SIZE;
+use crate::mem::frame_allocator::{AllocPage, FRAME_ALLOCATOR};
+use core::ptr;
 
 bits! {
     pub type SStatusBits: u64 {
@@ -13,15 +13,12 @@ bits! {
     }
 }
 
+/// 解析并加载`ELF`各段
 pub fn exec(elf: &[u8]) {
     let ptr = elf.as_ptr();
     let header = unsafe { &*(ptr as *const Elf64Ehdr) };
-
-    let Ok(endianness) = header.e_ident.data() else {
-        panic!("Unsupported endianness")
-    };
-
-    if endianness != Endianness::Lsb {
+    
+    if header.e_ident.data() != Endianness::LSB {
         panic!("Unsupported endianness")
     }
 
@@ -56,30 +53,37 @@ pub fn exec(elf: &[u8]) {
             continue;
         }
 
-        let alloc_page = FRAME_ALLOCATOR.force().lock().alloc_frame(mem_size).expect("out of memory");
+        let alloc_page = FRAME_ALLOCATOR
+            .force()
+            .lock()
+            .alloc_frame(mem_size)
+            .expect("out of memory");
 
         for i in 0..mem_size {
             let current = alloc_page + i;
-            debug!("{:#x}: {}", current, unsafe { (current as *const u8).read() });
+            debug!("{:#x}: {}", current, unsafe {
+                (current as *const u8).read()
+            });
         }
 
-        unsafe {
-            ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size)
-        }
+        unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
 
         for i in file_size..mem_size {
-            unsafe{ (ptr.add(offset).add(i) as *mut u8).write(0) }
+            unsafe { (ptr.add(offset).add(i) as *mut u8).write(0) }
         }
 
         debug!("load ok");
 
         for i in 0..mem_size {
             let current = alloc_page + i;
-            debug!("{:#x}: {:#x}", current, unsafe { (current as *const u8).read() });
+            debug!("{:#x}: {:#x}", current, unsafe {
+                (current as *const u8).read()
+            });
         }
     }
 }
 
+/// 设置`sstatus`寄存器`SPP`位为`0`
 #[inline]
 pub fn set_sstatus_spp() {
     Sstatus::modify(|source| {
@@ -89,40 +93,15 @@ pub fn set_sstatus_spp() {
     })
 }
 
-pub struct AllocPage {
-    start: usize,
-    size: usize,
-}
-
-impl AllocPage {
-    pub unsafe fn from_raw(start: usize, size: usize) -> Self {
-        Self { start, size }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe { & *ptr::slice_from_raw_parts(self.start as *const u8, self.size) }
-    }
-
-    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.start as *mut u8, self.size) }
-    }
-}
-
-impl Drop for AllocPage {
-    fn drop(&mut self) {
-        FRAME_ALLOCATOR.force().lock().dealloc_frame(self.start, self.size);
-    }
-}
-
 /// 用户栈固定 4KiB
 pub fn alloc_user_stack() -> AllocPage {
-    let page = FRAME_ALLOCATOR.force().lock().alloc(0).expect("out of memory");
-    unsafe {
-        AllocPage::from_raw(
-            page,
-            PAGE_SIZE,
-        )
-    }
+    let page = FRAME_ALLOCATOR
+        .force()
+        .lock()
+        .alloc(0)
+        .expect("out of memory");
+
+    unsafe { AllocPage::from_raw(page, PAGE_SIZE) }
 }
 
 // [解析ELF]

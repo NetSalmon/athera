@@ -2,6 +2,7 @@ use crate::dev::DEV_TREE;
 use crate::locks::{LazyLock, SpinLock};
 use crate::mem::buddy_system::BuddyAllocator;
 use crate::{_end, debug};
+use core::ptr;
 
 pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|| {
     let mut allocator = BuddyAllocator::new();
@@ -22,4 +23,32 @@ pub fn alloc_frame() -> Option<usize> {
 
 pub fn dealloc_frame(addr: usize) {
     FRAME_ALLOCATOR.force().lock().dealloc(addr, 0);
+}
+
+pub struct AllocPage {
+    start: usize,
+    size: usize,
+}
+
+impl AllocPage {
+    pub unsafe fn from_raw(start: usize, size: usize) -> Self {
+        Self { start, size }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { &*ptr::slice_from_raw_parts(self.start as *const u8, self.size) }
+    }
+
+    pub fn as_bytes_mut(&mut self) -> &mut [u8] {
+        unsafe { &mut *ptr::slice_from_raw_parts_mut(self.start as *mut u8, self.size) }
+    }
+}
+
+impl Drop for AllocPage {
+    fn drop(&mut self) {
+        FRAME_ALLOCATOR
+            .force()
+            .lock()
+            .dealloc_frame(self.start, self.size);
+    }
 }

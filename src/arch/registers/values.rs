@@ -9,12 +9,11 @@ bits! {
 }
 
 numeric! {
-    @fallback
     pub enum SatpMode: u64 {
-        Bare = 0,
-        Sv39 = 8,
-        Sv48 = 9,
-        Sv57 = 10,
-        Sv64 = 11,
+        BARE = 0,
+        SV39 = 8,
+        SV48 = 9,
+        SV57 = 10,
+        SV64 = 11,
     }
 }

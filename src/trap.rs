@@ -1,42 +1,40 @@
 use crate::arch::registers::{ReadableRegister, WritableRegister};
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::usr::SStatusBits;
-use crate::{arch, debug, get_tag_address, numeric, read_as_array, syscall};
+use crate::{arch, debug, numeric, get_tag_address, read_as_array, syscall};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
 numeric! {
-    @fallback
     pub enum Interrupt: i64 {
-        UModeSoftware = INTERRUPT_MASK,
-        SModeSoftware = INTERRUPT_MASK | 1,
-        MModeSoftware = INTERRUPT_MASK | 3,
-        UserTimer = INTERRUPT_MASK | 4,
-        SupervisorTimer = INTERRUPT_MASK | 5,
-        MachineTimer = INTERRUPT_MASK | 7,
-        UserExternal = INTERRUPT_MASK | 8,
-        SupervisorExternal = INTERRUPT_MASK | 9,
-        MachineExternal = INTERRUPT_MASK | 11,
+        U_MODE_SOFTWARE = INTERRUPT_MASK,
+        S_MODE_SOFTWARE = INTERRUPT_MASK | 1,
+        M_MODE_SOFTWARE = INTERRUPT_MASK | 3,
+        USER_TIMER = INTERRUPT_MASK | 4,
+        SUPERVISOR_TIMER = INTERRUPT_MASK | 5,
+        MACHINE_TIMER = INTERRUPT_MASK | 7,
+        USER_EXTERNAL = INTERRUPT_MASK | 8,
+        SUPERVISOR_EXTERNAL = INTERRUPT_MASK | 9,
+        MACHINE_EXTERNAL = INTERRUPT_MASK | 11,
     }
 }
 
 numeric! {
-    @fallback
     pub enum Exception: i64 {
-        InstructionAddressMisaligned = 0,
-        InstructionAccessFault = 1,
-        IllegalInstruction = 2,
-        Breakpoint = 3,
-        LoadAddressMisaligned = 4,
-        LoadAccessFault = 5,
-        StoreAddressMisaligned = 6,
-        StoreAccessFault = 7,
-        UModeEcall = 8,
-        SModeEcall = 9,
-        MModeEcall = 11,
-        InstructionPageFault = 12,
-        LoadPageFault = 13,
-        StorePageFault = 15,
+        INSTRUCTION_ADDRESS_MISALIGNED = 0,
+        INSTRUCTION_ACCESS_FAULT = 1,
+        ILLEGAL_INSTRUCTION = 2,
+        BREAKPOINT = 3,
+        LOAD_ADDRESS_MISALIGNED = 4,
+        LOAD_ACCESS_FAULT = 5,
+        STORE_ADDRESS_MISALIGNED = 6,
+        STORE_ACCESS_FAULT = 7,
+        UMODE_ECALL = 8,
+        SMODE_ECALL = 9,
+        MMODE_ECALL = 11,
+        INSTRUCTION_PAGE_FAULT = 12,
+        LOAD_PAGE_FAULT = 13,
+        STORE_PAGE_FAULT = 15,
     }
 }
 
@@ -82,10 +80,10 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
     let trap = Trap::from(scause as i64);
 
     match trap {
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+        Trap::Interrupt(Interrupt::SUPERVISOR_TIMER) => {
             set_time();
         }
-        Trap::Exception(Exception::UModeEcall) => {
+        Trap::Exception(Exception::UMODE_ECALL) => {
             read_as_array!(args: u64 => trap_frame_sp, 10 => 8);
 
             debug!("args: {:?}", args);
@@ -103,20 +101,20 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
                 arch::registers::csr::Sepc::write(sepc + 4);
             }
         }
-        Trap::Exception(Exception::Breakpoint) => {
+        Trap::Exception(Exception::BREAKPOINT) => {
             arch::registers::csr::Sepc::write(sepc + 4);
         }
-        Trap::Exception(Exception::SModeEcall | Exception::MModeEcall) => {
+        Trap::Exception(Exception::SMODE_ECALL | Exception::MMODE_ECALL) => {
             arch::registers::csr::Sepc::write(sepc + 4);
         }
-        Trap::Exception(Exception::IllegalInstruction) => {
+        Trap::Exception(Exception::ILLEGAL_INSTRUCTION) => {
             system_reset(ResetType::Shutdown, ResetReason::None);
         }
-        Trap::Interrupt(Interrupt::SupervisorExternal) => {}
+        Trap::Interrupt(Interrupt::SUPERVISOR_EXTERNAL) => {}
         Trap::Exception(
-            Exception::LoadAccessFault
-            | Exception::LoadPageFault
-            | Exception::InstructionAccessFault,
+            Exception::LOAD_ACCESS_FAULT
+            | Exception::LOAD_PAGE_FAULT
+            | Exception::INSTRUCTION_ACCESS_FAULT,
         ) => {
             system_reset(ResetType::Shutdown, ResetReason::SysFail);
         }

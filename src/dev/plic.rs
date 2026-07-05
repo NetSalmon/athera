@@ -12,5 +12,5 @@
 use crate::dev::Device;
 
 pub struct Plic {
-    device: Device
+    device: Device,
 }

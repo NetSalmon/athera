@@ -1,5 +1,5 @@
-use crate::{array_struct, bits, enumeration, numeric};
-use core::fmt::{Debug, Display, Formatter, Write};
+use core::fmt::{Display, Formatter};
+use crate::{array_struct, bits, numeric};
 
 #[repr(C)]
 pub struct Elf32Ehdr {
@@ -40,19 +40,19 @@ pub struct Elf64Ehdr {
 
 numeric! {
     pub enum EType : u16 {
-        None = 0,
-        Rel = 1,
-        Exec = 2,
-        Dyn = 3,
-        Core = 4,
-        Loos = 0xfe00,
-        Hios = 0xfeff,
-        Loproc = 0xff00,
-        Hiproc = 0xffff,
+        NONE = 0,
+        REL = 1,
+        EXEC = 2,
+        DYN = 3,
+        CORE = 4,
+        LOOS = 0xfe00,
+        HIOS = 0xfeff,
+        LOPROC = 0xff00,
+        HIPROC = 0xffff,
     }
 }
 
-enumeration! {
+numeric! {
     pub enum EMachine : u16 {
         NONE          = 0x0000,
         M32           = 0x0001,
@@ -242,15 +242,15 @@ enumeration! {
 
 numeric! {
     pub enum EVersion : u32 {
-        None = 0,         // Invalid version
-        Current = 1,         // Current version
+        NONE = 0,         // Invalid version
+        CURRENT = 1,         // Current version
     }
 }
 
 array_struct! {
     pub struct EIdent : [u8; 16] {
-        class: @try Class => 4,
-        data: @try Endianness => 5,
+        class: Class => 4,
+        data: Endianness => 5,
         version => 6,
         os_abi: OsAbi => 7,
         abi_version => 8,
@@ -261,45 +261,41 @@ array_struct! {
 
 impl EIdent {
     pub fn is_elf(&self) -> bool {
-        self.0[0] == 0x7F &&
-            self.0[1] == b'E' &&
-            self.0[2] == b'L' &&
-            self.0[3] == b'F'
+        self.0[0] == 0x7F && self.0[1] == b'E' && self.0[2] == b'L' && self.0[3] == b'F'
     }
 }
 
 numeric! {
     pub enum Class : u8 {
-        None = 0,             // Invalid class
-        Class32 = 1,         // 32-bit objects
-        Class64 = 2,         // 64-bit objects
+        NONE = 0,             // Invalid class
+        CLASS32 = 1,         // 32-bit objects
+        CLASS64 = 2,         // 64-bit objects
     }
 }
 
 numeric! {
-    @fallback
     pub enum OsAbi : u8 {
-        SysV = 0,
-        HpUx = 1,
-        NetBSD = 2,
-        Linux = 3,
-        Solaris = 6,
-        Aix = 7,
-        Iris = 8,
-        FreeBSD = 9,
+        SYS_V = 0,
+        HP_UX = 1,
+        NET_BSD = 2,
+        LINUX = 3,
+        SOLARIS = 6,
+        AIX = 7,
+        IRIS = 8,
+        FREE_BSD = 9,
         TRU64 = 10,
-        Modesto = 11,
-        OpenBSD = 12,
-        OpenVMS = 13,
-        Nsk = 14,
+        MODESTO = 11,
+        OPEN_BSD = 12,
+        OPEN_VMS = 13,
+        NSK = 14,
     }
 }
 
 numeric! {
     pub enum Endianness: u8 {
-        None = 0,
-        Lsb = 1,
-        Msb = 2,
+        NONE = 0,
+        LSB = 1,
+        MSB = 2,
     }
 }
 
@@ -328,7 +324,7 @@ pub struct Elf64Phdr {
     pub p_align: u64,
 }
 
-enumeration! {
+numeric! {
     pub enum PType : u32 {
         NULL         = 0x00,
         LOAD         = 0x01,
@@ -370,7 +366,7 @@ impl Display for PFlags {
         if self.execute() {
             f.write_str("X")?
         }
-        
+
         f.write_str("")
     }
 }

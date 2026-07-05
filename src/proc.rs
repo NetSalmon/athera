@@ -1,4 +1,4 @@
-use crate::usr::AllocPage;
+use crate::mem::frame_allocator::AllocPage;
 
 pub struct ProcessControlBlock {
     pub context: [u64; 512],

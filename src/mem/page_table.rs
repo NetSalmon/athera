@@ -192,7 +192,7 @@ pub fn equal_mapping() {
 
     let mut value = SatpValue::new();
     value.set_ppn(ppn);
-    value.set_mode(SatpMode::Sv39.into());
+    value.set_mode(SatpMode::SV39.into());
 
     debug!("value: {:?}", value);
 
