@@ -25,7 +25,9 @@ global_asm!(include_str!("entry.asm"));
 pub static FDT_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 pub static ROOT_PAGE_TABLE_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 
-unsafe extern "C" { pub fn _end(); }
+unsafe extern "C" {
+    pub fn _end();
+}
 
 #[unsafe(no_mangle)]
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
@@ -34,6 +36,11 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     }
 
     FDT_ADDRESS.swap(dev_tree_address, Ordering::Relaxed);
+    
+    debug!("PAGE_SIZE: {}", mem::PAGE_SIZE);
+    debug!("BUDDY_MAX_ORDER: {}", mem::buddy_system::BUDDY_MAX_ORDER);
+    debug!("SLUB_MIN_ORDER: {}", mem::slub::SLUB_MIN_ORDER);
+    debug!("SLUB_MAX_ORDER: {}", mem::slub::SLUB_MAX_ORDER);
 
     debug!("kernel end: {:#x}", _end as *const () as usize);
 

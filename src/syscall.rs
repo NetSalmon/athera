@@ -1,12 +1,14 @@
+use crate::arch::sbi;
+use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::dev::DEV_TREE;
 use crate::usr::SStatusBits;
 use crate::{arch, debug, kernel_do_no_thing, numeric, print};
 
 numeric! {
-    pub enum ErrorCode : u64 {
-        EINVAL = !22 + 1,
-        EIO = !5 + 1,
-        ENOSYS = !38 + 1,
+    pub enum ErrorCode : isize {
+        EINVAL = -22,
+        EIO = -5,
+        ENOSYS = -38,
     }
 }
 
@@ -15,13 +17,22 @@ numeric! {
         READ = 63,
         WRITE = 64,
         EXIT = 93,
+        REBOOT = 142,
+    }
+}
+
+numeric! {
+    pub enum RebootCmd : u64 {
+        RESTART = 0x1234567,
+        POWER_OFF = 0x4321fedc,
+        HALT = 0xcdef0123,
     }
 }
 
 fn read(_fd: u64, buf: &mut [u8]) -> u64 {
     let uart = match DEV_TREE.force().ns16550a.as_ref() {
         Some(u) => u,
-        None => return ErrorCode::EIO.into(),
+        None => return ErrorCode::EIO.0 as u64,
     };
 
     let mut bytes_read = 0;
@@ -41,6 +52,29 @@ fn write(_fd: u64, buf: &[u8]) -> u64 {
         print!("{}", *i as char);
     }
     buf.len() as u64
+}
+
+fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
+    if magic != 0xfee1dead {
+        return -1;
+    }
+    if magic2 != 0x28121969 {
+        return -1;
+    }
+
+    match RebootCmd::from(cmd) {
+        RebootCmd::POWER_OFF => {
+            system_reset(ResetType::Shutdown, ResetReason::None);
+        }
+        RebootCmd::RESTART => {
+            system_reset(ResetType::ColdReboot, ResetReason::None);
+        }
+        RebootCmd::HALT => {
+            sbi::hsm::hart_stop();
+        }
+        _ => return -1,
+    }
+    -1
 }
 
 pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
@@ -65,6 +99,11 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             arch::registers::csr::Sstatus::write(s.into());
             (args[0], kernel_do_no_thing as *const () as u64)
         }
-        _ => (ErrorCode::ENOSYS.into(), sepc + 4),
+        Syscall::REBOOT => {
+            let ret = reboot(args[0], args[1], args[2]);
+
+            (ret as u64, sepc + 4)
+        }
+        _ => (ErrorCode::ENOSYS.0 as u64, sepc + 4),
     }
 }

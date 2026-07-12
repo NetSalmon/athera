@@ -1,0 +1,12 @@
+[package]
+name = "const-num"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+paste = "1.0.15"

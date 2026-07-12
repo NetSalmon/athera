@@ -1,6 +1,6 @@
 use std::env;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     // Generate a linker fragment that sets the high base address

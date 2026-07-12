@@ -2,22 +2,23 @@ use crate::debug;
 use crate::mem::linked_list::LinkedList;
 use core::ops::Range;
 
-pub const MAX_ORDER: usize = 11;
+#[const_val::const_val]
+pub const BUDDY_MAX_ORDER: usize = 11;
 
 pub struct BuddyAllocator {
-    pub free_list: [LinkedList; MAX_ORDER],
+    pub free_list: [LinkedList; BUDDY_MAX_ORDER],
 }
 
 impl BuddyAllocator {
     pub const fn new() -> Self {
         Self {
-            free_list: [LinkedList::new(); MAX_ORDER],
+            free_list: [LinkedList::new(); BUDDY_MAX_ORDER],
         }
     }
 
     fn add_frame(&mut self, start: usize, end: usize) {
         let mut current = start;
-        for order in (0..MAX_ORDER).rev() {
+        for order in (0..BUDDY_MAX_ORDER).rev() {
             debug!("order: {order}, current start: {current:#x}");
             if current >= end {
                 break;
@@ -35,7 +36,7 @@ impl BuddyAllocator {
     }
 
     pub fn add(&mut self, range: Range<usize>) {
-        let start = align(range.start, 1 << (MAX_ORDER + 11));
+        let start = align(range.start, 1 << (BUDDY_MAX_ORDER + 11));
         self.add_frame(start, range.end);
     }
 
@@ -62,7 +63,7 @@ impl BuddyAllocator {
         let mut current_ptr = start;
         let mut current_order = order;
 
-        for i in order..MAX_ORDER {
+        for i in order..BUDDY_MAX_ORDER {
             let buddy = get_buddy(current_ptr, current_order);
             if self.free_list[current_order].remove(buddy) {
                 current_ptr = if buddy < current_ptr {

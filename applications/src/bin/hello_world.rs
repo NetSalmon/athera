@@ -1,26 +1,10 @@
 #![no_std]
 #![no_main]
 
+const TEXT: &str = "Hello world!!!";
 #[unsafe(no_mangle)]
-fn _start() -> ! {
-    let mut data: [u8;14]= [
-        b'H',
-        b'e',
-        b'l',
-        b'l',
-        b'o',
-        b' ',
-        b'W',
-        b'o',
-        b'r',
-        b'l',
-        b'd',
-        b'!',
-        b'!',
-        b'!',
-    ];
+fn main() {
+    let data = TEXT.as_bytes();
 
-    applications::write(0, &mut data);
-
-    loop { core::hint::spin_loop() }
+    applications::syscall::write(0, data);
 }

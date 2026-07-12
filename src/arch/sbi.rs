@@ -199,16 +199,16 @@ pub mod rfence {
 pub mod hsm {
     use super::*;
 
-    pub fn hart_start(hartid: u64, start_addr: u64, opaque: u64) -> Result {
-        ecall(Eid::Hsm, 0, [hartid, start_addr, opaque, 0, 0, 0])
+    pub fn hart_start(hart_id: u64, start_addr: u64, opaque: u64) -> Result {
+        ecall(Eid::Hsm, 0, [hart_id, start_addr, opaque, 0, 0, 0])
     }
 
     pub fn hart_stop() -> Result {
         ecall(Eid::Hsm, 1, [0; 6])
     }
 
-    pub fn hart_get_status(hartid: u64) -> Result {
-        ecall(Eid::Hsm, 2, [hartid, 0, 0, 0, 0, 0])
+    pub fn hart_get_status(hart_id: u64) -> Result {
+        ecall(Eid::Hsm, 2, [hart_id, 0, 0, 0, 0, 0])
     }
 
     pub fn hart_suspend(suspend_type: u64, resume_addr: u64, opaque: u64) -> Result {

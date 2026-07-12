@@ -18,7 +18,15 @@ bench = false
 [dependencies]
 paste = "1.0.15"
 fdt = "0.1.5"
+const-num = { path = "const-num" }
+const-val = { path = "const-val" }
 
-[features]
-alloc = []
-page_table = [ "alloc" ]
+[build-dependencies]
+toml = "1.1.2+spec-1.1.0"
+
+[workspace]
+members = [
+    "const-num",
+    "const-val",
+    "applications"
+]

@@ -8,6 +8,9 @@
       <sourceFolder url="file://$MODULE_DIR$/applications/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/thaterror/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/novus_macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/const-num/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/const-val/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/const-val/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/software/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/.claude" />
@@ -16,6 +19,8 @@
       <excludeFolder url="file://$MODULE_DIR$/applications/target" />
       <excludeFolder url="file://$MODULE_DIR$/thaterror/target" />
       <excludeFolder url="file://$MODULE_DIR$/novus_macros/target" />
+      <excludeFolder url="file://$MODULE_DIR$/const-num/target" />
+      <excludeFolder url="file://$MODULE_DIR$/const-val/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
