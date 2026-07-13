@@ -13,7 +13,7 @@ use core::ptr::null_mut;
 pub const MAX_KERNEL_HEAP_SIZE: usize = 20 * 1024 * 1024;
 
 #[const_val::const_val]
-pub const SLUB_MAX_ORDER: usize = 11;
+pub const SLUB_MAX_ORDER: usize = 12;
 
 #[const_val::const_val]
 pub const SLUB_MIN_ORDER: usize = 4;
