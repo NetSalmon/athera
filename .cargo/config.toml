@@ -5,3 +5,5 @@ target = "riscv64gc-unknown-none-elf"
 rustflags = [
     "-Cforce-frame-pointers=yes"
  ]
+
+runner = "./start.sh -d"

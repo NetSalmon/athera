@@ -67,13 +67,6 @@ pub fn exec(elf: &[u8]) {
             .alloc_frame(mem_size)
             .expect("out of memory");
 
-        for i in 0..mem_size {
-            let current = alloc_page + i;
-            debug!("{:#x}: {}", current, unsafe {
-                (current as *const u8).read()
-            });
-        }
-
         unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
 
         for i in file_size..mem_size {
@@ -81,13 +74,6 @@ pub fn exec(elf: &[u8]) {
         }
 
         debug!("load ok");
-
-        for i in 0..mem_size {
-            let current = alloc_page + i;
-            debug!("{:#x}: {:#x}", current, unsafe {
-                (current as *const u8).read()
-            });
-        }
     }
 }
 
