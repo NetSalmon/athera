@@ -1,12 +1,13 @@
 use core::fmt;
+use core::fmt::{Debug, Formatter};
 use core::marker::PhantomData;
 
 #[derive(Copy, Clone)]
-pub struct LinkedList {
+pub struct FreeList {
     next: *mut usize,
 }
 
-impl LinkedList {
+impl FreeList {
     pub const fn new() -> Self {
         Self {
             next: core::ptr::null_mut(),
@@ -67,15 +68,17 @@ impl LinkedList {
     }
 }
 
-impl fmt::Debug for LinkedList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list()
-            .entries(self.iter().map(|p| p as usize))
-            .finish()
+impl Debug for FreeList {
+    fn fmt(&self, fmt: &mut Formatter) -> fmt::Result {
+        fmt.write_str("[ ")?;
+        for i in self.iter() {
+            fmt.write_fmt(format_args!("{:#x} ", i as usize))?;
+        }
+        fmt.write_str("]")
     }
 }
 
-impl PartialEq for LinkedList {
+impl PartialEq for FreeList {
     fn eq(&self, other: &Self) -> bool {
         self.next == other.next
     }
@@ -83,7 +86,7 @@ impl PartialEq for LinkedList {
 
 pub struct LinkedListIter<'a> {
     current: *mut usize,
-    _marker: PhantomData<&'a mut LinkedList>,
+    _marker: PhantomData<&'a mut FreeList>,
 }
 
 impl<'a> Iterator for LinkedListIter<'a> {
@@ -101,7 +104,7 @@ impl<'a> Iterator for LinkedListIter<'a> {
 
 pub struct LinkedListIterMut<'a> {
     current: *mut usize,
-    _marker: PhantomData<&'a mut LinkedList>,
+    _marker: PhantomData<&'a mut FreeList>,
 }
 
 impl<'a> Iterator for LinkedListIterMut<'a> {
@@ -113,148 +116,6 @@ impl<'a> Iterator for LinkedListIterMut<'a> {
             let item = self.current;
             self.current = unsafe { *item as *mut usize };
             Some(item)
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct RawLinkedListNode<T> {
-    pub data: T,
-    next: *mut RawLinkedListNode<T>,
-}
-
-impl<T> RawLinkedListNode<T> {
-    pub fn new(data: T) -> Self {
-        Self {
-            data,
-            next: core::ptr::null_mut(),
-        }
-    }
-}
-
-pub struct RawLinkedList<T> {
-    head: *mut RawLinkedListNode<T>,
-}
-
-impl<T> RawLinkedList<T> {
-    pub const fn new() -> Self {
-        Self {
-            head: core::ptr::null_mut(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.head.is_null()
-    }
-
-    pub fn push(&mut self, node: *mut RawLinkedListNode<T>) {
-        unsafe {
-            (*node).next = self.head;
-        }
-        self.head = node;
-    }
-
-    pub fn push_at(&mut self, addr: *mut RawLinkedListNode<T>, val: T) {
-        unsafe {
-            addr.write(RawLinkedListNode {
-                data: val,
-                next: self.head,
-            });
-        }
-        self.head = addr;
-    }
-
-    pub fn pop(&mut self) -> Option<*mut RawLinkedListNode<T>> {
-        if self.is_empty() {
-            None
-        } else {
-            let node = self.head;
-            self.head = unsafe { (*node).next };
-            Some(node)
-        }
-    }
-
-    pub fn remove(&mut self, item: &T) -> bool
-    where
-        T: PartialEq,
-    {
-        if self.head.is_null() {
-            return false;
-        }
-
-        if unsafe { &(*self.head).data } == item {
-            self.head = unsafe { (*self.head).next };
-            return true;
-        }
-
-        let mut current = self.head;
-        while !current.is_null() {
-            let next = unsafe { (*current).next };
-            if !next.is_null() && unsafe { &(*next).data } == item {
-                unsafe {
-                    (*current).next = (*next).next;
-                }
-                return true;
-            }
-            current = unsafe { (*current).next };
-        }
-
-        false
-    }
-
-    pub fn iter(&self) -> RawLinkedListIter<'_, T> {
-        RawLinkedListIter {
-            current: self.head,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn iter_mut(&mut self) -> RawLinkedListIterMut<'_, T> {
-        RawLinkedListIterMut {
-            current: self.head,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for RawLinkedList<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-pub struct RawLinkedListIter<'a, T> {
-    current: *mut RawLinkedListNode<T>,
-    _marker: PhantomData<&'a RawLinkedList<T>>,
-}
-
-impl<'a, T> Iterator for RawLinkedListIter<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current.is_null() {
-            None
-        } else {
-            let node = unsafe { &*self.current };
-            self.current = node.next;
-            Some(&node.data)
-        }
-    }
-}
-
-pub struct RawLinkedListIterMut<'a, T> {
-    current: *mut RawLinkedListNode<T>,
-    _marker: PhantomData<&'a mut RawLinkedList<T>>,
-}
-
-impl<'a, T> Iterator for RawLinkedListIterMut<'a, T> {
-    type Item = &'a mut T;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.current.is_null() {
-            None
-        } else {
-            let node = unsafe { &mut *self.current };
-            self.current = node.next;
-            Some(&mut node.data)
         }
     }
 }

@@ -9,6 +9,9 @@ pub struct Ns16550a {
 mmio_regs! {
     Ns16550a: [
         rbr_thr => 0,
+        ier: IerStatus => 1,
+        fcr: FcrStatus => 2,
+        lcr: LcrStatus => 3,
         lsr: LsrStatus => 5,
     ]
 }
@@ -20,12 +23,54 @@ bits! {
     }
 }
 
+bits! {
+    pub type FcrStatus: u8 {
+        enable: 0,
+        clear_rx: 1,
+        clear_tx: 2,
+    }
+}
+
+bits! {
+    pub type LcrStatus: u8 {
+        word_len_lo: 0,
+        word_len_hi: 1,
+        stop_bits: 2,
+        dlab: 7,
+    }
+}
+
+bits! {
+    pub type IerStatus: u8 { }
+}
+
 impl Ns16550a {
+    pub fn init(&self) {
+        let mut fcr = FcrStatus::new();
+        fcr.set_enable(true);
+        fcr.set_clear_rx(true);
+        fcr.set_clear_tx(true);
+        self.write_fcr(fcr);
+
+        let mut lcr = LcrStatus::new();
+        lcr.set_word_len_lo(true);
+        lcr.set_word_len_hi(true);
+        self.write_lcr(lcr);
+    }
+
     pub fn getchar(&self) -> Option<u8> {
         if self.lsr().dr() {
             self.rbr_thr()
         } else {
             None
+        }
+    }
+
+    pub fn block_getchar(&self) -> u8 {
+        loop {
+            if self.lsr().dr() {
+                return self.rbr_thr();
+            }
         }
     }
 

@@ -1,18 +1,19 @@
 use crate::debug;
-use crate::mem::linked_list::LinkedList;
+use crate::mem::ilog2_ceil;
+use crate::mem::linked_list::FreeList;
 use core::ops::Range;
 
 #[const_val::const_val]
 pub const BUDDY_MAX_ORDER: usize = 11;
 
 pub struct BuddyAllocator {
-    pub free_list: [LinkedList; BUDDY_MAX_ORDER],
+    pub free_list: [FreeList; BUDDY_MAX_ORDER],
 }
 
 impl BuddyAllocator {
     pub const fn new() -> Self {
         Self {
-            free_list: [LinkedList::new(); BUDDY_MAX_ORDER],
+            free_list: [FreeList::new(); BUDDY_MAX_ORDER],
         }
     }
 
@@ -72,6 +73,10 @@ impl BuddyAllocator {
                     current_ptr
                 };
                 current_order = i + 1;
+                if current_order >= BUDDY_MAX_ORDER {
+                    current_order = BUDDY_MAX_ORDER - 1;
+                    break;
+                }
             } else {
                 break;
             }
@@ -93,11 +98,11 @@ impl BuddyAllocator {
 
 #[inline]
 pub fn size_to_order(size: usize) -> usize {
-    let n = size.ilog2() - 12;
-
-    match n {
-        0..=10 => n as usize,
-        _ => 10,
+    let n = ilog2_ceil(size);
+    if n <= 12 {
+        0
+    } else {
+        (n - 12).min(BUDDY_MAX_ORDER - 1)
     }
 }
 

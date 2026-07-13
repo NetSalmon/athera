@@ -70,7 +70,7 @@ pub fn exec(elf: &[u8]) {
         unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
 
         for i in file_size..mem_size {
-            unsafe { (ptr.add(offset).add(i) as *mut u8).write(0) }
+            unsafe { (alloc_page as *mut u8).add(i).write(0) }
         }
 
         debug!("load ok");

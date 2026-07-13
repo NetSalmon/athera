@@ -93,6 +93,7 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
             arch::registers::csr::Sepc::write(next);
         }
         Trap::Exception(Exception::BREAKPOINT) => {
+            debug!("breakpoint");
             arch::registers::csr::Sepc::write(sepc + 4);
         }
         Trap::Exception(Exception::S_MODE_ECALL | Exception::M_MODE_ECALL) => {

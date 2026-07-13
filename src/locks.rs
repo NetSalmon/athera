@@ -1,3 +1,4 @@
+use crate::arch::registers::csr::Sie;
 use core::cell::{Cell, UnsafeCell};
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
@@ -19,6 +20,8 @@ impl<T> SpinLock<T> {
     }
 
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
+        let sie = Sie::read();
+        Sie::write(0);
         while self
             .lock
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -26,12 +29,13 @@ impl<T> SpinLock<T> {
         {
             core::hint::spin_loop();
         }
-        SpinLockGuard { lock: self }
+        SpinLockGuard { lock: self, sie }
     }
 }
 
 pub struct SpinLockGuard<'a, T> {
     lock: &'a SpinLock<T>,
+    sie: u64,
 }
 
 impl<'a, T> Deref for SpinLockGuard<'a, T> {
@@ -51,6 +55,7 @@ impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
 impl<'a, T> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.lock.store(false, Ordering::Release);
+        Sie::write(self.sie);
     }
 }
 

@@ -30,3 +30,7 @@ macro_rules! println {
     () => { $crate::print!("\n"); };
     ($($arg:tt)*) => { $crate::print!("{}\n", format_args!($($arg)*)); };
 }
+
+pub fn getchar() -> Option<u8> {
+    DEV_TREE.force().ns16550a.as_ref()?.lock().getchar()
+}

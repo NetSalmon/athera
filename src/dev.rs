@@ -53,7 +53,10 @@ impl DeviceTree {
             .expect("fdt parse error");
 
         Self {
-            ns16550a: Ns16550a::probe(&fdt).map(SpinLock::new),
+            ns16550a: Ns16550a::probe(&fdt).map(|uart| {
+                uart.init();
+                SpinLock::new(uart)
+            }),
             virtio_blk: VirtioBlk::probe(&fdt),
             memory: Memory::probe(&fdt).expect("memory probe error"),
         }

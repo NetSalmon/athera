@@ -14,9 +14,13 @@ mod syscall;
 mod trap;
 mod usr;
 
+extern crate alloc;
+
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
+use crate::dev::DEV_TREE;
 use crate::mem::page_table::equal_mapping;
-use crate::mem::slub::SlubPage;
+use crate::mem::slub::snapshot;
+use alloc::string::String;
 use core::arch::global_asm;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -49,9 +53,34 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     debug!("page table setup ok");
 
-    let slub = SlubPage::new(16);
+    arch::breakpoint();
+    arch::breakpoint();
 
-    debug!("slub: {:?}", slub);
+    let mut a = String::new();
+
+    loop {
+        snapshot();
+
+        let byte = DEV_TREE
+            .force()
+            .ns16550a
+            .as_ref()
+            .unwrap()
+            .lock()
+            .block_getchar();
+
+        debug!("byte: {}", byte);
+
+        if byte == b'q' {
+            break;
+        }
+
+        let ch = byte as char;
+        a.push(ch);
+        debug!("string: {}, at: {:#x}", a, &a as *const String as usize);
+    }
+
+    drop(a);
 
     usr::exec(&ELF.0);
 
