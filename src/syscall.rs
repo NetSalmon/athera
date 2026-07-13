@@ -2,7 +2,7 @@ use crate::arch::sbi;
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::dev::DEV_TREE;
 use crate::usr::SStatusBits;
-use crate::{arch, debug, kernel_do_no_thing, numeric, print};
+use crate::{arch, debug, kernel_halt, numeric, print};
 
 numeric! {
     pub enum ErrorCode : isize {
@@ -97,7 +97,7 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
             s.set_spp(true);
             arch::registers::csr::Sstatus::write(s.into());
-            (args[0], kernel_do_no_thing as *const () as u64)
+            (args[0], kernel_halt as *const () as u64)
         }
         Syscall::REBOOT => {
             let ret = reboot(args[0], args[1], args[2]);

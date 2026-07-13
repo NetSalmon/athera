@@ -1,8 +1,8 @@
 use crate::debug;
 use crate::locks::{LazyLock, SpinLock};
-use crate::mem::PAGE_SIZE;
-use crate::mem::frame_allocator::FRAME_ALLOCATOR;
-use crate::mem::linked_list::FreeList;
+use crate::mem::constants::PAGE_SIZE;
+use crate::mem::frame::FRAME_ALLOCATOR;
+use crate::mem::intrusive_list::IntrusiveList;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::max;
 use core::fmt;
@@ -101,7 +101,7 @@ unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
 #[derive(Debug)]
 pub struct SlubPage {
     next: *mut SlubPage,
-    free_list: FreeList,
+    free_list: IntrusiveList,
     inuse: usize,
     objects: usize,
     page_start: *mut u8,
@@ -248,26 +248,23 @@ impl SlubPage {
 
         let page_ptr = page as *mut SlubPage;
 
-        // 1. 在页首写入元数据
         unsafe {
             page_ptr.write_volatile(SlubPage {
                 inuse: 0,
                 next: null_mut(),
-                free_list: FreeList::new(),
-                objects: 0, // 下面计算
+                free_list: IntrusiveList::new(),
+                objects: 0,
                 page_start: page as *mut u8,
             });
         }
 
         let ptr = unsafe { &mut *page_ptr };
 
-        // 2. 严格按 object_size 对齐计算起始偏移
         let header_size = size_of::<SlubPage>();
         let align = object_size;
-        let start_offset = (header_size + align - 1) & !(align - 1); // 向上对齐
+        let start_offset = (header_size + align - 1) & !(align - 1);
 
         let mut count = 0;
-        // 3. 确保 pos + object_size <= page + PAGE_SIZE (防止越界到下一页)
         let mut pos = page + start_offset;
         while pos + object_size <= page + PAGE_SIZE {
             ptr.free_list.push(pos as *mut usize);

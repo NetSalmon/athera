@@ -2,9 +2,9 @@ use crate::arch::registers::csr::Satp;
 use crate::arch::registers::values::{SatpMode, SatpValue};
 use crate::dev::DEV_TREE;
 use crate::locks::LazyLock;
-use crate::mem::PAGE_SIZE;
+use crate::mem::constants::PAGE_SIZE;
 use crate::mem::addr::{PhysicalAddr, VirtualAddr};
-use crate::mem::frame_allocator::alloc_frame;
+use crate::mem::frame::alloc_frame;
 use crate::{bits, debug};
 use core::arch::asm;
 
@@ -108,7 +108,7 @@ fn get_or_create_table(pte: &mut PageTableEntry) -> &mut PageTable {
 }
 
 #[inline]
-pub fn map(va: VirtualAddr, pa: PhysicalAddr, flash: bool, u: bool) {
+pub fn map(va: VirtualAddr, pa: PhysicalAddr, flush: bool, u: bool) {
     let root_pa = *ROOT_PAGE_TABLE.force();
     let root = unsafe { &mut *(root_pa as *mut PageTable) };
 
@@ -125,13 +125,13 @@ pub fn map(va: VirtualAddr, pa: PhysicalAddr, flash: bool, u: bool) {
     pte.set_ppn(pa.ppn() as u64);
     l0_table.entries[vpn0] = pte;
 
-    if flash {
+    if flush {
         unsafe { asm!("sfence.vma") }
     }
 }
 
 #[inline]
-pub fn unmap(va: VirtualAddr, flash: bool) {
+pub fn unmap(va: VirtualAddr, flush: bool) {
     let root_pa = *ROOT_PAGE_TABLE.force();
     let root = unsafe { &mut *(root_pa as *mut PageTable) };
 
@@ -149,13 +149,13 @@ pub fn unmap(va: VirtualAddr, flash: bool) {
 
     l0_table.entries[va.vpn0()] = PageTableEntry::new();
 
-    if flash {
+    if flush {
         unsafe { asm!("sfence.vma") }
     }
 }
 
-pub fn equal_mapping() {
-    debug!("start equal mapping memory");
+pub fn identity_map() {
+    debug!("start identity mapping memory");
     let start = DEV_TREE.memory.device.mmio.start;
     let end = start + DEV_TREE.memory.device.mmio.size;
 
@@ -198,11 +198,11 @@ pub fn equal_mapping() {
     Satp::write(value.into());
 
     debug!("storage satp ok");
-    flash();
-    debug!("equal mapping memory end");
+    flush();
+    debug!("identity mapping memory end");
 }
 
 #[inline]
-pub fn flash() {
+pub fn flush() {
     unsafe { asm!("sfence.vma") }
 }

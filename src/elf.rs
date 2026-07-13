@@ -2,24 +2,6 @@ use crate::{array_struct, bits, numeric};
 use core::fmt::{Display, Formatter};
 
 #[repr(C)]
-pub struct Elf32Ehdr {
-    pub e_ident: EIdent,
-    pub e_type: EType,
-    pub e_machine: EMachine,
-    pub e_version: u32,
-    pub e_entry: u32,
-    pub e_phoff: u32,
-    pub e_shoff: u32,
-    pub e_flags: u32,
-    pub e_ehsize: u16,
-    pub e_phentsize: u16,
-    pub e_phnum: u16,
-    pub e_shentsize: u16,
-    pub e_shnum: u16,
-    pub e_shstrndx: u16,
-}
-
-#[repr(C)]
 #[derive(Debug)]
 pub struct Elf64Ehdr {
     pub e_ident: EIdent,
@@ -267,7 +249,7 @@ impl EIdent {
 
 numeric! {
     pub enum Class : u8 {
-        NONE = 0,             // Invalid class
+        NONE = 0,            // Invalid class
         CLASS32 = 1,         // 32-bit objects
         CLASS64 = 2,         // 64-bit objects
     }
@@ -297,18 +279,6 @@ numeric! {
         LSB = 1,
         MSB = 2,
     }
-}
-
-#[repr(C)]
-pub struct Elf32Phdr {
-    pub p_type: PType,
-    pub p_offset: u32,
-    pub p_vaddr: u32,
-    pub p_paddr: u32,
-    pub p_filesz: u32,
-    pub p_memsz: u32,
-    pub p_flags: PFlags,
-    pub p_align: u32,
 }
 
 #[repr(C)]

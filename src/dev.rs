@@ -14,7 +14,6 @@ pub static DEV_TREE: LazyLock<DeviceTree> = LazyLock::new(|| {
 
 pub mod memory;
 pub mod ns16550a;
-pub mod plic;
 pub mod virtio_blk;
 
 #[derive(Copy, Clone)]

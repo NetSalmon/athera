@@ -3,7 +3,7 @@ use crate::bits;
 use crate::debug;
 use crate::elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType};
 use crate::mem::PAGE_SIZE;
-use crate::mem::frame_allocator::{AllocPage, FRAME_ALLOCATOR};
+use crate::mem::frame::{AllocPage, FRAME_ALLOCATOR};
 use core::ptr;
 
 bits! {

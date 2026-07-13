@@ -7,7 +7,7 @@ mod error;
 mod io;
 mod locks;
 mod log;
-mod marco;
+mod macros;
 mod mem;
 mod proc;
 mod syscall;
@@ -18,7 +18,7 @@ extern crate alloc;
 
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::dev::DEV_TREE;
-use crate::mem::page_table::equal_mapping;
+use crate::mem::page_table::identity_map;
 use crate::mem::slub::snapshot;
 use alloc::string::String;
 use core::arch::global_asm;
@@ -28,8 +28,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 global_asm!(include_str!("entry.asm"));
 
 pub static FDT_ADDRESS: AtomicUsize = AtomicUsize::new(0);
-pub static ROOT_PAGE_TABLE_ADDRESS: AtomicUsize = AtomicUsize::new(0);
-
 unsafe extern "C" {
     pub fn _end();
 }
@@ -43,13 +41,13 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     FDT_ADDRESS.swap(dev_tree_address, Ordering::Relaxed);
 
     debug!("PAGE_SIZE: {}", mem::PAGE_SIZE);
-    debug!("BUDDY_MAX_ORDER: {}", mem::buddy_system::BUDDY_MAX_ORDER);
+    debug!("BUDDY_MAX_ORDER: {}", mem::buddy::BUDDY_MAX_ORDER);
     debug!("SLUB_MIN_ORDER: {}", mem::slub::SLUB_MIN_ORDER);
     debug!("SLUB_MAX_ORDER: {}", mem::slub::SLUB_MAX_ORDER);
 
     debug!("kernel end: {:#x}", _end as *const () as usize);
 
-    equal_mapping();
+    identity_map();
 
     debug!("page table setup ok");
 
@@ -88,11 +86,11 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     system_reset(ResetType::Shutdown, ResetReason::None);
 
-    kernel_do_no_thing()
+    kernel_halt()
 }
 
 #[unsafe(no_mangle)]
-fn kernel_do_no_thing() -> ! {
+fn kernel_halt() -> ! {
     debug!("do no thing");
     loop {
         core::hint::spin_loop();

@@ -79,7 +79,7 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
 
     match trap {
         Trap::Interrupt(Interrupt::SUPERVISOR_TIMER) => {
-            set_time();
+            set_next_timer();
         }
         Trap::Exception(Exception::U_MODE_ECALL) => {
             let args = unsafe { &*((trap_frame_sp + 80) as *const [u64; 8]) };
@@ -116,7 +116,7 @@ fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, trap_frame_s
 }
 
 #[inline]
-pub fn set_time() {
+pub fn set_next_timer() {
     const GAP: u64 = 1_000_000; // 10 Hz
     let t = arch::registers::csr::Time::read();
     arch::registers::csr::Stimecmp::write(t + GAP);
