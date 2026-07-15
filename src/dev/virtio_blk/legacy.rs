@@ -1,9 +1,10 @@
 use crate::debug;
 use crate::dev::virtio_blk::queue::get_queue_ptr;
 use crate::dev::virtio_blk::{RING_MAX_SIZE, Status, VirtioBlk, VirtioBlkFeaturesLow};
+use crate::error::Error;
 use crate::mem::addr::PhysicalAddr;
 
-pub fn handshake_legacy(blk: &VirtioBlk) -> Result<(), isize> {
+pub fn handshake_legacy(blk: &VirtioBlk) -> Result<(), Error> {
     let mut status: Status = Status::from(0);
     blk.write_status(status.into());
 
@@ -30,7 +31,7 @@ pub fn handshake_legacy(blk: &VirtioBlk) -> Result<(), isize> {
 
     let got_status: Status = blk.status().into();
     if !got_status.features_ok() {
-        return Err(-2);
+        return Err(Error::VirtioFeaturesNotOk);
     }
 
     let queue_addr = get_queue_ptr() as usize;

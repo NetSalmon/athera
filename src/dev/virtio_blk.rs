@@ -6,6 +6,7 @@ use crate::dev::virtio_blk::legacy::handshake_legacy;
 use crate::dev::virtio_blk::modern::handshake_modern;
 use crate::dev::virtio_blk::queue::{Flags, VirtioDesc, get_mut};
 use crate::dev::{Device, Resource};
+use crate::error::Error;
 use crate::{bits, debug, mmio_regs, print, println};
 use core::ops::Deref;
 use core::ptr::addr_of;
@@ -113,7 +114,7 @@ impl VirtioBlk {
         })
     }
 
-    pub fn handshake(&mut self) -> Result<(), isize> {
+    pub fn handshake(&mut self) -> Result<(), Error> {
         if self.version() != VIRTIO_VERSION_LEGACY {
             handshake_modern(self)
         } else {
@@ -125,7 +126,7 @@ impl VirtioBlk {
         VirtioBlk { device: dev }
     }
 
-    pub fn print_info(&mut self) -> Result<(), ()> {
+    pub fn print_info(&mut self) -> Result<(), Error> {
         let start = self.device.mmio.start;
         let size = self.device.mmio.size;
 
@@ -143,10 +144,10 @@ impl VirtioBlk {
         let device_id = self.device_id();
 
         if is_virtio_mmio && device_id == 2 {
-            self.handshake().unwrap();
+            self.handshake()?;
             debug!("handshake success");
         } else {
-            return Err(());
+            return Err(Error::VirtioNotSupported);
         }
 
         debug!("start print");

@@ -3,6 +3,7 @@ use crate::locks::{LazyLock, SpinLock};
 use crate::mem::buddy::BuddyAllocator;
 use crate::{_end, debug};
 use core::ptr;
+use crate::mem::constants::PHY_PAGE_SIZE;
 
 pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|| {
     let mut allocator = BuddyAllocator::new();
@@ -18,11 +19,11 @@ pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|
 });
 
 pub fn alloc_frame() -> Option<usize> {
-    FRAME_ALLOCATOR.force().lock().alloc(0)
+    FRAME_ALLOCATOR.force().lock().alloc_frame(PHY_PAGE_SIZE)
 }
 
 pub fn dealloc_frame(addr: usize) {
-    FRAME_ALLOCATOR.force().lock().dealloc(addr, 0);
+    FRAME_ALLOCATOR.force().lock().dealloc_frame(addr, PHY_PAGE_SIZE);
 }
 
 pub struct AllocPage {

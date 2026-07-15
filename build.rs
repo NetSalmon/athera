@@ -24,7 +24,7 @@ fn main() {
         .and_then(|b| b.get("number"))
         .and_then(|v| v.as_integer());
 
-    build_info(&smp, build_number);
+    release(&smp, build_number);
     version();
 
     let link = PathBuf::from(MANIFEST_DIR).join("linker.ld");
@@ -67,11 +67,24 @@ fn code(build_number: Option<i64>) -> u64 {
 
 fn version() {
     println!("cargo:rustc-env=VERSION={}", env!("CARGO_PKG_VERSION"));
+
+    let sys = std::env::var("SYS").unwrap_or_else(|_| env!("CARGO_PKG_NAME").to_string());
+    println!("cargo:rustc-env=SYS={sys}");
+
+    let arch = std::env::var("ARCH").unwrap_or_else(|_| {
+        std::env::var("TARGET")
+            .unwrap_or_else(|_| String::from("riscv64gc"))
+            .split('-')
+            .next()
+            .unwrap_or("riscv64gc")
+            .to_string()
+    });
+    println!("cargo:rustc-env=ARCH={arch}");
 }
 
-fn build_info(smp: &str, build_number: Option<i64>) {
+fn release(smp: &str, build_number: Option<i64>) {
     let now = chrono::Utc::now();
     let s = now.format(TIME_FORMAT).to_string();
     let info = format!("#{} {smp} {s}", code(build_number));
-    println!("cargo:rustc-env=BUILD_INFO={}", info);
+    println!("cargo:rustc-env=RELEASE={}", info);
 }

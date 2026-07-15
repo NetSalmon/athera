@@ -41,11 +41,12 @@ impl Caches {
                 .force()
                 .lock()
                 .alloc_frame(1 << order)
-                .unwrap() as *mut _;
+                .map(|addr| addr as *mut _)
+                .unwrap_or(null_mut());
         }
 
         let index = order - SLUB_MIN_ORDER;
-        let ptr = self.0[index].alloc() as *mut u8;
+        let ptr = self.0[index].alloc().map(|p| p as *mut u8).unwrap_or(null_mut());
 
         debug!(
             "alloc size: {}, order: {}, ptr: {:#x}",
@@ -240,7 +241,7 @@ impl SlubPage {
         self.inuse == 0
     }
 
-    pub fn new<'a>(object_size: usize) -> &'a mut SlubPage {
+    pub fn new<'a>(object_size: usize) -> Option<&'a mut SlubPage> {
         let header_size = size_of::<SlubPage>();
 
         let start_offset = align(header_size, object_size);
@@ -262,8 +263,7 @@ impl SlubPage {
         let page = FRAME_ALLOCATOR
             .force()
             .lock()
-            .alloc_frame(page_size)
-            .expect("out of memory");
+            .alloc_frame(page_size)?;
 
         let page_ptr = page as *mut SlubPage;
 
@@ -289,7 +289,7 @@ impl SlubPage {
         }
 
         ptr.objects = count;
-        ptr
+        Some(ptr)
     }
 
     pub fn alloc_obj(&mut self) -> Option<usize> {
@@ -318,26 +318,26 @@ impl Cache {
         }
     }
 
-    pub fn alloc(&mut self) -> usize {
+    pub fn alloc(&mut self) -> Option<usize> {
         if !self.partial_slubs.is_empty() {
-            let page = self.partial_slubs.iter_mut().next().unwrap();
+            let page = self.partial_slubs.iter_mut().next()?;
 
-            let ptr = page.alloc_obj().unwrap();
+            let ptr = page.alloc_obj()?;
 
             if page.is_full() {
-                self.full_slubs.push(self.partial_slubs.pop().unwrap());
+                self.full_slubs.push(self.partial_slubs.pop()?);
             }
 
-            return ptr;
+            return Some(ptr);
         }
 
-        let page = SlubPage::new(self.objects_size);
+        let page = SlubPage::new(self.objects_size)?;
 
-        let ptr = page.alloc_obj().unwrap();
+        let ptr = page.alloc_obj()?;
 
         self.partial_slubs.push(page);
 
-        ptr
+        Some(ptr)
     }
 
     pub fn dealloc(&mut self, ptr: usize) {

@@ -1,8 +1,9 @@
 use crate::debug;
 use crate::dev::virtio_blk::queue::{Queue, get_queue_ptr};
 use crate::dev::virtio_blk::{Status, VirtioBlk, VirtioBlkFeaturesHigh, VirtioBlkFeaturesLow};
+use crate::error::Error;
 
-pub fn handshake_modern(blk: &VirtioBlk) -> Result<(), isize> {
+pub fn handshake_modern(blk: &VirtioBlk) -> Result<(), Error> {
     let mut status: Status = 0.into();
     blk.write_status(status.into());
 
@@ -24,7 +25,7 @@ pub fn handshake_modern(blk: &VirtioBlk) -> Result<(), isize> {
     debug!("features_high: {:?}", features_high);
 
     if !features_high.version_1() {
-        return Err(-1);
+        return Err(Error::VirtioNotSupported);
     }
 
     blk.write_driver_features_sel(1);
@@ -37,7 +38,7 @@ pub fn handshake_modern(blk: &VirtioBlk) -> Result<(), isize> {
 
     let got_status: Status = blk.status().into();
     if !got_status.features_ok() {
-        return Err(-2);
+        return Err(Error::VirtioFeaturesNotOk);
     }
 
     let queue_ptr = get_queue_ptr();

@@ -16,6 +16,7 @@
       <w>phentsize</w>
       <w>phnum</w>
       <w>phoff</w>
+      <w>riscv</w>
       <w>satp</w>
       <w>shentsize</w>
       <w>shnum</w>

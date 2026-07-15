@@ -2,9 +2,11 @@ use crate::arch::registers::csr::Sstatus;
 use crate::bits;
 use crate::debug;
 use crate::elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType};
+use crate::error::Error;
 use crate::mem::PAGE_SIZE;
 use crate::mem::frame::{AllocPage, FRAME_ALLOCATOR};
 use core::ptr;
+use crate::mem::constants::PHY_PAGE_SIZE;
 
 bits! {
     pub type SStatusBits: u64 {
@@ -13,21 +15,24 @@ bits! {
     }
 }
 
+#[const_val::const_val(multiple_of = PHY_PAGE_SIZE)]
+const USER_STACK_SIZE: usize = PHY_PAGE_SIZE * 8;
+
 /// 解析并加载`ELF`各段
-pub fn exec(elf: &[u8]) {
+pub fn exec(elf: &[u8]) -> Result<(), Error> {
     let ptr = elf.as_ptr();
     let header = unsafe { &*(ptr as *const Elf64Ehdr) };
 
     if !header.e_ident.is_elf() {
-        panic!("not a ELF");
+        return Err(Error::NotElf);
     }
 
     if header.e_ident.class() != Class::CLASS64 {
-        panic!("not a 64-bit ELF");
+        return Err(Error::Not64Bit);
     }
 
     if header.e_ident.data() != Endianness::LSB {
-        panic!("not a lsb ELF")
+        return Err(Error::NotLsb);
     }
 
     let ph_offset = header.e_phoff;
@@ -65,7 +70,7 @@ pub fn exec(elf: &[u8]) {
             .force()
             .lock()
             .alloc_frame(mem_size)
-            .expect("out of memory");
+            .ok_or(Error::OutOfMemory)?;
 
         unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
 
@@ -75,6 +80,8 @@ pub fn exec(elf: &[u8]) {
 
         debug!("load ok");
     }
+
+    Ok(())
 }
 
 /// 设置`sstatus`寄存器`SPP`位为`0`
@@ -88,14 +95,14 @@ pub fn set_sstatus_spp() {
 }
 
 /// 用户栈固定 4KiB
-pub fn alloc_user_stack() -> AllocPage {
+pub fn alloc_user_stack() -> Result<AllocPage, Error> {
     let page = FRAME_ALLOCATOR
         .force()
         .lock()
-        .alloc(0)
-        .expect("out of memory");
+        .alloc_frame(USER_STACK_SIZE)
+        .ok_or(Error::OutOfMemory)?;
 
-    unsafe { AllocPage::from_raw(page, PAGE_SIZE) }
+    Ok(unsafe { AllocPage::from_raw(page, USER_STACK_SIZE) })
 }
 
 // [解析ELF]

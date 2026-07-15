@@ -81,9 +81,9 @@ impl Ns16550a {
 
     pub fn probe(fdt: &Fdt) -> Option<Self> {
         let uart = fdt.find_node("/soc/serial")?;
-        let irq = uart.interrupts().unwrap().next().unwrap_or(0);
+        let irq = uart.interrupts()?.next().unwrap_or(0);
 
-        let reg = uart.reg().unwrap().next().unwrap();
+        let reg = uart.reg()?.next()?;
         let start = reg.starting_address as usize;
         let size = reg.size.unwrap_or(0);
 

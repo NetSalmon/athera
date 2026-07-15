@@ -18,6 +18,7 @@ extern crate alloc;
 
 use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::dev::DEV_TREE;
+use crate::error::Error;
 use crate::mem::page_table::identity_map;
 use alloc::string::String;
 use core::arch::global_asm;
@@ -35,7 +36,13 @@ unsafe extern "C" {
 pub const VERSION: &str = "0.1.0";
 
 #[const_val::const_val]
-pub const BUILD_INFO: &str = "none";
+pub const RELEASE: &str = "none";
+
+#[const_val::const_val]
+pub const SYS: &str = "Novus";
+
+#[const_val::const_val]
+pub const ARCH: &str = "riscv64gc";
 
 #[unsafe(no_mangle)]
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
@@ -45,7 +52,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     FDT_ADDRESS.swap(dev_tree_address, Ordering::Relaxed);
 
-    debug!("novus: {VERSION} {BUILD_INFO}");
+    debug!("{SYS} {VERSION} {RELEASE} {ARCH}");
 
     debug!("PAGE_SIZE: {}", mem::PAGE_SIZE);
     debug!("BUDDY_MAX_ORDER: {}", mem::buddy::BUDDY_MAX_ORDER);
@@ -70,7 +77,8 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
             .force()
             .ns16550a
             .as_ref()
-            .unwrap()
+            .ok_or(Error::NoUart)
+            .expect("UART not initialized")
             .lock()
             .block_getchar();
 
@@ -89,7 +97,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     mem::slub::snapshot();
 
-    usr::exec(&ELF.0);
+    usr::exec(&ELF.0).expect("failed to load ELF");
 
     debug!("read elf ok");
 

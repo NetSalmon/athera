@@ -9,7 +9,7 @@ use core::sync::atomic::Ordering;
 pub static DEV_TREE: LazyLock<DeviceTree> = LazyLock::new(|| {
     let fdt_addr = FDT_ADDRESS.load(Ordering::Acquire);
 
-    DeviceTree::probe(fdt_addr as *const u8)
+    DeviceTree::probe(fdt_addr as *const u8).expect("device tree probe failed")
 });
 
 pub mod memory;
@@ -46,19 +46,18 @@ pub struct DeviceTree {
 }
 
 impl DeviceTree {
-    pub fn probe(fdt_addr: *const u8) -> Self {
+    pub fn probe(fdt_addr: *const u8) -> Result<Self, Error> {
         let fdt = unsafe { fdt::Fdt::from_ptr(fdt_addr) }
-            .map_err(|_| Error::Fdt)
-            .expect("fdt parse error");
+            .map_err(|_| Error::Fdt)?;
 
-        Self {
+        Ok(Self {
             ns16550a: Ns16550a::probe(&fdt).map(|uart| {
                 uart.init();
                 SpinLock::new(uart)
             }),
             virtio_blk: VirtioBlk::probe(&fdt),
-            memory: Memory::probe(&fdt).expect("memory probe error"),
-        }
+            memory: Memory::probe(&fdt).ok_or(Error::MemoryProbeFailed)?,
+        })
     }
 }
 
