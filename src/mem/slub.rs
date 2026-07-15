@@ -1,4 +1,4 @@
-use crate::debug;
+use crate::{debug, mem};
 use crate::locks::{LazyLock, SpinLock};
 use crate::mem::constants::PAGE_SIZE;
 use crate::mem::frame::FRAME_ALLOCATOR;
@@ -8,6 +8,7 @@ use core::cmp::max;
 use core::fmt;
 use core::marker::PhantomData;
 use core::ptr::null_mut;
+use crate::mem::constants::align;
 
 #[const_val::const_val]
 pub const MAX_KERNEL_HEAP_SIZE: usize = 20 * 1024 * 1024;
@@ -241,8 +242,8 @@ impl SlubPage {
 
     pub fn new<'a>(object_size: usize) -> &'a mut SlubPage {
         let header_size = size_of::<SlubPage>();
-        let align = object_size;
-        let start_offset = (header_size + align - 1) & !(align - 1);
+
+        let start_offset = align(header_size, object_size);
         
         let min_page_size = start_offset + object_size;
         let mut page_size = PAGE_SIZE;

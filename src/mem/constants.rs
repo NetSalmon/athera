@@ -9,3 +9,8 @@ pub const fn ilog2_ceil(size: usize) -> usize {
         (size - 1).ilog2() as usize + 1
     }
 }
+
+#[inline]
+pub fn align(addr: usize, align: usize) -> usize {
+    (addr + align - 1) & !(align - 1)
+}
