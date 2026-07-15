@@ -84,3 +84,19 @@ fn test_negative_override() {
         assert_eq!(NEG_VAL, 0);
     }
 }
+
+#[const_val(max = 100, min = 1)]
+const CONSTRAINED_VAL: usize = 42;
+
+#[const_val(multiple_of = 2)]
+const EVEN_VAL: usize = 42;
+
+#[const_val(max = 500, min = 100, multiple_of = 50)]
+const MULTI_CONSTRAINED: usize = 200;
+
+#[test]
+fn test_constraints_pass() {
+    assert_eq!(CONSTRAINED_VAL, 42);
+    assert_eq!(EVEN_VAL, 42);
+    assert_eq!(MULTI_CONSTRAINED, 200);
+}

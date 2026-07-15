@@ -12,10 +12,10 @@ use core::ptr::null_mut;
 #[const_val::const_val]
 pub const MAX_KERNEL_HEAP_SIZE: usize = 20 * 1024 * 1024;
 
-#[const_val::const_val]
+#[const_val::const_val(max = 12)]
 pub const SLUB_MAX_ORDER: usize = 12;
 
-#[const_val::const_val]
+#[const_val::const_val(min = 3)]
 pub const SLUB_MIN_ORDER: usize = 4;
 
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
@@ -100,6 +100,7 @@ unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
 
 #[derive(Debug)]
 pub struct SlubPage {
+    page_size: usize,
     next: *mut SlubPage,
     free_list: IntrusiveList,
     inuse: usize,
@@ -110,7 +111,6 @@ pub struct SlubPage {
 #[derive(Clone, Copy, Debug)]
 pub struct Cache {
     objects_size: usize,
-    free_slubs: SlubPageList,
     partial_slubs: SlubPageList,
     full_slubs: SlubPageList,
 }
@@ -240,16 +240,35 @@ impl SlubPage {
     }
 
     pub fn new<'a>(object_size: usize) -> &'a mut SlubPage {
+        let header_size = size_of::<SlubPage>();
+        let align = object_size;
+        let start_offset = (header_size + align - 1) & !(align - 1);
+        
+        let min_page_size = start_offset + object_size;
+        let mut page_size = PAGE_SIZE;
+        while page_size < min_page_size {
+            page_size *= 2;
+        }
+        
+        let desired_objects = page_size / object_size;
+        if desired_objects < 4 && page_size < (1 << 20) {
+            let new_page_size = page_size * 2;
+            if new_page_size / object_size >= 2 {
+                page_size = new_page_size;
+            }
+        }
+
         let page = FRAME_ALLOCATOR
             .force()
             .lock()
-            .alloc(0)
+            .alloc_frame(page_size)
             .expect("out of memory");
 
         let page_ptr = page as *mut SlubPage;
 
         unsafe {
             page_ptr.write_volatile(SlubPage {
+                page_size,
                 inuse: 0,
                 next: null_mut(),
                 free_list: IntrusiveList::new(),
@@ -260,13 +279,9 @@ impl SlubPage {
 
         let ptr = unsafe { &mut *page_ptr };
 
-        let header_size = size_of::<SlubPage>();
-        let align = object_size;
-        let start_offset = (header_size + align - 1) & !(align - 1);
-
         let mut count = 0;
         let mut pos = page + start_offset;
-        while pos + object_size <= page + PAGE_SIZE {
+        while pos + object_size <= page + page_size {
             ptr.free_list.push(pos as *mut usize);
             pos += object_size;
             count += 1;
@@ -297,7 +312,6 @@ impl Cache {
     pub fn new(objects_size: usize) -> Self {
         Self {
             objects_size,
-            free_slubs: SlubPageList::new(),
             partial_slubs: SlubPageList::new(),
             full_slubs: SlubPageList::new(),
         }
@@ -316,16 +330,6 @@ impl Cache {
             return ptr;
         }
 
-        if !self.free_slubs.is_empty() {
-            let page = self.free_slubs.pop().unwrap();
-
-            let ptr = unsafe { &mut *page }.alloc_obj().unwrap();
-
-            self.partial_slubs.push(page);
-
-            return ptr;
-        }
-
         let page = SlubPage::new(self.objects_size);
 
         let ptr = page.alloc_obj().unwrap();
@@ -336,33 +340,33 @@ impl Cache {
     }
 
     pub fn dealloc(&mut self, ptr: usize) {
-        let page_start = ptr & !(PAGE_SIZE - 1);
-
-        let mut found = None;
+        let mut found_page: Option<&mut SlubPage> = None;
         for i in self.full_slubs.iter_mut() {
-            if i.page_start as usize == page_start {
+            let page_start = i.page_start as usize;
+            if ptr >= page_start && ptr < page_start + i.page_size {
                 i.dealloc_obj(ptr);
 
-                found = Some(i as *mut SlubPage);
-
+                found_page = Some(i);
                 break;
             }
         }
 
-        if let Some(i) = found {
-            self.full_slubs.remove(i);
-            self.partial_slubs.push(i);
+        if let Some(page) = found_page {
+            let page_ptr = page as *mut SlubPage;
+            self.full_slubs.remove(page_ptr);
+            self.partial_slubs.push(page_ptr);
 
             return;
         }
 
-        let mut found = None;
+        let mut found_page = None;
         for i in self.partial_slubs.iter_mut() {
-            if i.page_start as usize == page_start {
+            let page_start = i.page_start as usize;
+            if ptr >= page_start && ptr < page_start + i.page_size {
                 i.dealloc_obj(ptr);
 
                 if i.is_empty() {
-                    found = Some(i as *mut SlubPage);
+                    found_page = Some(i as *mut SlubPage);
                     break;
                 }
 
@@ -370,12 +374,13 @@ impl Cache {
             }
         }
 
-        if let Some(i) = found {
-            self.partial_slubs.remove(i);
+        if let Some(page_ptr) = found_page {
+            self.partial_slubs.remove(page_ptr);
+            let page_size = unsafe { (*page_ptr).page_size };
             FRAME_ALLOCATOR
                 .force()
                 .lock()
-                .dealloc_frame(i as usize, PAGE_SIZE);
+                .dealloc_frame(page_ptr as usize, page_size);
         }
     }
 }

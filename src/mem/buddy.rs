@@ -2,9 +2,12 @@ use crate::debug;
 use crate::mem::constants::ilog2_ceil;
 use crate::mem::intrusive_list::IntrusiveList;
 use core::ops::Range;
+use crate::mem::PAGE_SIZE;
 
 #[const_val::const_val]
 pub const BUDDY_MAX_ORDER: usize = 11;
+
+pub const PAGE_SIZE_LOG_2: usize = ilog2_ceil(PAGE_SIZE);
 
 pub struct BuddyAllocator {
     pub free_list: [IntrusiveList; BUDDY_MAX_ORDER],
@@ -99,10 +102,10 @@ impl BuddyAllocator {
 #[inline]
 pub fn size_to_order(size: usize) -> usize {
     let n = ilog2_ceil(size);
-    if n <= 12 {
+    if n <= PAGE_SIZE_LOG_2 {
         0
     } else {
-        (n - 12).min(BUDDY_MAX_ORDER - 1)
+        (n - PAGE_SIZE_LOG_2).min(BUDDY_MAX_ORDER - 1)
     }
 }
 
@@ -118,5 +121,5 @@ pub fn get_buddy(base: usize, order: usize) -> usize {
 
 #[inline]
 pub fn order_size(order: usize) -> usize {
-    1 << order << 12
+    1 << order << PAGE_SIZE_LOG_2
 }
