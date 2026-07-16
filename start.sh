@@ -32,7 +32,7 @@ while getopts "misdpb" opt; do
       )
       ;;
 d)
-      QEM_OPTS+=(
+      QEMU_OPTS+=(
         -drive "file=./resources/disk.qcow2,format=qcow2,id=hd0,if=none"
         -device "virtio-blk-device,drive=hd0"
       )

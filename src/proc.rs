@@ -1,7 +1,7 @@
+use crate::locks::SpinLock;
+use crate::trap::TrapContext;
 use alloc::collections::BTreeMap;
 use const_val::lazy;
-use crate::locks::{SpinLock};
-use crate::trap::TrapContext;
 
 #[const_val::const_val]
 pub const PID_MAX: usize = 1024;

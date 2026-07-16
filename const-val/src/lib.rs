@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use syn::{parse_macro_input, Type, TypePath, TypeReference, Meta, Expr, Token};
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
+use syn::{Expr, Meta, Token, Type, TypePath, TypeReference, parse_macro_input};
 
 struct ConstValAttrs {
     max: Option<Expr>,
@@ -13,7 +13,11 @@ struct ConstValAttrs {
 impl Parse for ConstValAttrs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         if input.is_empty() {
-            return Ok(ConstValAttrs { max: None, min: None, multiple_of: None });
+            return Ok(ConstValAttrs {
+                max: None,
+                min: None,
+                multiple_of: None,
+            });
         }
 
         let mut max = None;
@@ -37,7 +41,11 @@ impl Parse for ConstValAttrs {
             }
         }
 
-        Ok(ConstValAttrs { max, min, multiple_of })
+        Ok(ConstValAttrs {
+            max,
+            min,
+            multiple_of,
+        })
     }
 }
 
@@ -88,8 +96,8 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
             let ident = &path.segments.last().unwrap().ident;
 
             match ident.to_string().as_str() {
-                "usize" | "u8" | "u16" | "u32" | "u64" | "u128" |
-                "isize" | "i8" | "i16" | "i32" | "i64" | "i128" => {
+                "usize" | "u8" | "u16" | "u32" | "u64" | "u128" | "isize" | "i8" | "i16"
+                | "i32" | "i64" | "i128" => {
                     let mut function = String::from("parse_digit_");
                     function.push_str(ty.to_token_stream().to_string().as_str());
                     let function = syn::Ident::new(function.as_str(), name.span());
@@ -130,32 +138,29 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
                 _ => panic!("not supported"),
             }
         }
-        Type::Reference(TypeReference { elem, .. }) => {
-            match elem.as_ref() {
-                Type::Path(TypePath { path, .. }) => {
-                    let ident = &path.segments.last().unwrap().ident;
-                    match ident.to_string().as_str() {
-                        "str" => {
-                            let name_str = name.to_string();
+        Type::Reference(TypeReference { elem, .. }) => match elem.as_ref() {
+            Type::Path(TypePath { path, .. }) => {
+                let ident = &path.segments.last().unwrap().ident;
+                match ident.to_string().as_str() {
+                    "str" => {
+                        let name_str = name.to_string();
 
-                            let ret = quote::quote! {
-                                #vis const #name: #ty = {
-                                    match option_env!( #name_str ) {
-                                        Some(v) => v,
-                                        None => #value,
-                                    }
-                                };
+                        let ret = quote::quote! {
+                            #vis const #name: #ty = {
+                                match option_env!( #name_str ) {
+                                    Some(v) => v,
+                                    None => #value,
+                                }
                             };
+                        };
 
-                            ret.into()
-                        }
-                        _ => panic!("not supported"),
+                        ret.into()
                     }
+                    _ => panic!("not supported"),
                 }
-                _ => panic!("not supported"),
             }
-
-        }
+            _ => panic!("not supported"),
+        },
         _ => panic!("not supported"),
     }
 }
@@ -193,6 +198,22 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let out = quote::quote! {
         #vis static #k: crate::locks::LazyLock< #t > = crate::locks::LazyLock::new(|| #v);
+    };
+
+    out.into()
+}
+
+#[proc_macro_attribute]
+pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let tokens = parse_macro_input!(item as syn::ItemStatic);
+
+    let vis = &tokens.vis;
+    let k = tokens.ident;
+    let t = tokens.ty;
+    let v = tokens.expr;
+
+    let out = quote::quote! {
+        #vis static #k: crate::locks::SpinLock< #t > = crate::locks::SpinLock::new(|| #v);
     };
 
     out.into()

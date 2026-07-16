@@ -5,8 +5,8 @@ use crate::mem::addr::{PhysicalAddr, VirtualAddr};
 use crate::mem::constants::PAGE_SIZE;
 use crate::mem::frame::alloc_frame;
 use crate::{bits, debug};
-use core::arch::asm;
 use const_val::lazy;
+use core::arch::asm;
 
 bits! {
     pub type PageTableEntry: u64 {

@@ -1,23 +1,23 @@
-use crate::{debug};
+use crate::debug;
 use crate::locks::{LazyLock, SpinLock};
 use crate::mem::constants::PAGE_SIZE;
+use crate::mem::constants::align;
 use crate::mem::frame::FRAME_ALLOCATOR;
 use crate::mem::intrusive_list::IntrusiveList;
+use const_val::{const_val, lazy};
 use core::alloc::{GlobalAlloc, Layout};
 use core::cmp::max;
 use core::fmt;
 use core::marker::PhantomData;
 use core::ptr::null_mut;
-use const_val::lazy;
-use crate::mem::constants::align;
 
-#[const_val::const_val]
+#[const_val]
 pub const MAX_KERNEL_HEAP_SIZE: usize = 20 * 1024 * 1024;
 
-#[const_val::const_val(max = 12)]
+#[const_val(max = 12)]
 pub const SLUB_MAX_ORDER: usize = 12;
 
-#[const_val::const_val(min = 3)]
+#[const_val(min = 3)]
 pub const SLUB_MIN_ORDER: usize = 4;
 
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
@@ -47,7 +47,10 @@ impl Caches {
         }
 
         let index = order - SLUB_MIN_ORDER;
-        let ptr = self.0[index].alloc().map(|p| p as *mut u8).unwrap_or(null_mut());
+        let ptr = self.0[index]
+            .alloc()
+            .map(|p| p as *mut u8)
+            .unwrap_or(null_mut());
 
         debug!(
             "alloc size: {}, order: {}, ptr: {:#x}",
@@ -247,13 +250,13 @@ impl SlubPage {
         let header_size = size_of::<SlubPage>();
 
         let start_offset = align(header_size, object_size);
-        
+
         let min_page_size = start_offset + object_size;
         let mut page_size = PAGE_SIZE;
         while page_size < min_page_size {
             page_size *= 2;
         }
-        
+
         let desired_objects = page_size / object_size;
         if desired_objects < 4 && page_size < (1 << 20) {
             let new_page_size = page_size * 2;
@@ -262,10 +265,7 @@ impl SlubPage {
             }
         }
 
-        let page = FRAME_ALLOCATOR
-            .force()
-            .lock()
-            .alloc_frame(page_size)?;
+        let page = FRAME_ALLOCATOR.force().lock().alloc_frame(page_size)?;
 
         let page_ptr = page as *mut SlubPage;
 

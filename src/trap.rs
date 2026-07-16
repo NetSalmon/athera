@@ -1,4 +1,4 @@
-use crate::arch::sbi::srst::{system_reset, ResetReason, ResetType};
+use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
 use crate::{arch, debug, numeric, syscall, trap_entry};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
@@ -74,7 +74,14 @@ impl From<Trap> for i64 {
 }
 
 #[unsafe(no_mangle)]
-fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, _satp: u64, trap_frame_sp: u64) {
+fn trap_handler(
+    scause: u64,
+    sepc: u64,
+    _stval: u64,
+    _sstatus: u64,
+    _satp: u64,
+    trap_frame_sp: u64,
+) {
     let trap = Trap::from(scause as i64);
 
     match trap {

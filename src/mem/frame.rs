@@ -1,9 +1,9 @@
 use crate::dev::DEV_TREE;
 use crate::mem::buddy::BuddyAllocator;
-use crate::{_end, debug};
-use core::ptr;
-use const_val::lazy;
 use crate::mem::constants::PHY_PAGE_SIZE;
+use crate::{_end, debug};
+use const_val::lazy;
+use core::ptr;
 
 #[lazy(spin)]
 pub static FRAME_ALLOCATOR: BuddyAllocator = {
@@ -24,12 +24,15 @@ pub fn alloc_frame() -> Option<usize> {
 }
 
 pub fn dealloc_frame(addr: usize) {
-    FRAME_ALLOCATOR.force().lock().dealloc_frame(addr, PHY_PAGE_SIZE);
+    FRAME_ALLOCATOR
+        .force()
+        .lock()
+        .dealloc_frame(addr, PHY_PAGE_SIZE);
 }
 
 pub struct AllocPage {
-    start: usize,
-    size: usize,
+    pub start: usize,
+    pub size: usize,
 }
 
 impl AllocPage {

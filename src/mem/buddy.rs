@@ -1,8 +1,8 @@
 use crate::debug;
 use crate::mem::constants::ilog2_ceil;
 use crate::mem::intrusive_list::IntrusiveList;
+use crate::mem::{PAGE_SIZE, constants};
 use core::ops::Range;
-use crate::mem::{constants, PAGE_SIZE};
 
 #[const_val::const_val]
 pub const BUDDY_MAX_ORDER: usize = 11;

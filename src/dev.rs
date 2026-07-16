@@ -1,9 +1,9 @@
+use crate::FDT_ADDRESS;
 use crate::dev::memory::Memory;
 use crate::dev::ns16550a::Ns16550a;
 use crate::dev::virtio_blk::VirtioBlk;
 use crate::error::Error;
 use crate::locks::SpinLock;
-use crate::FDT_ADDRESS;
 use const_val::lazy;
 use core::sync::atomic::Ordering;
 
@@ -49,8 +49,7 @@ pub struct DeviceTree {
 
 impl DeviceTree {
     pub fn probe(fdt_addr: *const u8) -> Result<Self, Error> {
-        let fdt = unsafe { fdt::Fdt::from_ptr(fdt_addr) }
-            .map_err(|_| Error::Fdt)?;
+        let fdt = unsafe { fdt::Fdt::from_ptr(fdt_addr) }.map_err(|_| Error::Fdt)?;
 
         Ok(Self {
             ns16550a: Ns16550a::probe(&fdt).map(|uart| {

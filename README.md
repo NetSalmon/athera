@@ -33,7 +33,7 @@ novus/                  # 内核（根 crate）
 │   ├── io.rs           格式化输出（print!/println!）
 │   ├── log.rs          日志宏
 │   ├── locks.rs        同步原语
-│   ├── marco.rs        宏定义
+│   ├── macros.rs        宏定义
 │   ├── error.rs        错误类型
 │   └── main.rs         内核入口
 ├── applications/       用户程序（子 crate）
@@ -79,6 +79,7 @@ cargo build --release
 | `-i` | 输出中断日志 |
 | `-m` | 输出 MMU 日志 |
 | `-p` | 挂载 virtio-blk PCI 磁盘（`resources/disk.qcow2`）|
+| `-b` | 使用 GTK 显示（`-display gtk` + ramfb）|
 | `-d` | 挂载 virtio-blk MMIO 磁盘 |
 
 示例：
@@ -86,6 +87,7 @@ cargo build --release
 ```bash
 ./start.sh -p          # 带 PCI 块设备启动
 ./start.sh -s -i       # 调试 + 中断日志
+./start.sh -b -d       # GTK 图形界面 + MMIO 磁盘
 ```
 
 ## 系统调用
@@ -95,8 +97,33 @@ cargo build --release
 | 63   | read     | 从 UART 读取 |
 | 64   | write    | 向 UART 写入 |
 | 93   | exit     | 退出用户程序 |
+| 95   | waitpid  | 等待子进程（未实现）|
 | 142  | reboot   | 重启/关机/停机 |
+| 220  | fork     | 创建子进程（未实现）|
+| 221  | exec     | 执行新程序（未实现）|
 
+
+## 初始化依赖
+```mermaid
+graph TD
+    subgraph basic 
+        dev_tree_address[Dev Tree Address] --> dev_tree[Dev Tree]
+        dev_tree --> buddy_system[Buddy System]
+        buddy_system --> page_table[Page Table]
+        buddy_system --> slub_allocator[Slub Allocator]
+        page_table --> identity_map[Identity Map]
+        dev_tree --> identity_map
+        slub_allocator --> tasks[Tasks]
+    end
+    
+    subgraph functions
+        slub_allocator ----> alloc_structs[Vec, String, BTreeMap ...]
+        buddy_system ----> frame_allocator[Frame Allocator]
+        dev_tree ----> device[ns16550a ...]
+        page_table ----> map
+        page_table ----> unmap
+    end
+```
 ## 许可证
 
 GPL-3，详见 [LICENSE](LICENSE)。
