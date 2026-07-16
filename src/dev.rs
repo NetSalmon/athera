@@ -1,16 +1,18 @@
-use crate::FDT_ADDRESS;
 use crate::dev::memory::Memory;
 use crate::dev::ns16550a::Ns16550a;
 use crate::dev::virtio_blk::VirtioBlk;
 use crate::error::Error;
-use crate::locks::{LazyLock, SpinLock};
+use crate::locks::SpinLock;
+use crate::FDT_ADDRESS;
+use const_val::lazy;
 use core::sync::atomic::Ordering;
 
-pub static DEV_TREE: LazyLock<DeviceTree> = LazyLock::new(|| {
+#[lazy]
+pub static DEV_TREE: DeviceTree = {
     let fdt_addr = FDT_ADDRESS.load(Ordering::Acquire);
 
     DeviceTree::probe(fdt_addr as *const u8).expect("device tree probe failed")
-});
+};
 
 pub mod memory;
 pub mod ns16550a;

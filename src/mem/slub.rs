@@ -1,4 +1,4 @@
-use crate::{debug, mem};
+use crate::{debug};
 use crate::locks::{LazyLock, SpinLock};
 use crate::mem::constants::PAGE_SIZE;
 use crate::mem::frame::FRAME_ALLOCATOR;
@@ -8,6 +8,7 @@ use core::cmp::max;
 use core::fmt;
 use core::marker::PhantomData;
 use core::ptr::null_mut;
+use const_val::lazy;
 use crate::mem::constants::align;
 
 #[const_val::const_val]
@@ -88,7 +89,8 @@ fn layout_order(layout: &Layout) -> usize {
 }
 
 #[global_allocator]
-pub static CACHES: LazyLock<SpinLock<Caches>> = LazyLock::new(|| SpinLock::new(Caches::new()));
+#[lazy(spin)]
+pub static CACHES: Caches = Caches::new();
 
 unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {

@@ -1,13 +1,13 @@
 use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use crate::locks::{LazyLock, SpinLock};
-use crate::mem::frame::AllocPage;
+use const_val::lazy;
+use crate::locks::{SpinLock};
+use crate::trap::TrapContext;
 
 #[const_val::const_val]
 pub const PID_MAX: usize = 1024;
 
-pub static TASKS: LazyLock<SpinLock<BTreeMap<usize, TrapContext>>> = LazyLock::new(|| todo!());
+#[lazy(spin)]
+pub static TASKS: BTreeMap<usize, TrapContext> = BTreeMap::new();
 
 static TID_POOL: SpinLock<[u64; PID_MAX / 64]> = SpinLock::new([0; PID_MAX / 64]);
 
@@ -29,11 +29,12 @@ pub fn free_tid(pid: u64) {
     pool[idx] &= !(1 << bit);
 }
 
-pub struct TrapContext {
-    pub context: [u64; 512],
-    pub satp: u64,
-    pub sepc: u64,
-    pub sstatus: u64,
-    pub stval: u64,
-    pub stvec: u64,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum TaskStatus {
+    Running,
+    Waiting,
+    Sleeping,
+    Zombie,
+    Stopped,
+    Dead,
 }

@@ -18,6 +18,9 @@ numeric! {
         WRITE = 64,
         EXIT = 93,
         REBOOT = 142,
+        FORK = 220,
+        WAITPID = 95,
+        EXEC = 221,
     }
 }
 

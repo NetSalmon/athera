@@ -1,6 +1,5 @@
-use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
+use crate::arch::sbi::srst::{system_reset, ResetReason, ResetType};
 use crate::{arch, debug, numeric, syscall, trap_entry};
-use crate::proc::TrapContext;
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -75,7 +74,7 @@ impl From<Trap> for i64 {
 }
 
 #[unsafe(no_mangle)]
-fn trap_handler(scause: u64, sepc: u64, stval: u64, sstatus: u64, satp: u64, trap_frame_sp: u64) {
+fn trap_handler(scause: u64, sepc: u64, _stval: u64, _sstatus: u64, _satp: u64, trap_frame_sp: u64) {
     let trap = Trap::from(scause as i64);
 
     match trap {
@@ -121,4 +120,30 @@ pub fn set_next_timer() {
     const GAP: u64 = 1_000_000; // 10 Hz
     let t = arch::registers::csr::Time::read();
     arch::registers::csr::Stimecmp::write(t + GAP);
+}
+
+pub type TrapFrame = [u64; 512];
+
+pub struct TrapContext {
+    pub context: TrapFrame,
+    pub satp: u64,
+    pub sepc: u64,
+    pub sstatus: u64,
+    pub stval: u64,
+    pub stvec: u64,
+}
+
+impl TrapContext {
+    pub fn new(sepc: u64, stval: u64, sstatus: u64, satp: u64, sp: u64) -> TrapContext {
+        let trap_frame = unsafe { (sp as *const TrapFrame).read_volatile() };
+
+        TrapContext {
+            context: trap_frame,
+            sstatus,
+            satp,
+            stval,
+            sepc,
+            stvec: trap_entry as *const () as u64,
+        }
+    }
 }

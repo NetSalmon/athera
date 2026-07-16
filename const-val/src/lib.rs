@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::{parse_macro_input, Type, TypePath, TypeReference, Meta, Expr, Token};
-use syn::parse::{Parse, ParseStream};
+use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 
 struct ConstValAttrs {
@@ -158,4 +158,42 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
         _ => panic!("not supported"),
     }
+}
+
+#[proc_macro_attribute]
+pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let tokens = parse_macro_input!(item as syn::ItemStatic);
+
+    let vis = &tokens.vis;
+    let k = tokens.ident;
+    let t = tokens.ty;
+    let v = tokens.expr;
+
+    let parser = Punctuated::<Meta, Token![,]>::parse_terminated;
+    let args = match parser.parse(attr) {
+        Ok(meta_list) => meta_list,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    for meta in args {
+        match meta {
+            Meta::Path(path) => {
+                if path.is_ident("spin") {
+                    let out = quote::quote! {
+                        #vis static #k: crate::locks::LazyLock< crate::locks::SpinLock<#t> >
+                        = crate::locks::LazyLock::new(|| crate::locks::SpinLock::new(#v));
+                    };
+
+                    return out.into();
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    let out = quote::quote! {
+        #vis static #k: crate::locks::LazyLock< #t > = crate::locks::LazyLock::new(|| #v);
+    };
+
+    out.into()
 }

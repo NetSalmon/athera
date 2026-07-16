@@ -1,11 +1,12 @@
 use crate::dev::DEV_TREE;
-use crate::locks::{LazyLock, SpinLock};
 use crate::mem::buddy::BuddyAllocator;
 use crate::{_end, debug};
 use core::ptr;
+use const_val::lazy;
 use crate::mem::constants::PHY_PAGE_SIZE;
 
-pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|| {
+#[lazy(spin)]
+pub static FRAME_ALLOCATOR: BuddyAllocator = {
     let mut allocator = BuddyAllocator::new();
     let start = DEV_TREE.memory.device.mmio.start;
     let end = start + DEV_TREE.memory.device.mmio.size;
@@ -15,8 +16,8 @@ pub static FRAME_ALLOCATOR: LazyLock<SpinLock<BuddyAllocator>> = LazyLock::new(|
     allocator.add(kernel_end..end);
 
     debug!("allocator init ok");
-    SpinLock::new(allocator)
-});
+    allocator
+};
 
 pub fn alloc_frame() -> Option<usize> {
     FRAME_ALLOCATOR.force().lock().alloc_frame(PHY_PAGE_SIZE)

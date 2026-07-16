@@ -1,12 +1,12 @@
 use crate::arch::registers::csr::Satp;
 use crate::arch::registers::values::{SatpMode, SatpValue};
 use crate::dev::DEV_TREE;
-use crate::locks::LazyLock;
 use crate::mem::addr::{PhysicalAddr, VirtualAddr};
 use crate::mem::constants::PAGE_SIZE;
 use crate::mem::frame::alloc_frame;
 use crate::{bits, debug};
 use core::arch::asm;
+use const_val::lazy;
 
 bits! {
     pub type PageTableEntry: u64 {
@@ -41,13 +41,14 @@ bits! {
     }
 }
 
-pub static ROOT_PAGE_TABLE: LazyLock<usize> = LazyLock::new(|| {
+#[lazy]
+pub static ROOT_PAGE_TABLE: usize = {
     let root_addr = alloc_frame().expect("out of memory");
 
     unsafe { (root_addr as *mut PageTable).write(PageTable::new()) };
 
     root_addr
-});
+};
 
 #[repr(align(4096))]
 #[derive(Debug)]
