@@ -57,7 +57,8 @@ trap_entry:
     csrr a1, sepc
     csrr a2, stval
     csrr a3, sstatus
-    mv   a4, sp
+    csrr a4, satp
+    mv   a5, sp
 
     call trap_handler
 

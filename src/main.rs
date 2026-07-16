@@ -30,6 +30,7 @@ global_asm!(include_str!("entry.asm"));
 pub static FDT_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 unsafe extern "C" {
     pub fn _end();
+    pub fn trap_entry();
 }
 
 #[const_val::const_val]
