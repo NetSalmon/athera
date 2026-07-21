@@ -1,8 +1,11 @@
-use crate::debug;
-use crate::dev::virtio_blk::queue::get_queue_ptr;
-use crate::dev::virtio_blk::{RING_MAX_SIZE, Status, VirtioBlk, VirtioBlkFeaturesLow};
-use crate::error::Error;
-use crate::mem::addr::PhysicalAddr;
+use crate::{
+    debug,
+    dev::virtio_blk::{
+        RING_MAX_SIZE, Status, VirtioBlk, VirtioBlkFeaturesLow, queue::get_queue_ptr,
+    },
+    error::Error,
+    mem::addr::PhysicalAddr,
+};
 
 pub fn handshake_legacy(blk: &VirtioBlk) -> Result<(), Error> {
     let mut status: Status = Status::from(0);

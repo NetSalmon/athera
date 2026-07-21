@@ -6,6 +6,7 @@
       <w>Infineon</w>
       <w>Matsushita</w>
       <w>Phdr</w>
+      <w>Virtq</w>
       <w>balign</w>
       <w>csrs</w>
       <w>csrsi</w>
@@ -23,6 +24,7 @@
       <w>shoff</w>
       <w>shstrndx</w>
       <w>stvec</w>
+      <w>writeonly</w>
     </words>
   </dictionary>
 </component>

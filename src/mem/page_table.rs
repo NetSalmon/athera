@@ -1,12 +1,21 @@
-use crate::arch::registers::csr::Satp;
-use crate::arch::registers::values::{SatpMode, SatpValue};
-use crate::dev::DEV_TREE;
-use crate::mem::addr::{PhysicalAddr, VirtualAddr};
-use crate::mem::constants::PAGE_SIZE;
-use crate::mem::frame::alloc_frame;
-use crate::{bits, debug};
-use const_val::lazy;
 use core::arch::asm;
+
+use novus_const::lazy;
+
+use crate::{
+    arch::registers::{
+        csr::Satp,
+        values::{SatpMode, SatpValue},
+    },
+    bits,
+    constants::PAGE_SIZE,
+    debug,
+    dev::DEV_TREE,
+    mem::{
+        addr::{PhysicalAddr, VirtualAddr},
+        allocators::alloc_frame,
+    },
+};
 
 bits! {
     pub type PageTableEntry: u64 {

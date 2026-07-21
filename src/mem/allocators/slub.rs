@@ -1,29 +1,13 @@
-use crate::debug;
-use crate::locks::{LazyLock, SpinLock};
-use crate::mem::constants::PAGE_SIZE;
-use crate::mem::constants::align;
-use crate::mem::frame::FRAME_ALLOCATOR;
-use crate::mem::intrusive_list::IntrusiveList;
-use const_val::{const_val, lazy};
-use core::alloc::{GlobalAlloc, Layout};
-use core::cmp::max;
-use core::fmt;
-use core::marker::PhantomData;
-use core::ptr::null_mut;
+use core::{alloc::Layout, cmp::max, fmt, marker::PhantomData, ptr::null_mut};
 
-#[const_val]
-pub const MAX_KERNEL_HEAP_SIZE: usize = 20 * 1024 * 1024;
-
-#[const_val(max = 12)]
-pub const SLUB_MAX_ORDER: usize = 12;
-
-#[const_val(min = 3)]
-pub const SLUB_MIN_ORDER: usize = 4;
-
-pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
+use crate::{
+    constants::{CACHES_MAX, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MIN_ORDER, align},
+    debug,
+    mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList},
+};
 
 #[derive(Debug)]
-pub struct Caches([Cache; CACHES_MAX]);
+pub struct Caches(pub(crate) [Cache; CACHES_MAX]);
 
 impl Caches {
     pub fn new() -> Self {
@@ -34,7 +18,7 @@ impl Caches {
 }
 
 impl Caches {
-    fn alloc(&mut self, layout: Layout) -> *mut u8 {
+    pub(crate) fn alloc(&mut self, layout: Layout) -> *mut u8 {
         let order = layout_order(&layout);
 
         if order > SLUB_MAX_ORDER {
@@ -61,7 +45,7 @@ impl Caches {
         ptr
     }
 
-    fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+    pub(crate) fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
         let order = layout_order(&layout);
 
         if order > SLUB_MAX_ORDER {
@@ -89,20 +73,6 @@ fn layout_order(layout: &Layout) -> usize {
     let adjusted_size = max(layout.size(), layout.align());
     let size = max(adjusted_size, 1 << SLUB_MIN_ORDER);
     size.next_power_of_two().trailing_zeros() as usize
-}
-
-#[global_allocator]
-#[lazy(spin)]
-pub static CACHES: Caches = Caches::new();
-
-unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.force().lock().alloc(layout)
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.force().lock().dealloc(ptr, layout)
-    }
 }
 
 #[derive(Debug)]
@@ -208,6 +178,7 @@ pub struct SlubPageListIter<'a> {
 
 impl<'a> Iterator for SlubPageListIter<'a> {
     type Item = &'a SlubPage;
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.current.is_null() {
             None
@@ -226,6 +197,7 @@ pub struct SlubPageListIterMut<'a> {
 
 impl<'a> Iterator for SlubPageListIterMut<'a> {
     type Item = &'a mut SlubPage;
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.current.is_null() {
             None
@@ -386,8 +358,4 @@ impl Cache {
                 .dealloc_frame(page_ptr as usize, page_size);
         }
     }
-}
-
-pub fn snapshot() {
-    debug!("{:#?}", CACHES.force().lock().0);
 }

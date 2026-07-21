@@ -1,5 +1,6 @@
-use crate::{array_struct, bits, numeric};
 use core::fmt::{Display, Formatter};
+
+use crate::{array_struct, bits, numeric};
 
 #[repr(C)]
 #[derive(Debug)]

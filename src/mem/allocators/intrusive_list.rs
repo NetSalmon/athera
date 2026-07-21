@@ -1,6 +1,8 @@
-use core::fmt;
-use core::fmt::{Debug, Formatter};
-use core::marker::PhantomData;
+use core::{
+    fmt,
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 
 #[derive(Copy, Clone)]
 pub struct IntrusiveList {
@@ -91,6 +93,7 @@ pub struct IntrusiveListIter<'a> {
 
 impl<'a> Iterator for IntrusiveListIter<'a> {
     type Item = *mut usize;
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.current.is_null() {
             None
@@ -109,6 +112,7 @@ pub struct IntrusiveListIterMut<'a> {
 
 impl<'a> Iterator for IntrusiveListIterMut<'a> {
     type Item = *mut usize;
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.current.is_null() {
             None

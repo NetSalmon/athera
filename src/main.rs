@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 mod arch;
+mod constants;
 mod dev;
 mod elf;
 mod error;
@@ -16,34 +17,16 @@ mod usr;
 
 extern crate alloc;
 
-use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::dev::DEV_TREE;
-use crate::error::Error;
-use crate::mem::page_table::identity_map;
-use alloc::string::String;
-use core::arch::global_asm;
-use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{arch::global_asm, panic::PanicInfo};
+
+use crate::{
+    arch::sbi::srst::{ResetReason, ResetType, system_reset},
+    constants::*,
+    dev::FDT,
+    mem::page_table::identity_map,
+};
 
 global_asm!(include_str!("entry.asm"));
-
-pub static FDT_ADDRESS: AtomicUsize = AtomicUsize::new(0);
-unsafe extern "C" {
-    pub fn _end();
-    pub fn trap_entry();
-}
-
-#[const_val::const_val]
-pub const VERSION: &str = "0.1.0";
-
-#[const_val::const_val]
-pub const RELEASE: &str = "none";
-
-#[const_val::const_val]
-pub const SYS: &str = "Novus";
-
-#[const_val::const_val]
-pub const ARCH: &str = "riscv64gc";
 
 #[unsafe(no_mangle)]
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
@@ -51,14 +34,19 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         core::hint::spin_loop();
     }
 
-    FDT_ADDRESS.swap(dev_tree_address, Ordering::Relaxed);
+    // checking
+    unsafe {
+        if dev_tree_address != FDT_ADDR as usize {
+            core::hint::spin_loop();
+        }
+    }
 
-    debug!("{SYS} {VERSION} {RELEASE} {ARCH}");
+    debug!("system info: {SYS} {VERSION} {RELEASE} {ARCH}");
 
-    debug!("PAGE_SIZE: {}", mem::PAGE_SIZE);
-    debug!("BUDDY_MAX_ORDER: {}", mem::buddy::BUDDY_MAX_ORDER);
-    debug!("SLUB_MIN_ORDER: {}", mem::slub::SLUB_MIN_ORDER);
-    debug!("SLUB_MAX_ORDER: {}", mem::slub::SLUB_MAX_ORDER);
+    debug!("page size: {}", PAGE_SIZE);
+    debug!("buddy max order: {}", BUDDY_MAX_ORDER);
+    debug!("slub min order: {}", SLUB_MIN_ORDER);
+    debug!("slub max order: {}", SLUB_MAX_ORDER);
 
     debug!("kernel end: {:#x}", _end as *const () as usize);
 
@@ -66,37 +54,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     debug!("page table setup ok");
 
-    arch::breakpoint();
-    arch::breakpoint();
-
-    let mut a = String::new();
-
-    loop {
-        mem::slub::snapshot();
-
-        let byte = DEV_TREE
-            .force()
-            .ns16550a
-            .as_ref()
-            .ok_or(Error::NoUart)
-            .expect("UART not initialized")
-            .lock()
-            .block_getchar();
-
-        debug!("byte: {}", byte);
-
-        if byte == b'q' {
-            break;
-        }
-
-        let ch = byte as char;
-        a.push(ch);
-        debug!("string: {}, at: {:#x}", a, &a as *const String as usize);
-    }
-
-    drop(a);
-
-    mem::slub::snapshot();
+    debug!("fdt len: {:x?}", FDT.len());
 
     usr::exec(&ELF.0).expect("failed to load ELF");
 
@@ -135,13 +93,3 @@ fn panic_handle(info: &PanicInfo) -> ! {
         core::hint::spin_loop();
     }
 }
-
-#[repr(align(8))]
-struct Elf(
-    [u8; include_bytes!("../applications/target/riscv64gc-unknown-none-elf/release/hello_world")
-        .len()],
-);
-
-static ELF: Elf = Elf(*include_bytes!(
-    "../applications/target/riscv64gc-unknown-none-elf/release/hello_world"
-));

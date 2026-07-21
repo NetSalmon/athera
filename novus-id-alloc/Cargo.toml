@@ -1,0 +1,9 @@
+[package]
+name = "novus-id-alloc"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+test = false
+bench = false
+doctest = false

@@ -1,13 +1,11 @@
 [package]
-name = "applications"
+name = "novus-userland"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
-[dependencies]
-
 [lib]
-name = "applications"
+name = "novus_userland"
 path = "src/lib.rs"
 test = false
 doctest = false

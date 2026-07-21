@@ -1,7 +1,11 @@
-use crate::debug;
-use crate::dev::virtio_blk::queue::{Queue, get_queue_ptr};
-use crate::dev::virtio_blk::{Status, VirtioBlk, VirtioBlkFeaturesHigh, VirtioBlkFeaturesLow};
-use crate::error::Error;
+use crate::{
+    debug,
+    dev::virtio_blk::{
+        Status, VirtioBlk, VirtioBlkFeaturesHigh, VirtioBlkFeaturesLow,
+        queue::{Queue, get_queue_ptr},
+    },
+    error::Error,
+};
 
 pub fn handshake_modern(blk: &VirtioBlk) -> Result<(), Error> {
     let mut status: Status = 0.into();

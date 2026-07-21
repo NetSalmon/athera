@@ -1,5 +1,8 @@
-use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::{arch, debug, numeric, syscall, trap_entry};
+use crate::{
+    arch,
+    arch::sbi::srst::{ResetReason, ResetType, system_reset},
+    debug, numeric, syscall, trap_entry,
+};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 

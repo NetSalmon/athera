@@ -1,5 +1,6 @@
-use crate::dev::{Device, Resource};
 use fdt::Fdt;
+
+use crate::dev::{Device, Resource};
 
 pub struct Memory {
     pub device: Device,

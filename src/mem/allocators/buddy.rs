@@ -1,13 +1,10 @@
-use crate::debug;
-use crate::mem::constants::ilog2_ceil;
-use crate::mem::intrusive_list::IntrusiveList;
-use crate::mem::{PAGE_SIZE, constants};
 use core::ops::Range;
 
-#[const_val::const_val]
-pub const BUDDY_MAX_ORDER: usize = 11;
-
-pub const PAGE_SIZE_LOG_2: usize = ilog2_ceil(PAGE_SIZE);
+use crate::{
+    constants::{BUDDY_MAX_ORDER, PAGE_SIZE_LOG_2, align, ilog2_ceil},
+    debug,
+    mem::allocators::intrusive_list::IntrusiveList,
+};
 
 pub struct BuddyAllocator {
     pub free_list: [IntrusiveList; BUDDY_MAX_ORDER],
@@ -39,8 +36,8 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn add(&mut self, range: Range<usize>) {
-        let start = constants::align(range.start, 1 << (BUDDY_MAX_ORDER + 11));
+    pub fn add(&mut self, range: &Range<usize>) {
+        let start = align(range.start, 1 << (BUDDY_MAX_ORDER + 11));
         self.add_frame(start, range.end);
     }
 

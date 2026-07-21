@@ -1,6 +1,4 @@
-use std::env;
-use std::fs;
-use std::path::PathBuf;
+use std::{env, fs, path::PathBuf};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

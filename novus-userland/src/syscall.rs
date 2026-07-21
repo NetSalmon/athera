@@ -34,9 +34,9 @@ macro_rules! ecall {
 pub struct RebootCmd(u64);
 
 impl RebootCmd {
-    pub const RESTART: Self = Self(0x1234567);
-    pub const POWER_OFF: Self = Self(0x4321fedc);
     pub const HALT: Self = Self(0xcdef0123);
+    pub const POWER_OFF: Self = Self(0x4321fedc);
+    pub const RESTART: Self = Self(0x1234567);
 }
 
 pub fn read(fd: u64, buf: &mut [u8]) -> isize {

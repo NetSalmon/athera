@@ -1,8 +1,11 @@
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use syn::parse::{Parse, ParseStream, Parser};
-use syn::punctuated::Punctuated;
-use syn::{Expr, Meta, Token, Type, TypePath, TypeReference, parse_macro_input};
+use syn::{
+    Expr, Meta, Token, Type, TypePath, TypeReference,
+    parse::{Parse, ParseStream, Parser},
+    parse_macro_input,
+    punctuated::Punctuated,
+};
 
 struct ConstValAttrs {
     max: Option<Expr>,
@@ -49,34 +52,6 @@ impl Parse for ConstValAttrs {
     }
 }
 
-/// Compile-time configurable constants with optional value constraints.
-///
-/// The macro allows overriding a `const` value via an environment variable of
-/// the same name at build time. For integer types, the value is parsed by
-/// `const_num::parse_digit_*`; for `&str`, the env value is used directly.
-///
-/// Optional key-value attributes enforce compile-time checks:
-/// - `max` — inclusive upper bound (value must be ≤ max)
-/// - `min` — inclusive lower bound (value must be ≥ min)
-/// - `multiple_of` — value must be an integer multiple of the given number
-///
-/// If any constraint is violated, compilation fails with an `assert!` error.
-///
-/// # Examples
-///
-/// ```ignore
-/// #[const_val]
-/// const PAGE_SIZE: usize = 4096;
-///
-/// #[const_val(max = 100, min = 1)]
-/// const FOO: usize = 42;
-///
-/// #[const_val(multiple_of = 2)]
-/// const BAR: usize = 42;
-///
-/// #[const_val(max = 500, min = 100, multiple_of = 50)]
-/// const BAZ: usize = 200;
-/// ```
 #[proc_macro_attribute]
 pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as syn::ItemConst);
@@ -126,7 +101,7 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
                         #vis const #name: #ty = {
                             #checks
                             match option_env!( #name_str ) {
-                                Some(v) => const_num::#function(v, #value),
+                                Some(v) => novus_const::num::#function(v, #value),
                                 None => #value,
                             }
                         };
@@ -213,7 +188,7 @@ pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let v = tokens.expr;
 
     let out = quote::quote! {
-        #vis static #k: crate::locks::SpinLock< #t > = crate::locks::SpinLock::new(|| #v);
+        #vis static #k: crate::locks::SpinLock< #t > = crate::locks::SpinLock::new(#v);
     };
 
     out.into()

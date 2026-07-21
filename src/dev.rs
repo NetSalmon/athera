@@ -1,22 +1,26 @@
-use crate::FDT_ADDRESS;
-use crate::dev::memory::Memory;
-use crate::dev::ns16550a::Ns16550a;
-use crate::dev::virtio_blk::VirtioBlk;
-use crate::error::Error;
-use crate::locks::SpinLock;
-use const_val::lazy;
-use core::sync::atomic::Ordering;
+use alloc::{boxed::Box, collections::BTreeMap, vec, vec::Vec};
+use core::{arch::asm, ptr::slice_from_raw_parts, slice};
+
+use novus_const::lazy;
+use novus_id_alloc::IdAllocator;
+
+use crate::{
+    FDT_ADDR,
+    constants::MEMORY_RANGE,
+    debug,
+    dev::{memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk},
+    error::Error,
+    locks::SpinLock,
+    mem::allocators::FRAME_ALLOCATOR,
+};
 
 #[lazy]
-pub static DEV_TREE: DeviceTree = {
-    let fdt_addr = FDT_ADDRESS.load(Ordering::Acquire);
-
-    DeviceTree::probe(fdt_addr as *const u8).expect("device tree probe failed")
-};
+pub static DEV_TREE: DeviceTree = { DeviceTree::probe().expect("device tree probe failed") };
 
 pub mod memory;
 pub mod ns16550a;
 pub mod virtio_blk;
+pub mod virtio_mmio;
 
 #[derive(Copy, Clone)]
 pub struct Resource {
@@ -48,8 +52,8 @@ pub struct DeviceTree {
 }
 
 impl DeviceTree {
-    pub fn probe(fdt_addr: *const u8) -> Result<Self, Error> {
-        let fdt = unsafe { fdt::Fdt::from_ptr(fdt_addr) }.map_err(|_| Error::Fdt)?;
+    pub fn probe() -> Result<Self, Error> {
+        let fdt = unsafe { fdt::Fdt::from_ptr(FDT_ADDR) }.map_err(|_| Error::Fdt)?;
 
         Ok(Self {
             ns16550a: Ns16550a::probe(&fdt).map(|uart| {
@@ -115,4 +119,38 @@ macro_rules! mmio_regs {
             }
         }
     };
+}
+
+#[lazy]
+pub static FDT: Vec<u8> = { backup_fdt() };
+
+fn backup_fdt() -> Vec<u8> {
+    unsafe {
+        let fdt = fdt::Fdt::from_ptr(FDT_ADDR).unwrap();
+
+        let total_size = fdt.total_size();
+
+        let src_slice = slice::from_raw_parts(FDT_ADDR, total_size);
+
+        let mut fdt_copy = vec![0u8; total_size];
+        fdt_copy.copy_from_slice(src_slice);
+
+        // 恢复
+        let old_addr = FDT_ADDR;
+
+        asm!(
+            r#"la t0, FDT_ADDR
+            sd {}, 0(t0)"#,
+            in(reg) fdt_copy.as_ptr(),
+        );
+
+        assert_eq!(FDT_ADDR, fdt_copy.as_ptr());
+
+        FRAME_ALLOCATOR
+            .force()
+            .lock()
+            .add(&(old_addr as usize..MEMORY_RANGE.end));
+
+        fdt_copy
+    }
 }

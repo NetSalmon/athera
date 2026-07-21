@@ -1,5 +1,3 @@
-#![no_std]
-
 pub enum NumberBase {
     Decimal,
     Hexadecimal,

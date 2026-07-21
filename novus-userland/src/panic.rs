@@ -1,5 +1,6 @@
-use crate::syscall;
 use core::panic::PanicInfo;
+
+use crate::syscall;
 
 /// 如果`panic`直接退出程序
 #[panic_handler]

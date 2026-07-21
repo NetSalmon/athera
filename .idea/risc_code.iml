@@ -11,6 +11,11 @@
       <sourceFolder url="file://$MODULE_DIR$/const-num/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/const-val/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/const-val/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/id-alloc/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/novus-const-macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/novus-const/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/novus-id-alloc/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/novus-userland/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/software/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/.claude" />

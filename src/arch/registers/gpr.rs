@@ -18,7 +18,6 @@
 // | f12–17  | fa2–7    | FP arguments                     | rw     | Caller |
 // | f18–27  | fs2–11   | FP saved registers               | rw     | Callee |
 // | f28–31  | ft8–11   | FP temporaries                   | rw     | Caller |
-use crate::arch::registers::*;
 
 macro_rules! gpr {
     (@read $name:ident) => {

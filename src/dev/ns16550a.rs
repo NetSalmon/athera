@@ -1,6 +1,10 @@
-use crate::dev::{Device, Resource};
-use crate::{bits, mmio_regs};
 use fdt::Fdt;
+
+use crate::{
+    bits,
+    dev::{Device, Resource},
+    mmio_regs,
+};
 
 pub struct Ns16550a {
     pub device: Device,

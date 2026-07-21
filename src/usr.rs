@@ -1,13 +1,17 @@
 use alloc::vec::Vec;
-use crate::arch::registers::csr::Sstatus;
-use crate::bits;
-use crate::debug;
-use crate::elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType};
-use crate::error::Error;
-use crate::mem::PAGE_SIZE;
-use crate::mem::constants::PHY_PAGE_SIZE;
-use crate::mem::frame::{AllocPage, FRAME_ALLOCATOR};
 use core::ptr;
+
+use novus_const::const_val;
+
+use crate::{
+    arch::registers::csr::Sstatus,
+    bits,
+    constants::PHY_PAGE_SIZE,
+    debug,
+    elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
+    error::Error,
+    mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
+};
 
 bits! {
     pub type SStatusBits: u64 {
@@ -16,7 +20,7 @@ bits! {
     }
 }
 
-#[const_val::const_val(multiple_of = PHY_PAGE_SIZE)]
+#[const_val(multiple_of = PHY_PAGE_SIZE)]
 const USER_STACK_SIZE: usize = PHY_PAGE_SIZE * 8;
 
 /// 解析并加载`ELF`各段
@@ -41,7 +45,7 @@ pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
 
     debug!("elf machine: {:?}", header.e_machine);
     debug!("elf os abi: {:?}", header.e_ident.os_abi());
-    
+
     let mut alloc_pages = Vec::new();
 
     let ph_ptr = unsafe { ptr.add(ph_offset as usize) as *const Elf64Phdr };
@@ -74,8 +78,11 @@ pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
             .lock()
             .alloc_frame(mem_size)
             .ok_or(Error::OutOfMemory)?;
-        
-        alloc_pages.push(AllocPage { start: alloc_page, size: mem_size });
+
+        alloc_pages.push(AllocPage {
+            start: alloc_page,
+            size: mem_size,
+        });
 
         unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
 

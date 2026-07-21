@@ -106,7 +106,6 @@
 // | 0x3BE   | pmpaddr14  | M    | rw     | PMP address 14                       |
 // | 0x3BF   | pmpaddr15  | M    | rw     | PMP address 15                       |
 
-use super::*;
 use core::arch::asm;
 
 pub trait CsrRegister {

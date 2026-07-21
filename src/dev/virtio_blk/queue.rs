@@ -1,5 +1,4 @@
-use crate::bits;
-use crate::dev::virtio_blk::RING_MAX_SIZE;
+use crate::{bits, dev::virtio_blk::RING_MAX_SIZE};
 
 #[unsafe(link_section = ".bss.queue")]
 static mut QUEUE: Queue = queue_init();

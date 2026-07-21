@@ -12,10 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "applications"
-version = "0.1.0"
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -54,22 +50,6 @@ dependencies = [
  "num-traits",
  "wasm-bindgen",
  "windows-link",
-]
-
-[[package]]
-name = "const-num"
-version = "0.1.0"
-dependencies = [
- "paste",
-]
-
-[[package]]
-name = "const-val"
-version = "0.1.0"
-dependencies = [
- "const-num",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -188,12 +168,36 @@ name = "novus"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "const-num",
- "const-val",
  "fdt",
+ "novus-const",
+ "novus-id-alloc",
  "paste",
  "toml",
 ]
+
+[[package]]
+name = "novus-const"
+version = "0.1.0"
+dependencies = [
+ "novus-const-macros",
+ "paste",
+]
+
+[[package]]
+name = "novus-const-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "novus-id-alloc"
+version = "0.1.0"
+
+[[package]]
+name = "novus-userland"
+version = "0.1.0"
 
 [[package]]
 name = "num-traits"

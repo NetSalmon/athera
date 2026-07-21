@@ -1,0 +1,53 @@
+use core::alloc::{GlobalAlloc, Layout};
+
+use novus_const::lazy;
+
+use crate::{
+    constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
+    debug,
+    locks::{LazyLock, SpinLock},
+    mem::allocators::{buddy::BuddyAllocator, slub::Caches},
+};
+
+pub mod buddy;
+pub mod intrusive_list;
+pub mod slub;
+
+#[lazy(spin)]
+pub static FRAME_ALLOCATOR: BuddyAllocator = {
+    let mut allocator = BuddyAllocator::new();
+
+    allocator.add(AVAIL_RANGE.force());
+
+    debug!("allocator init ok");
+    allocator
+};
+
+pub fn alloc_frame() -> Option<usize> {
+    FRAME_ALLOCATOR.force().lock().alloc_frame(PHY_PAGE_SIZE)
+}
+
+pub fn dealloc_frame(addr: usize) {
+    FRAME_ALLOCATOR
+        .force()
+        .lock()
+        .dealloc_frame(addr, PHY_PAGE_SIZE);
+}
+
+#[global_allocator]
+#[lazy(spin)]
+pub static CACHES: Caches = Caches::new();
+
+unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        self.force().lock().alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        self.force().lock().dealloc(ptr, layout)
+    }
+}
+
+pub fn caches_snapshot() {
+    debug!("{:#?}", CACHES.force().lock().0);
+}

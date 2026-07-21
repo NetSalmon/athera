@@ -1,6 +1,6 @@
-use crate::dev::DEV_TREE;
-use crate::dev::ns16550a::Ns16550a;
 use core::fmt;
+
+use crate::dev::{DEV_TREE, ns16550a::Ns16550a};
 
 impl fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> fmt::Result {

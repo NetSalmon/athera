@@ -1,8 +1,14 @@
-use crate::arch::sbi;
-use crate::arch::sbi::srst::{ResetReason, ResetType, system_reset};
-use crate::dev::DEV_TREE;
-use crate::usr::SStatusBits;
-use crate::{arch, debug, kernel_halt, numeric, print};
+use crate::{
+    arch,
+    arch::{
+        sbi,
+        sbi::srst::{ResetReason, ResetType, system_reset},
+    },
+    debug,
+    dev::DEV_TREE,
+    kernel_halt, numeric, print,
+    usr::SStatusBits,
+};
 
 numeric! {
     pub enum ErrorCode : isize {

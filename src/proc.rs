@@ -1,9 +1,10 @@
-use crate::locks::SpinLock;
-use crate::trap::TrapContext;
 use alloc::collections::BTreeMap;
-use const_val::lazy;
 
-#[const_val::const_val]
+use novus_const::lazy;
+
+use crate::{locks::SpinLock, trap::TrapContext};
+
+#[novus_const::const_val]
 pub const PID_MAX: usize = 1024;
 
 #[lazy(spin)]

@@ -4,6 +4,9 @@
 _start:
     la sp, kernel_stack_top
 
+    la t0, FDT_ADDR
+    sd a1, 0(t0)
+
     la t0, trap_entry
     andi t0, t0, ~3
     csrs stvec, t0
@@ -98,6 +101,12 @@ trap_entry:
     addi sp, sp, 256
 
     sret
+
+.section .data
+.global FDT_ADDR
+.align 3
+FDT_ADDR:
+    .quad 0
 
 .section .bss.stack
 .global boot_stack_lower_bound

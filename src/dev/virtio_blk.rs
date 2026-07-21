@@ -2,16 +2,23 @@ pub mod legacy;
 pub mod modern;
 pub mod queue;
 
-use crate::dev::virtio_blk::legacy::handshake_legacy;
-use crate::dev::virtio_blk::modern::handshake_modern;
-use crate::dev::virtio_blk::queue::{Flags, VirtioDesc, get_mut};
-use crate::dev::{Device, Resource};
-use crate::error::Error;
-use crate::{bits, debug, mmio_regs, print, println};
-use core::ops::Deref;
-use core::ptr::addr_of;
-use core::sync::atomic::Ordering;
+use core::{ops::Deref, ptr::addr_of, sync::atomic::Ordering};
+
 use fdt::Fdt;
+
+use crate::{
+    bits, debug,
+    dev::{
+        Device, Resource,
+        virtio_blk::{
+            legacy::handshake_legacy,
+            modern::handshake_modern,
+            queue::{Flags, VirtioDesc, get_mut},
+        },
+    },
+    error::Error,
+    mmio_regs, print, println,
+};
 
 pub struct VirtioBlk {
     pub device: Device,
@@ -95,7 +102,7 @@ impl VirtioBlk {
     pub fn probe(fdt: &Fdt) -> Option<Self> {
         let virtio = fdt.all_nodes().find(|node| {
             node.compatible()
-                .map(|c| c.all().any(|c| c == "virtio,mmio"))
+                .map(|c| c.all().any(|c| c == "virtio_mmio,mmio"))
                 .unwrap_or(false)
         })?;
 
@@ -156,7 +163,7 @@ impl VirtioBlk {
         debug!("magic value: {}", magic_value);
         debug!("version: {}", version);
         debug!("device_id: {}", device_id);
-        debug!("is virtio: {}", is_virtio_mmio);
+        debug!("is virtio_mmio: {}", is_virtio_mmio);
 
         Ok(())
     }

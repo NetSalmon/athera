@@ -18,8 +18,8 @@ bench = false
 [dependencies]
 paste = "1.0.15"
 fdt = "0.1.5"
-const-num = { path = "const-num" }
-const-val = { path = "const-val" }
+novus-const = { path = "novus-const" }
+novus-id-alloc = { path = "novus-id-alloc" }
 
 [build-dependencies]
 toml = "1.1.2"
@@ -27,7 +27,8 @@ chrono = "0.4.45"
 
 [workspace]
 members = [
-    "const-num",
-    "const-val",
-    "applications"
+    "novus-const",
+    "novus-const-macros",
+    "novus-userland",
+    "novus-id-alloc"
 ]

@@ -1,5 +1,5 @@
 [package]
-name = "const-num"
+name = "novus-const"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,3 +10,6 @@ doctest = false
 
 [dependencies]
 paste = "1.0.15"
+novus-const-macros = { path = "../novus-const-macros" }
+
+[dev-dependencies]

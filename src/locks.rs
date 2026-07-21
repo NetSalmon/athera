@@ -1,8 +1,11 @@
+use core::{
+    cell::{Cell, UnsafeCell},
+    mem::MaybeUninit,
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
+};
+
 use crate::arch::registers::csr::Sie;
-use core::cell::{Cell, UnsafeCell};
-use core::mem::MaybeUninit;
-use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 pub struct SpinLock<T> {
     lock: AtomicBool,
@@ -140,6 +143,7 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
             init: Cell::new(Some(f)),
         }
     }
+
     pub fn force(&self) -> &T {
         self.cell.get_or_init(|| {
             let f = self.init.take().unwrap();
@@ -150,6 +154,7 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
 
 impl<T, F: FnOnce() -> T> Deref for LazyLock<T, F> {
     type Target = T;
+
     fn deref(&self) -> &T {
         self.force()
     }
