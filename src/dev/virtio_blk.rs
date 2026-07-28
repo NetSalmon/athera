@@ -1,8 +1,5 @@
-pub mod legacy;
-pub mod modern;
-pub mod queue;
-
-use core::{ops::Deref, ptr::addr_of, sync::atomic::Ordering};
+use alloc::vec::Vec;
+use core::{ptr::addr_of, sync::atomic::Ordering};
 
 use fdt::Fdt;
 
@@ -10,10 +7,10 @@ use crate::{
     bits, debug,
     dev::{
         Device, Resource,
-        virtio_blk::{
-            legacy::handshake_legacy,
-            modern::handshake_modern,
-            queue::{Flags, VirtioDesc, get_mut},
+        virtio_mmio::{
+            VirtqCfg,
+            handshake::QueueConfig,
+            queue::{Flags, VRingDesc, Virtq},
         },
     },
     error::Error,
@@ -22,6 +19,7 @@ use crate::{
 
 pub struct VirtioBlk {
     pub device: Device,
+    pub queues: Option<Vec<Virtq>>,
 }
 
 mmio_regs! {
@@ -102,7 +100,7 @@ impl VirtioBlk {
     pub fn probe(fdt: &Fdt) -> Option<Self> {
         let virtio = fdt.all_nodes().find(|node| {
             node.compatible()
-                .map(|c| c.all().any(|c| c == "virtio_mmio,mmio"))
+                .map(|c| c.all().any(|c| c == "virtio,mmio"))
                 .unwrap_or(false)
         })?;
 
@@ -118,19 +116,34 @@ impl VirtioBlk {
                 mmio: Resource::new(start, size),
                 irq: Some(irq),
             },
+            queues: None,
         })
     }
 
     pub fn handshake(&mut self) -> Result<(), Error> {
-        if self.version() != VIRTIO_VERSION_LEGACY {
-            handshake_modern(self)
-        } else {
-            handshake_legacy(self)
-        }
+        let mut cfg = VirtqCfg {
+            device: self.device,
+        };
+        let hs = cfg.handshake(
+            |_f| 0u32,
+            |_low, high| {
+                if high & 1 != 0 { (0, 1) } else { (0, 0) }
+            },
+        )?;
+
+        let ready = hs.setup_queues(&[QueueConfig {
+            index: 0,
+            size: RING_MAX_SIZE as u32,
+        }])?;
+        self.queues = Some(ready.finish());
+        Ok(())
     }
 
     pub fn from(dev: Device) -> VirtioBlk {
-        VirtioBlk { device: dev }
+        VirtioBlk {
+            device: dev,
+            queues: None,
+        }
     }
 
     pub fn print_info(&mut self) -> Result<(), Error> {
@@ -168,7 +181,7 @@ impl VirtioBlk {
         Ok(())
     }
 
-    pub unsafe fn test_read(&self) {
+    pub unsafe fn test_read(&mut self) {
         const VIRTIO_BLK_T_GET_ID: u32 = 8;
         const NEXT: Flags = Flags::from(1);
 
@@ -195,64 +208,66 @@ impl VirtioBlk {
             );
         }
 
-        let queue = get_mut();
+        let last_used;
+        let queue_ptr;
 
-        let last_used = queue.used.idx;
+        {
+            let queues = self.queues.as_mut().unwrap();
+            let queue = queues[0].as_mut();
 
-        queue.desc.data[0] = VirtioDesc {
-            addr: req_addr,
-            len: size_of::<VirtioBlkReq>() as u32,
-            flags: NEXT, // NEXT
-            next: 1,
-        };
+            last_used = queue.used.idx;
 
-        queue.desc.data[1] = VirtioDesc {
-            addr: buf_addr,
-            len: 512,
-            flags: 3.into(), // NEXT | WRITE
-            next: 2,
-        };
+            queue.desc[0] = VRingDesc {
+                addr: req_addr,
+                len: size_of::<VirtioBlkReq>() as u32,
+                flags: NEXT,
+                next: 1,
+            };
 
-        queue.desc.data[2] = VirtioDesc {
-            addr: status_addr,
-            len: 1,
-            flags: 2.into(), // WRITE
-            next: 0,
-        };
+            queue.desc[1] = VRingDesc {
+                addr: buf_addr,
+                len: 512,
+                flags: 3.into(),
+                next: 2,
+            };
 
-        queue.avail.ring[0] = 0;
-        queue.avail.idx = 2;
+            queue.desc[2] = VRingDesc {
+                addr: status_addr,
+                len: 1,
+                flags: 2.into(),
+                next: 0,
+            };
 
-        debug!("{:?}", queue);
+            queue.avail.ring[0] = 0;
+            queue.avail.idx = 2;
+
+            queue_ptr = queue as *const _ as usize;
+        }
 
         core::sync::atomic::fence(Ordering::SeqCst);
 
-        debug!(
-            "BEFORE NOTIFY: avail_idx={}, avail_ring[0]={}, desc0=({:#x}, {}, {:#x}, {}), queue @ 0x{:x}",
-            queue.avail.idx,
-            queue.avail.ring[0],
-            queue.desc.data[0].addr,
-            queue.desc.data[0].len,
-            &queue.desc.data[0].flags.deref(),
-            queue.desc.data[0].next,
-            queue as *const _ as usize,
-        );
+        debug!("BEFORE NOTIFY: avail_idx queue @ 0x{:x}", queue_ptr,);
 
         self.write_queue_notify(0);
         core::sync::atomic::fence(Ordering::SeqCst);
         debug!("AFTER NOTIFY");
 
         let mut guard = 0usize;
-        let idx_ptr = &queue.used.idx as *const u16;
+        {
+            let queues = self.queues.as_mut().unwrap();
+            let queue = queues[0].as_mut();
 
-        while unsafe { idx_ptr.read_volatile() } == last_used {
-            core::sync::atomic::fence(Ordering::SeqCst);
-            guard += 1;
-            if guard.is_multiple_of(100000000) {
-                debug!(
-                    "polling used: idx={} last={} guard={}",
-                    queue.used.idx, last_used, guard
-                );
+            let idx_ptr = &queue.used.idx as *const u16;
+
+            while unsafe { idx_ptr.read_volatile() } == last_used {
+                core::sync::atomic::fence(Ordering::SeqCst);
+                guard += 1;
+                if guard.is_multiple_of(100000000) {
+                    debug!(
+                        "polling used: idx={} last={} guard={}",
+                        queue.used.idx, last_used, guard
+                    );
+                }
             }
         }
 

@@ -10,7 +10,7 @@ use crate::{
     bits,
     constants::PAGE_SIZE,
     debug,
-    dev::DEV_TREE,
+    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK},
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
         allocators::alloc_frame,
@@ -166,14 +166,14 @@ pub fn unmap(va: VirtualAddr, flush: bool) {
 
 pub fn identity_map() {
     debug!("start identity mapping memory");
-    let start = DEV_TREE.memory.device.mmio.start;
-    let end = start + DEV_TREE.memory.device.mmio.size;
+    let start = SYSTEM_MEMORY.device.mmio.start;
+    let end = start + SYSTEM_MEMORY.device.mmio.size;
 
     for i in (start..end).step_by(PAGE_SIZE) {
         map(VirtualAddr::from(i), PhysicalAddr::from(i), false, false);
     }
 
-    if let Some(ref uart) = DEV_TREE.ns16550a {
+    if let Some(ref uart) = *UART {
         let start = uart.lock().device.mmio.start;
         map(
             VirtualAddr::from(start),
@@ -183,7 +183,7 @@ pub fn identity_map() {
         );
     }
 
-    if let Some(ref blk) = DEV_TREE.virtio_blk {
+    if let Some(ref blk) = *VIRTIO_BLK {
         let start = blk.device.mmio.start;
         let end = start + blk.device.mmio.size;
 

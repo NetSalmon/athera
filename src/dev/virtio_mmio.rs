@@ -6,7 +6,7 @@ use crate::{bits, dev::Device, mmio_regs, numeric};
 pub const MAGIC_VALUE: u32 = 0x74726976;
 
 pub struct VirtqCfg {
-    device: Device,
+    pub device: Device,
 }
 
 numeric! {

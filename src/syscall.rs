@@ -5,7 +5,7 @@ use crate::{
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
     debug,
-    dev::DEV_TREE,
+    dev::UART,
     kernel_halt, numeric, print,
     usr::SStatusBits,
 };
@@ -39,7 +39,7 @@ numeric! {
 }
 
 fn read(_fd: u64, buf: &mut [u8]) -> u64 {
-    let uart = match DEV_TREE.force().ns16550a.as_ref() {
+    let uart = match UART.force().as_ref() {
         Some(u) => u,
         None => return ErrorCode::EIO.0 as u64,
     };

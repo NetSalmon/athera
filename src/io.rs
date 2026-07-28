@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::dev::{DEV_TREE, ns16550a::Ns16550a};
+use crate::dev::{UART, ns16550a::Ns16550a};
 
 impl fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> fmt::Result {
@@ -13,7 +13,7 @@ impl fmt::Write for Ns16550a {
 
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
-    if let Some(uart) = DEV_TREE.force().ns16550a.as_ref() {
+    if let Some(uart) = UART.force().as_ref() {
         let _ = uart.lock().write_fmt(args);
     }
 }
@@ -32,5 +32,5 @@ macro_rules! println {
 }
 
 pub fn getchar() -> Option<u8> {
-    DEV_TREE.force().ns16550a.as_ref()?.lock().getchar()
+    UART.force().as_ref()?.lock().getchar()
 }
