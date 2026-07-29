@@ -66,18 +66,14 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         debug!("device version: {}", cfg.version());
         debug!("device id: {}", cfg.device_id());
 
-        let result = cfg.handshake(
-            |f| f,
-            |low, high| {
-                if high & 1 != 0 { (low, 1) } else { (low, 0) }
-            },
-        );
+        let result = cfg.handshake()
+            .legacy(|f| f);
 
         match result {
-            Ok(hs) => {
+            Ok(features) => {
                 debug!("[generic] handshake ok, setting up queue 0...");
 
-                match hs.setup_queues(&[QueueConfig { index: 0, size: 32 }]) {
+                match features.setup_queue(QueueConfig { index: 0, size: 32 }) {
                     Ok(ready) => {
                         let _queues = ready.finish();
                         debug!("[generic] queue setup ok, {} queue(s) ready", _queues.len());
