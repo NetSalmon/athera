@@ -116,15 +116,3 @@ kernel_stack_lower_bound:
     .space 4096 * 16
     .global kernel_stack_top
 kernel_stack_top:
-
-user_stack_lower_bound:
-    .space 4096 * 16
-    .global user_stack_top
-user_stack_top:
-
-.section .bss.queue
-.global queue_lower_bound
-queue_lower_bound:
-    .space 4096 * 32
-    .global queue_top
-queue_top:
