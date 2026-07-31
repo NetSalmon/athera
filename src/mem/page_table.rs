@@ -13,13 +13,13 @@ use crate::{
     bits,
     constants::{PAGE_SIZE, PTE_NUMBER},
     debug,
-    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK},
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
     },
     proc::Tid,
 };
+use crate::dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK};
 
 bits! {
     pub type PageTableEntry: u64 {
@@ -266,16 +266,16 @@ impl AddressSpace {
 }
 
 impl PageTableManager {
-    pub fn create_user_address_space(&mut self, tid: &Tid) {
+    pub fn create_user_address_space(&mut self, tid: Tid) {
         let mut page_table = PageTableHandle::create();
         self.kernel.root.copy_low_half(&mut page_table);
-        
+
         let address = AddressSpace {
             root: page_table,
             tables: BTreeMap::new(),
         };
-        
-        self.user.insert(*tid, address);
+
+        self.user.insert(tid, address);
     }
 
     pub fn new() -> Self {
@@ -375,7 +375,8 @@ impl PageTableManager {
     pub fn activate(&self, id: AddressSpaceId) {
         let root = match id {
             AddressSpaceId::Kernel => self.kernel.root.as_phys_addr(),
-            AddressSpaceId::User(tid) => self.user
+            AddressSpaceId::User(tid) => self
+                .user
                 .get(&tid)
                 .expect("user address space not found")
                 .root

@@ -6,12 +6,16 @@ use novus_const::const_val;
 use crate::{
     arch::registers::csr::Sstatus,
     bits,
-    constants::{PHY_PAGE_SIZE, USERLAND_OFFSET},
+    constants::PHY_PAGE_SIZE,
     debug,
     elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
     error::Error,
-    mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR, page_table::PageTable},
-    proc::MemorySet,
+    mem::{
+        alloc_page::AllocPage,
+        allocators::FRAME_ALLOCATOR,
+        page_table::{PAGE_TABLE_MANAGER, PageTable, PageTableEntryFlags},
+    },
+    proc::{MemorySet, alloc_tid},
 };
 
 bits! {
@@ -50,6 +54,12 @@ pub fn load_elf(elf: &[u8]) -> Result<MemorySet, Error> {
     debug!("elf entry: {:#p}", header.e_entry as *const ());
 
     let mut alloc_pages = Vec::new();
+    let tid = alloc_tid().unwrap();
+
+    PAGE_TABLE_MANAGER
+        .force()
+        .lock()
+        .create_user_address_space(tid);
 
     let ph_ptr = unsafe { ptr.add(ph_offset as usize) as *const Elf64Phdr };
 
@@ -89,23 +99,29 @@ pub fn load_elf(elf: &[u8]) -> Result<MemorySet, Error> {
             size: mem_size,
         });
 
-        unsafe {
-            ptr::copy(
-                ptr.add(offset),
-                (alloc_page + inside_offset) as *mut u8,
-                file_size,
-            )
-        }
+        let mut flags = PageTableEntryFlags::new();
 
-        // check
-        unsafe {
-            let s1 = slice::from_raw_parts((alloc_page + inside_offset) as *const u8, file_size);
-            let s2 = slice::from_raw_parts(ptr.add(offset), file_size);
-            assert_eq!(s1, s2);
-        }
+        flags.set_r(ph.p_flags.read());
+        flags.set_w(ph.p_flags.write());
+        flags.set_x(ph.p_flags.execute());
+        flags.set_u(true);
 
-        for i in file_size..mem_size {
-            unsafe { (alloc_page as *mut u8).add(i).write(0) }
+        PAGE_TABLE_MANAGER.force().lock().user_map(
+            tid,
+            (ph.p_vaddr as usize).into(),
+            alloc_page.into(),
+            flags,
+            false,
+        );
+
+        let copy_start = (alloc_page + offset) as *mut u8;
+
+        unsafe {
+            // bss
+            ptr::write_bytes(copy_start, 0, mem_size);
+
+            // copy
+            ptr::copy(ptr.add(offset), copy_start, file_size)
         }
 
         debug!("load ok");

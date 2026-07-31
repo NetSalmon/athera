@@ -17,16 +17,12 @@ pub static TID_ALLOCATOR: IdAllocator = IdAllocator::from_range(0..TID_MAX);
 #[derive(Debug, PartialEq, Clone, Ord, Eq, PartialOrd, Copy)]
 pub struct Tid(pub usize);
 
-impl Tid {
-    pub fn new() -> Self {
-        let tid = TID_ALLOCATOR
-            .force()
-            .lock()
-            .alloc()
-            .expect("task out of range");
+pub fn alloc_tid() -> Option<Tid> {
+    TID_ALLOCATOR.force().lock().alloc().map(Tid)
+}
 
-        Self(tid)
-    }
+pub fn dealloc_tid(tid: Tid) {
+    let _ = TID_ALLOCATOR.force().lock().dealloc(tid.0);
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
