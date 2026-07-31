@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::arch::asm;
 
 use crate::{
@@ -113,7 +114,7 @@ fn trap_handler(
         }
         Trap::Exception(Exception::ILLEGAL_INSTRUCTION) => {
             error!("illegal instruction at sepc = {:#x}", sepc);
-            system_reset(ResetType::Shutdown, ResetReason::SysFail);
+            system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         Trap::Interrupt(Interrupt::SUPERVISOR_EXTERNAL) => {}
         Trap::Exception(
@@ -123,7 +124,7 @@ fn trap_handler(
             | Exception::INSTRUCTION_ACCESS_FAULT,
         ) => {
             error!("memory access fault: {trap:?}, sepc = {sepc:#x}");
-            system_reset(ResetType::Shutdown, ResetReason::SysFail);
+            system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         other => {
             warn!("unhandled trap: {other:?}, sepc = {sepc:#x}");

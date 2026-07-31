@@ -1,12 +1,12 @@
 use crate::{
     arch,
     arch::{
+        registers::values::SStatusBits,
         sbi,
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
     dev::UART,
     info, kernel_halt, numeric, print,
-    usr::SStatusBits,
 };
 
 numeric! {
@@ -26,6 +26,9 @@ numeric! {
         FORK = 220,
         WAITPID = 95,
         EXEC = 221,
+        MMAP = 222,
+        MUNMAP = 223,
+        MREMAP = 224,
     }
 }
 
@@ -72,10 +75,10 @@ fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
 
     match RebootCmd::from(cmd) {
         RebootCmd::POWER_OFF => {
-            system_reset(ResetType::Shutdown, ResetReason::None);
+            system_reset(ResetType::SHUTDOWN, ResetReason::NONE);
         }
         RebootCmd::RESTART => {
-            system_reset(ResetType::ColdReboot, ResetReason::None);
+            system_reset(ResetType::COLD_REBOOT, ResetReason::NONE);
         }
         RebootCmd::HALT => {
             sbi::hsm::hart_stop();
@@ -111,6 +114,15 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             let ret = reboot(args[0], args[1], args[2]);
 
             (ret as u64, sepc + 4)
+        }
+        Syscall::MMAP => {
+            todo!()
+        }
+        Syscall::MUNMAP => {
+            todo!()
+        }
+        Syscall::MREMAP => {
+            todo!()
         }
         _ => (ErrorCode::ENOSYS.0 as u64, sepc + 4),
     }

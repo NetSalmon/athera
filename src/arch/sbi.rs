@@ -1,16 +1,19 @@
-#[repr(i64)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SbiError {
-    Success = 0,
-    Failed = -1,
-    NotSupported = -2,
-    InvalidParam = -3,
-    Denied = -4,
-    InvalidAddress = -5,
-    AlreadyAvailable = -6,
-    AlreadyStarted = -7,
-    AlreadyStopped = -8,
-    NoShmem = -9,
+#![allow(dead_code)]
+use crate::numeric;
+
+numeric! {
+    pub enum SbiError: i64 {
+        SUCCESS = 0,
+        FAILED = -1,
+        NOT_SUPPORTED = -2,
+        INVALID_PARAM = -3,
+        DENIED = -4,
+        INVALID_ADDRESS = -5,
+        ALREADY_AVAILABLE = -6,
+        ALREADY_STARTED = -7,
+        ALREADY_STOPPED = -8,
+        NO_SHMEM = -9,
+    }
 }
 
 #[derive(Debug)]
@@ -29,16 +32,16 @@ impl From<SbiResult> for Result {
     fn from(result: SbiResult) -> Self {
         if result.error != 0 {
             let err = match result.error {
-                0 => SbiError::Success,
-                -1 => SbiError::Failed,
-                -2 => SbiError::NotSupported,
-                -3 => SbiError::InvalidParam,
-                -4 => SbiError::Denied,
-                -5 => SbiError::InvalidAddress,
-                -6 => SbiError::AlreadyAvailable,
-                -7 => SbiError::AlreadyStarted,
-                -8 => SbiError::AlreadyStopped,
-                -9 => SbiError::NoShmem,
+                0 => SbiError::SUCCESS,
+                -1 => SbiError::FAILED,
+                -2 => SbiError::NOT_SUPPORTED,
+                -3 => SbiError::INVALID_PARAM,
+                -4 => SbiError::DENIED,
+                -5 => SbiError::INVALID_ADDRESS,
+                -6 => SbiError::ALREADY_AVAILABLE,
+                -7 => SbiError::ALREADY_STARTED,
+                -8 => SbiError::ALREADY_STOPPED,
+                -9 => SbiError::NO_SHMEM,
                 _ => unreachable!(),
             };
             Result::Err(err)
@@ -48,30 +51,30 @@ impl From<SbiResult> for Result {
     }
 }
 
-#[repr(u64)]
-#[derive(Clone, Copy)]
-pub enum Eid {
-    // Legacy extensions (v0.1). Each occupies its own EID and uses the legacy ABI.
-    LegacySetTimer = 0x00,
-    LegacyConsolePutchar = 0x01,
-    LegacyConsoleGetchar = 0x02,
-    LegacyClearIpi = 0x03,
-    LegacySendIpi = 0x04,
-    LegacyRemoteFenceI = 0x05,
-    LegacyRemoteSfenceVma = 0x06,
-    LegacyRemoteSfenceVmaAsid = 0x07,
-    LegacyShutdown = 0x08,
+numeric! {
+    pub enum Eid: u64 {
+        // Legacy extensions (v0.1). Each occupies its own EID and uses the legacy ABI.
+        LEGACY_SET_TIMER = 0x00,
+        LEGACY_CONSOLE_PUTCHAR = 0x01,
+        LEGACY_CONSOLE_GETCHAR = 0x02,
+        LEGACY_CLEAR_IPI = 0x03,
+        LEGACY_SEND_IPI = 0x04,
+        LEGACY_REMOTE_FENCE_I = 0x05,
+        LEGACY_REMOTE_SFENCE_VMA = 0x06,
+        LEGACY_REMOTE_SFENCE_VMA_ASID = 0x07,
+        LEGACY_SHUTDOWN = 0x08,
 
-    Base = 0x10,
-    Time = 0x54494D45,
-    Ipi = 0x735049,
-    Rfence = 0x52464E43,
-    Hsm = 0x48534D,
-    Srst = 0x53525354,
-    Pmu = 0x504D55,
-    Dbcn = 0x4442434E,
-    Susp = 0x53555350,
-    Fwft = 0x46574654,
+        BASE = 0x10,
+        TIME = 0x54494D45,
+        IPI = 0x735049,
+        RFENCE = 0x52464E43,
+        HSM = 0x48534D,
+        SRST = 0x53525354,
+        PMU = 0x504D55,
+        DBCN = 0x4442434E,
+        SUSP = 0x53555350,
+        FWFT = 0x46574654,
+    }
 }
 
 pub fn ecall(eid: Eid, fid: u64, args: [u64; 6]) -> Result {
@@ -87,7 +90,7 @@ pub fn ecall(eid: Eid, fid: u64, args: [u64; 6]) -> Result {
         in("a4") args[4],
         in("a5") args[5],
         in("a6") fid,
-        in("a7") eid as u64,
+        in("a7") eid.0,
         );
     }
 
@@ -114,7 +117,7 @@ pub fn legacy_ecall(eid: Eid, args: [u64; 4]) -> i64 {
         in("a1") args[1],
         in("a2") args[2],
         in("a3") args[3],
-        in("a7") eid as u64,
+        in("a7") eid.0,
         );
     }
 
@@ -126,31 +129,31 @@ pub mod base {
     use super::*;
 
     pub fn get_spec_version() -> Result {
-        ecall(Eid::Base, 0, [0; 6])
+        ecall(Eid::BASE, 0, [0; 6])
     }
 
     pub fn get_impl_id() -> Result {
-        ecall(Eid::Base, 1, [0; 6])
+        ecall(Eid::BASE, 1, [0; 6])
     }
 
     pub fn get_impl_version() -> Result {
-        ecall(Eid::Base, 2, [0; 6])
+        ecall(Eid::BASE, 2, [0; 6])
     }
 
     pub fn probe_extension(eid: Eid) -> Result {
-        ecall(Eid::Base, 3, [eid as u64, 0, 0, 0, 0, 0])
+        ecall(Eid::BASE, 3, [eid.0, 0, 0, 0, 0, 0])
     }
 
     pub fn get_mvendorid() -> Result {
-        ecall(Eid::Base, 4, [0; 6])
+        ecall(Eid::BASE, 4, [0; 6])
     }
 
     pub fn get_marchid() -> Result {
-        ecall(Eid::Base, 5, [0; 6])
+        ecall(Eid::BASE, 5, [0; 6])
     }
 
     pub fn get_mimpid() -> Result {
-        ecall(Eid::Base, 6, [0; 6])
+        ecall(Eid::BASE, 6, [0; 6])
     }
 }
 
@@ -159,7 +162,7 @@ pub mod time {
     use super::*;
 
     pub fn set_timer(stime_value: u64) -> Result {
-        ecall(Eid::Time, 0, [stime_value, 0, 0, 0, 0, 0])
+        ecall(Eid::TIME, 0, [stime_value, 0, 0, 0, 0, 0])
     }
 }
 
@@ -168,7 +171,7 @@ pub mod ipi {
     use super::*;
 
     pub fn send_ipi(hart_mask: u64, hart_mask_base: u64) -> Result {
-        ecall(Eid::Ipi, 0, [hart_mask, hart_mask_base, 0, 0, 0, 0])
+        ecall(Eid::IPI, 0, [hart_mask, hart_mask_base, 0, 0, 0, 0])
     }
 }
 
@@ -177,11 +180,11 @@ pub mod rfence {
     use super::*;
 
     pub fn remote_fence_i(mask: u64, base: u64) -> Result {
-        ecall(Eid::Rfence, 0, [mask, base, 0, 0, 0, 0])
+        ecall(Eid::RFENCE, 0, [mask, base, 0, 0, 0, 0])
     }
 
     pub fn remote_sfence_vma(mask: u64, base: u64, start: u64, size: u64) -> Result {
-        ecall(Eid::Rfence, 1, [mask, base, start, size, 0, 0])
+        ecall(Eid::RFENCE, 1, [mask, base, start, size, 0, 0])
     }
 
     pub fn remote_sfence_vma_asid(
@@ -191,7 +194,7 @@ pub mod rfence {
         size: u64,
         asid: u64,
     ) -> Result {
-        ecall(Eid::Rfence, 2, [mask, base, start, size, asid, 0])
+        ecall(Eid::RFENCE, 2, [mask, base, start, size, asid, 0])
     }
 }
 
@@ -200,19 +203,19 @@ pub mod hsm {
     use super::*;
 
     pub fn hart_start(hart_id: u64, start_addr: u64, opaque: u64) -> Result {
-        ecall(Eid::Hsm, 0, [hart_id, start_addr, opaque, 0, 0, 0])
+        ecall(Eid::HSM, 0, [hart_id, start_addr, opaque, 0, 0, 0])
     }
 
     pub fn hart_stop() -> Result {
-        ecall(Eid::Hsm, 1, [0; 6])
+        ecall(Eid::HSM, 1, [0; 6])
     }
 
     pub fn hart_get_status(hart_id: u64) -> Result {
-        ecall(Eid::Hsm, 2, [hart_id, 0, 0, 0, 0, 0])
+        ecall(Eid::HSM, 2, [hart_id, 0, 0, 0, 0, 0])
     }
 
     pub fn hart_suspend(suspend_type: u64, resume_addr: u64, opaque: u64) -> Result {
-        ecall(Eid::Hsm, 3, [suspend_type, resume_addr, opaque, 0, 0, 0])
+        ecall(Eid::HSM, 3, [suspend_type, resume_addr, opaque, 0, 0, 0])
     }
 }
 
@@ -220,24 +223,26 @@ pub mod hsm {
 pub mod srst {
     use super::*;
 
-    #[repr(u64)]
-    pub enum ResetType {
-        Shutdown = 0,
-        ColdReboot = 1,
-        WarmReboot = 2,
+    numeric! {
+        pub enum ResetType: u64 {
+            SHUTDOWN = 0,
+            COLD_REBOOT = 1,
+            WARM_REBOOT = 2,
+        }
     }
 
-    #[repr(u64)]
-    pub enum ResetReason {
-        None = 0,
-        SysFail = 1,
+    numeric! {
+        pub enum ResetReason: u64 {
+            NONE = 0,
+            SYS_FAIL = 1,
+        }
     }
 
     pub fn system_reset(reset_type: ResetType, reset_reason: ResetReason) -> Result {
         ecall(
-            Eid::Srst,
+            Eid::SRST,
             0,
-            [reset_type as u64, reset_reason as u64, 0, 0, 0, 0],
+            [reset_type.0, reset_reason.0, 0, 0, 0, 0],
         )
     }
 }
@@ -253,19 +258,19 @@ pub mod legacy {
 
     /// Write a single byte to the debug console. Always returns 0 in OpenSBI.
     pub fn console_putchar(c: u8) {
-        legacy_ecall(Eid::LegacyConsolePutchar, [c as u64, 0, 0, 0]);
+        legacy_ecall(Eid::LEGACY_CONSOLE_PUTCHAR, [c as u64, 0, 0, 0]);
     }
 
     /// Read a single byte from the debug console.
     /// Returns `Some(byte)` on success, `None` if no byte is available
     /// (legacy ABI uses -1 to signal "no input").
     pub fn console_getchar() -> Option<u8> {
-        let r = legacy_ecall(Eid::LegacyConsoleGetchar, [0; 4]);
+        let r = legacy_ecall(Eid::LEGACY_CONSOLE_GETCHAR, [0; 4]);
         if r < 0 { None } else { Some(r as u8) }
     }
 
     pub fn shutdown() -> ! {
-        legacy_ecall(Eid::LegacyShutdown, [0; 4]);
+        legacy_ecall(Eid::LEGACY_SHUTDOWN, [0; 4]);
         // SBI never returns from shutdown; loop just to satisfy `!`.
         loop {
             unsafe { core::arch::asm!("wfi") }
@@ -273,11 +278,11 @@ pub mod legacy {
     }
 
     pub fn set_timer(stime_value: u64) {
-        legacy_ecall(Eid::LegacySetTimer, [stime_value, 0, 0, 0]);
+        legacy_ecall(Eid::LEGACY_SET_TIMER, [stime_value, 0, 0, 0]);
     }
 
     pub fn clear_ipi() {
-        legacy_ecall(Eid::LegacyClearIpi, [0; 4]);
+        legacy_ecall(Eid::LEGACY_CLEAR_IPI, [0; 4]);
     }
 }
 
@@ -291,17 +296,17 @@ pub mod dbcn {
 
     /// Write `len` bytes starting at physical address `base_addr`.
     pub fn console_write(len: u64, base_addr_lo: u64, base_addr_hi: u64) -> Result {
-        ecall(Eid::Dbcn, 0, [len, base_addr_lo, base_addr_hi, 0, 0, 0])
+        ecall(Eid::DBCN, 0, [len, base_addr_lo, base_addr_hi, 0, 0, 0])
     }
 
     /// Read up to `len` bytes into the buffer at physical address `base_addr`.
     pub fn console_read(len: u64, base_addr_lo: u64, base_addr_hi: u64) -> Result {
-        ecall(Eid::Dbcn, 1, [len, base_addr_lo, base_addr_hi, 0, 0, 0])
+        ecall(Eid::DBCN, 1, [len, base_addr_lo, base_addr_hi, 0, 0, 0])
     }
 
     /// Write a single byte. Convenient for putchar-style output.
     pub fn console_write_byte(b: u8) -> Result {
-        ecall(Eid::Dbcn, 2, [b as u64, 0, 0, 0, 0, 0])
+        ecall(Eid::DBCN, 2, [b as u64, 0, 0, 0, 0, 0])
     }
 
     /// Helper: write a whole byte slice. The buffer must live in memory

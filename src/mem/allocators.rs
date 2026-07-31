@@ -1,9 +1,10 @@
+#![allow(dead_code)]
 use core::alloc::{GlobalAlloc, Layout};
 
 use novus_const::lazy;
 
 use crate::{
-    constants::{AVAIL_RANGE, PAGE_SIZE, PHY_PAGE_SIZE},
+    constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
     debug,
     locks::{LazyLock, SpinLock},
     mem::{

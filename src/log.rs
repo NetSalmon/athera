@@ -3,48 +3,51 @@ use core::{
     sync::atomic::{AtomicU8, Ordering},
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-#[repr(u8)]
-pub enum Level {
-    #[allow(dead_code)]
-    Off = 0,
-    Error = 1,
-    Warn = 2,
-    Info = 3,
-    Debug = 4,
-    Trace = 5,
+use crate::numeric;
+
+numeric! {
+    pub enum Level: u8 {
+        OFF = 0,
+        ERROR = 1,
+        WARN = 2,
+        INFO = 3,
+        DEBUG = 4,
+        TRACE = 5,
+    }
 }
 
-static LEVEL: AtomicU8 = AtomicU8::new(Level::Info as u8);
+static LEVEL: AtomicU8 = AtomicU8::new(Level::INFO.0);
 
 pub fn set_level(level: Level) {
-    LEVEL.store(level as u8, Ordering::Relaxed);
+    LEVEL.store(level.0, Ordering::Relaxed);
 }
 
 #[inline]
 pub fn enabled(level: Level) -> bool {
-    level as u8 <= LEVEL.load(Ordering::Relaxed)
+    level.0 <= LEVEL.load(Ordering::Relaxed)
 }
 
 fn color(level: Level) -> &'static str {
     match level {
-        Level::Trace => "\x1b[90m",
-        Level::Debug => "\x1b[32m",
-        Level::Info => "\x1b[33m",
-        Level::Warn => "\x1b[35m",
-        Level::Error => "\x1b[31m",
-        Level::Off => "",
+        Level::TRACE => "\x1b[90m",
+        Level::DEBUG => "\x1b[32m",
+        Level::INFO => "\x1b[33m",
+        Level::WARN => "\x1b[35m",
+        Level::ERROR => "\x1b[31m",
+        Level::OFF => "",
+        _ => "",
     }
 }
 
 fn label(level: Level) -> &'static str {
     match level {
-        Level::Trace => "trace",
-        Level::Debug => "debug",
-        Level::Info => "info",
-        Level::Warn => "warn",
-        Level::Error => "error",
-        Level::Off => "off",
+        Level::TRACE => "trace",
+        Level::DEBUG => "debug",
+        Level::INFO => "info",
+        Level::WARN => "warn",
+        Level::ERROR => "error",
+        Level::OFF => "off",
+        _ => "",
     }
 }
 
@@ -64,8 +67,8 @@ pub fn log(level: Level, module: &str, args: fmt::Arguments) {
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
-        if $crate::log::enabled($crate::log::Level::Trace) {
-            $crate::log::log($crate::log::Level::Trace, module_path!(), format_args!($($arg)*));
+        if $crate::log::enabled($crate::log::Level::TRACE) {
+            $crate::log::log($crate::log::Level::TRACE, module_path!(), format_args!($($arg)*));
         }
     };
 }
@@ -73,8 +76,8 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
-        if $crate::log::enabled($crate::log::Level::Debug) {
-            $crate::log::log($crate::log::Level::Debug, module_path!(), format_args!($($arg)*));
+        if $crate::log::enabled($crate::log::Level::DEBUG) {
+            $crate::log::log($crate::log::Level::DEBUG, module_path!(), format_args!($($arg)*));
         }
     };
 }
@@ -82,8 +85,8 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
-        if $crate::log::enabled($crate::log::Level::Info) {
-            $crate::log::log($crate::log::Level::Info, module_path!(), format_args!($($arg)*));
+        if $crate::log::enabled($crate::log::Level::INFO) {
+            $crate::log::log($crate::log::Level::INFO, module_path!(), format_args!($($arg)*));
         }
     };
 }
@@ -91,8 +94,8 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
-        if $crate::log::enabled($crate::log::Level::Warn) {
-            $crate::log::log($crate::log::Level::Warn, module_path!(), format_args!($($arg)*));
+        if $crate::log::enabled($crate::log::Level::WARN) {
+            $crate::log::log($crate::log::Level::WARN, module_path!(), format_args!($($arg)*));
         }
     };
 }
@@ -100,8 +103,8 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
-        if $crate::log::enabled($crate::log::Level::Error) {
-            $crate::log::log($crate::log::Level::Error, module_path!(), format_args!($($arg)*));
+        if $crate::log::enabled($crate::log::Level::ERROR) {
+            $crate::log::log($crate::log::Level::ERROR, module_path!(), format_args!($($arg)*));
         }
     };
 }

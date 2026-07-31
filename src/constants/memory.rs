@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::ops::Range;
 
 use fdt::Fdt;
@@ -67,5 +68,12 @@ pub const SLUB_MIN_ORDER: usize = 4;
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
 
 pub const USERLAND_OFFSET: usize = 0xffff_ffc0_0000_0000;
+
+#[const_val(multiple_of = PHY_PAGE_SIZE)]
+pub const USER_STACK_SIZE: usize = PHY_PAGE_SIZE * 8;
+#[const_val(multiple_of = PHY_PAGE_SIZE)]
+pub const USER_STACK_TOP: usize = 0x1_0000_0000;
+
+pub const USER_STACK_LOWER_BOUND: usize = USER_STACK_TOP - USER_STACK_SIZE;
 
 pub const PTE_NUMBER: usize = 512;

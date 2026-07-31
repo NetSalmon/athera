@@ -17,3 +17,11 @@ numeric! {
         SV64 = 11,
     }
 }
+
+bits! {
+    pub type SStatusBits: u64 {
+        spp: 8,
+        spie: 5,
+        sie: 1
+    }
+}

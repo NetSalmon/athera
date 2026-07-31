@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::fmt::{Display, Formatter};
 
 use crate::{array_struct, bits, numeric};

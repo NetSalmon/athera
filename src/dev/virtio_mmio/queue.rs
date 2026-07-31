@@ -1,7 +1,9 @@
+#![allow(dead_code)]
 use core::alloc::Layout;
 
 use crate::{
     bits,
+    constants::RING_SIZE,
     error::{Error, Result},
     mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
 };
@@ -102,8 +104,5 @@ impl Virtq {
         unsafe { &mut *(self._mem.start as *mut Queue) }
     }
 }
-
-#[novus_const::const_val(multiple_of = 2, max = 1024, min = 64)]
-pub const RING_SIZE: usize = 256;
 
 pub type VirtqRing<T> = [T; RING_SIZE];

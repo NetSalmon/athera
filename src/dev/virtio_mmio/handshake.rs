@@ -1,12 +1,12 @@
+#![allow(dead_code)]
 use alloc::vec::Vec;
 
 use crate::{
+    constants::VIRTIO_VERSION_LEGACY,
     dev::virtio_mmio::{DeviceStatus, VirtqCfg, queue::Virtq},
     error::{Error, Result},
     mem::addr::PhysicalAddr,
 };
-
-const VIRTIO_VERSION_LEGACY: u32 = 1;
 
 pub struct QueueConfig {
     pub index: u32,
@@ -95,11 +95,11 @@ impl<'a> HandshakeBegin<'a> {
 }
 
 impl<'a> FeaturesNegotiated<'a> {
-    pub fn setup_queue(mut self, config: QueueConfig) -> Result<QueuesReady<'a>> {
+    pub fn setup_queue(self, config: QueueConfig) -> Result<QueuesReady<'a>> {
         self.setup_queues(&[config])
     }
 
-    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<QueuesReady<'a>> {
+    pub fn setup_queues(self, configs: &[QueueConfig]) -> Result<QueuesReady<'a>> {
         let version = self.cfg.version();
         let mut queues = Vec::new();
 

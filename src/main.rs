@@ -13,11 +13,10 @@ mod mem;
 mod proc;
 mod syscall;
 mod trap;
-mod usr;
 
 extern crate alloc;
 
-use core::{arch::global_asm, panic::PanicInfo, sync::atomic::AtomicBool};
+use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
@@ -42,9 +41,9 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     }
 
     #[cfg(debug_assertions)]
-    log::set_level(Level::Trace);
+    log::set_level(Level::TRACE);
     #[cfg(not(debug_assertions))]
-    log::set_level(Level::Info);
+    log::set_level(Level::INFO);
 
     info!("system info: {SYS} {VERSION} {RELEASE} {ARCH}");
 
@@ -55,11 +54,17 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("kernel end: {:#x}", _end as *const () as usize);
 
-    identity_map();
+    if let Err(err) = identity_map() {
+        error!("identity mapping failed: {err}");
+        kernel_halt()
+    }
 
     info!("page table setup ok");
 
-    proc::execute_buffer(&ELF.0);
+    if let Err(err) = proc::execute_buffer(&ELF.0) {
+        error!("failed to execute user program: {err}");
+        kernel_halt()
+    }
 
     kernel_halt()
 }
@@ -67,7 +72,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 #[unsafe(no_mangle)]
 fn kernel_halt() -> ! {
     info!("kernel halted");
-    system_reset(ResetType::Shutdown, ResetReason::None);
+    system_reset(ResetType::SHUTDOWN, ResetReason::NONE);
     loop {
         core::hint::spin_loop();
     }
@@ -95,7 +100,7 @@ fn panic_handle(info: &PanicInfo) -> ! {
 
     error!("================================");
 
-    let _ = system_reset(ResetType::Shutdown, ResetReason::SysFail);
+    let _ = system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
 
     loop {
         core::hint::spin_loop();

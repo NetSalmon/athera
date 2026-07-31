@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // | Register| ABI Name | Description                      | Access | Saver  |
 // | ------- | -------- | -------------------------------- | ------ | ------ |
 // | x0      | zero     | Hard-wired zero                  | r      | —      |

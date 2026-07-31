@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::bits;
 
 pub trait AsPAddr {

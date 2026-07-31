@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::fmt;
 
 use crate::dev::{UART, ns16550a::Ns16550a};

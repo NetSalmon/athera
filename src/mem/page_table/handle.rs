@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
@@ -6,6 +7,7 @@ use core::{
 
 use crate::{
     constants::PTE_NUMBER,
+    error::{Error, Result},
     mem::{
         alloc_page::AllocPage,
         allocators::alloc_frame,
@@ -29,25 +31,26 @@ impl PageTableHandle {
         }
     }
 
-    pub fn create() -> Self {
-        let page = alloc_frame(None).expect("out of memory");
+    pub fn create() -> Result<Self> {
+        let page = alloc_frame(None).ok_or(Error::OutOfMemory)?;
 
         let page_table = unsafe { &mut *(page.start as *mut PageTable) };
 
         page_table.entries = [PageTableEntry::default(); PTE_NUMBER];
 
-        Self {
+        Ok(Self {
             ptr: NonNull::from(page_table),
             page,
             _phantom: PhantomData,
-        }
+        })
     }
 
     pub unsafe fn from_raw(addr: usize, size: usize) -> Self {
         let page = unsafe { AllocPage::from_raw(addr, size) };
 
         Self {
-            ptr: NonNull::new(addr as *mut PageTable).unwrap(),
+            ptr: NonNull::new(addr as *mut PageTable)
+                .expect("PageTableHandle::from_raw requires a non-null address"),
             page,
             _phantom: PhantomData,
         }

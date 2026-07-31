@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::ptr;
 
 use crate::mem::allocators::FRAME_ALLOCATOR;

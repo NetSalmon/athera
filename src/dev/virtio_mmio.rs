@@ -1,9 +1,8 @@
+#![allow(dead_code)]
 pub mod handshake;
 pub mod queue;
 
 use crate::{bits, dev::Device, mmio_regs, numeric};
-
-pub const MAGIC_VALUE: u32 = 0x74726976;
 
 pub struct VirtqCfg {
     pub device: Device,

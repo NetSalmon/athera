@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // | Address | Name       | Mode | Access | Description                          |
 // | ------- | ---------- | ---- | ------ | ------------------------------------ |
 // | 0x001   | fflags     | U    | rw     | Floating-point accrued exceptions    |

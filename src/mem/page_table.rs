@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod handle;
 
 use alloc::collections::BTreeMap;
@@ -14,7 +15,7 @@ use crate::{
     constants::{PAGE_SIZE, PTE_NUMBER},
     debug,
     dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK},
-    info,
+    error::{Error, Result},
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
@@ -104,7 +105,7 @@ impl PageTable {
 #[lazy(spin)]
 pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();
 
-pub fn identity_map() {
+pub fn identity_map() -> Result<()> {
     debug!("start identity mapping memory");
 
     let mut mgr = PAGE_TABLE_MANAGER.lock();
@@ -112,7 +113,7 @@ pub fn identity_map() {
 
     let start = SYSTEM_MEMORY.device.mmio.start;
     let end = start + SYSTEM_MEMORY.device.mmio.size;
-    mgr.identity_map(start, end);
+    mgr.identity_map(start, end)?;
 
     let mut flags = PageTableEntryFlags::new();
     flags.set_r(true);
@@ -127,21 +128,22 @@ pub fn identity_map() {
             PhysicalAddr::from(start),
             flags,
             false,
-        );
+        )?;
     }
 
     if let Some(ref blk) = *VIRTIO_BLK {
         let start = blk.device.mmio.start;
         let end = start + blk.device.mmio.size;
-        mgr.identity_map(start, end);
+        mgr.identity_map(start, end)?;
     }
 
     debug!("map ok");
     debug!("root pt addr at: {:?}", root_addr);
 
-    mgr.activate(AddressSpaceId::Kernel);
+    mgr.activate(AddressSpaceId::Kernel)?;
 
     debug!("identity mapping memory end");
+    Ok(())
 }
 
 pub struct AddressSpace {
@@ -160,7 +162,12 @@ pub struct PageTableManager {
 }
 
 impl AddressSpace {
-    pub fn map(&mut self, va: VirtualAddr, pa: PhysicalAddr, flags: PageTableEntryFlags) {
+    pub fn map(
+        &mut self,
+        va: VirtualAddr,
+        pa: PhysicalAddr,
+        flags: PageTableEntryFlags,
+    ) -> Result<()> {
         let vpn2 = va.vpn2();
         let vpn1 = va.vpn1();
         let vpn0 = va.vpn0();
@@ -168,7 +175,7 @@ impl AddressSpace {
         let pt1_addr = {
             let pte2 = &mut self.root.entries[vpn2];
             if !pte2.v() {
-                let new_pt = PageTableHandle::create();
+                let new_pt = PageTableHandle::create()?;
                 let addr = new_pt.as_phys_addr();
                 pte2.set_ppn(addr.ppn() as u64);
                 pte2.set_v(true);
@@ -181,30 +188,24 @@ impl AddressSpace {
 
         let pt0_addr = {
             let need_create = {
-                let pt1 = self
-                    .tables
-                    .get(&pt1_addr)
-                    .expect("level 1 page table not found");
+                let pt1 = self.tables.get(&pt1_addr).ok_or(Error::PageTableMissing)?;
                 !pt1.entries[vpn1].v()
             };
             if need_create {
-                let new_pt = PageTableHandle::create();
+                let new_pt = PageTableHandle::create()?;
                 let addr = new_pt.as_phys_addr();
                 {
                     let pt1 = self
                         .tables
                         .get_mut(&pt1_addr)
-                        .expect("level 1 page table not found");
+                        .ok_or(Error::PageTableMissing)?;
                     let pte1 = &mut pt1.entries[vpn1];
                     pte1.set_ppn(addr.ppn() as u64);
                     pte1.set_v(true);
                 }
                 self.tables.insert(addr, new_pt);
             }
-            let pt1 = self
-                .tables
-                .get(&pt1_addr)
-                .expect("level 1 page table not found");
+            let pt1 = self.tables.get(&pt1_addr).ok_or(Error::PageTableMissing)?;
             let mut addr = PhysicalAddr::new();
             addr.set_ppn(pt1.entries[vpn1].ppn() as usize);
             addr
@@ -213,7 +214,7 @@ impl AddressSpace {
         let pt0 = self
             .tables
             .get_mut(&pt0_addr)
-            .expect("level 0 page table not found");
+            .ok_or(Error::PageTableMissing)?;
 
         let pte0 = &mut pt0.entries[vpn0];
         pte0.set_ppn(pa.ppn() as u64);
@@ -225,6 +226,8 @@ impl AddressSpace {
         pte0.set_g(flags.g());
         pte0.set_a(flags.a());
         pte0.set_d(flags.d());
+
+        Ok(())
     }
 
     pub fn unmap(&mut self, va: VirtualAddr) {
@@ -267,8 +270,8 @@ impl AddressSpace {
 }
 
 impl PageTableManager {
-    pub fn create_user_address_space(&mut self, tid: Tid) {
-        let mut page_table = PageTableHandle::create();
+    pub fn create_user_address_space(&mut self, tid: Tid) -> Result<()> {
+        let mut page_table = PageTableHandle::create()?;
         self.kernel.root.copy_low_half(&mut page_table);
 
         let address = AddressSpace {
@@ -277,10 +280,11 @@ impl PageTableManager {
         };
 
         self.user.insert(tid, address);
+        Ok(())
     }
 
     pub fn new() -> Self {
-        let root = PageTableHandle::create();
+        let root = PageTableHandle::create().expect("kernel page table allocation failed");
         Self {
             kernel: AddressSpace {
                 root,
@@ -294,8 +298,11 @@ impl PageTableManager {
         self.kernel.root.as_phys_addr()
     }
 
-    pub fn user_root_addr(&self, tid: Tid) -> PhysicalAddr {
-        self.user.get(&tid).unwrap().root.as_phys_addr()
+    pub fn user_root_addr(&self, tid: Tid) -> Result<PhysicalAddr> {
+        self.user
+            .get(&tid)
+            .map(|space| space.root.as_phys_addr())
+            .ok_or(Error::AddressSpaceNotFound)
     }
 
     pub fn map(
@@ -305,14 +312,14 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) {
+    ) -> Result<()> {
         match id {
             AddressSpaceId::Kernel => self.kernel_map(va, pa, flags, flush),
             AddressSpaceId::User(tid) => self.user_map(tid, va, pa, flags, flush),
         }
     }
 
-    pub fn unmap(&mut self, id: AddressSpaceId, va: VirtualAddr, flush: bool) {
+    pub fn unmap(&mut self, id: AddressSpaceId, va: VirtualAddr, flush: bool) -> Result<()> {
         match id {
             AddressSpaceId::Kernel => self.kernel_unmap(va, flush),
             AddressSpaceId::User(tid) => self.user_unmap(tid, va, flush),
@@ -325,18 +332,20 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) {
-        self.kernel.map(va, pa, flags);
+    ) -> Result<()> {
+        self.kernel.map(va, pa, flags)?;
         if flush {
             Self::flush();
         }
+        Ok(())
     }
 
-    pub fn kernel_unmap(&mut self, va: VirtualAddr, flush: bool) {
+    pub fn kernel_unmap(&mut self, va: VirtualAddr, flush: bool) -> Result<()> {
         self.kernel.unmap(va);
         if flush {
             Self::flush();
         }
+        Ok(())
     }
 
     pub fn user_map(
@@ -346,44 +355,47 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) {
+    ) -> Result<()> {
         self.user
             .get_mut(&tid)
-            .expect("user address space not found")
-            .map(va, pa, flags);
+            .ok_or(Error::AddressSpaceNotFound)?
+            .map(va, pa, flags)?;
         if flush {
             Self::flush();
         }
+        Ok(())
     }
 
-    pub fn user_unmap(&mut self, tid: Tid, va: VirtualAddr, flush: bool) {
+    pub fn user_unmap(&mut self, tid: Tid, va: VirtualAddr, flush: bool) -> Result<()> {
         self.user
             .get_mut(&tid)
-            .expect("user address space not found")
+            .ok_or(Error::AddressSpaceNotFound)?
             .unmap(va);
         if flush {
             Self::flush();
         }
+        Ok(())
     }
 
-    pub fn identity_map(&mut self, start: usize, end: usize) {
+    pub fn identity_map(&mut self, start: usize, end: usize) -> Result<()> {
         let mut flags = PageTableEntryFlags::new();
         flags.set_r(true);
         flags.set_w(true);
         flags.set_x(true);
         for i in (start..end).step_by(PAGE_SIZE) {
             self.kernel
-                .map(VirtualAddr::from(i), PhysicalAddr::from(i), flags);
+                .map(VirtualAddr::from(i), PhysicalAddr::from(i), flags)?;
         }
+        Ok(())
     }
 
-    pub fn activate(&self, id: AddressSpaceId) {
+    pub fn activate(&self, id: AddressSpaceId) -> Result<()> {
         let root = match id {
             AddressSpaceId::Kernel => self.kernel.root.as_phys_addr(),
             AddressSpaceId::User(tid) => self
                 .user
                 .get(&tid)
-                .expect("user address space not found")
+                .ok_or(Error::AddressSpaceNotFound)?
                 .root
                 .as_phys_addr(),
         };
@@ -393,6 +405,7 @@ impl PageTableManager {
         value.set_mode(SatpMode::SV39.into());
         Satp::write(value.into());
         Self::flush();
+        Ok(())
     }
 
     #[inline]

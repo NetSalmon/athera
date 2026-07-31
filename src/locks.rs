@@ -146,7 +146,10 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
 
     pub fn force(&self) -> &T {
         self.cell.get_or_init(|| {
-            let f = self.init.take().unwrap();
+            let f = self
+                .init
+                .take()
+                .expect("LazyLock initializer called more than once");
             f()
         })
     }

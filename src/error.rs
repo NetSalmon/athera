@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Fdt,
@@ -11,6 +12,10 @@ pub enum Error {
     VirtioNotSupported,
     VirtioFeaturesNotOk,
     NoUart,
+    NoTidAvailable,
+    AddressSpaceNotFound,
+    PageTableMissing,
+    NullPointer,
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -29,6 +34,10 @@ impl core::fmt::Display for Error {
             Error::VirtioNotSupported => "virtio device not supported",
             Error::VirtioFeaturesNotOk => "virtio features negotiation failed",
             Error::NoUart => "no UART device found",
+            Error::NoTidAvailable => "no thread id available",
+            Error::AddressSpaceNotFound => "user address space not found",
+            Error::PageTableMissing => "page table not found",
+            Error::NullPointer => "null pointer",
         };
         f.write_str(message)
     }

@@ -1,10 +1,13 @@
+#![allow(dead_code)]
 use alloc::vec::Vec;
 use core::{ptr::addr_of, sync::atomic::Ordering};
 
 use fdt::Fdt;
 
 use crate::{
-    bits, debug,
+    bits,
+    constants::{MAGIC_VALUE, RING_MAX_SIZE, VIRTIO_VERSION_LEGACY},
+    debug,
     dev::{
         Device, Resource,
         virtio_mmio::{
@@ -53,8 +56,6 @@ mmio_regs! {
     ]
 }
 
-const MAGIC_VALUE: u32 = 0x74726976;
-
 bits! {
     pub type Status: u32 {
         acknowledge: 0,
@@ -93,8 +94,6 @@ bits! {
         ring_reset: 8,
     }
 }
-
-const VIRTIO_VERSION_LEGACY: u32 = 1;
 
 impl VirtioBlk {
     pub fn probe(fdt: &Fdt) -> Option<Self> {
@@ -190,7 +189,7 @@ impl VirtioBlk {
         Ok(())
     }
 
-    pub unsafe fn test_read(&mut self) {
+    pub unsafe fn test_read(&mut self) -> Result<()> {
         const VIRTIO_BLK_T_GET_ID: u32 = 8;
         const NEXT: Flags = Flags::from(1);
 
@@ -221,7 +220,7 @@ impl VirtioBlk {
         let queue_ptr;
 
         {
-            let queues = self.queues.as_mut().unwrap();
+            let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
             let queue = queues[0].as_mut();
 
             last_used = queue.used.idx;
@@ -263,7 +262,7 @@ impl VirtioBlk {
 
         let mut guard = 0usize;
         {
-            let queues = self.queues.as_mut().unwrap();
+            let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
             let queue = queues[0].as_mut();
 
             let idx_ptr = &queue.used.idx as *const u16;
@@ -292,10 +291,9 @@ impl VirtioBlk {
         }
 
         println!();
+        Ok(())
     }
 }
-
-const RING_MAX_SIZE: usize = 32;
 
 #[repr(C)]
 #[derive(Default)]

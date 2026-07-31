@@ -132,8 +132,6 @@ graph TD
     subgraph 汇编期声明["汇编期声明 (entry.asm)"]
         fdt_addr["FDT_ADDR<br/>启动时由 a1 写入设备树地址"]
         kernel_stack["kernel_stack_top"]
-        user_stack["user_stack_top"]
-        queue_top["queue_top<br/>virtio 队列区"]
     end
 
     subgraph 懒加载静态
