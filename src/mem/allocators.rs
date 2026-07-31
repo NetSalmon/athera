@@ -6,7 +6,10 @@ use crate::{
     constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
     debug,
     locks::{LazyLock, SpinLock},
-    mem::allocators::{buddy::BuddyAllocator, slub::Caches},
+    mem::{
+        alloc_page::AllocPage,
+        allocators::{buddy::BuddyAllocator, slub::Caches},
+    },
 };
 
 pub mod buddy;
@@ -23,15 +26,19 @@ pub static FRAME_ALLOCATOR: BuddyAllocator = {
     allocator
 };
 
-pub fn alloc_frame() -> Option<usize> {
-    FRAME_ALLOCATOR.force().lock().alloc_frame(PHY_PAGE_SIZE)
-}
-
-pub fn dealloc_frame(addr: usize) {
+pub fn alloc_frame() -> Option<AllocPage> {
     FRAME_ALLOCATOR
         .force()
         .lock()
-        .dealloc_frame(addr, PHY_PAGE_SIZE);
+        .alloc_frame(PHY_PAGE_SIZE)
+        .map(|addr| AllocPage {
+            start: addr,
+            size: PHY_PAGE_SIZE,
+        })
+}
+
+pub fn dealloc_frame(AllocPage { start, size }: AllocPage) {
+    FRAME_ALLOCATOR.force().lock().dealloc_frame(start, size);
 }
 
 #[global_allocator]

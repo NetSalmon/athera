@@ -66,4 +66,6 @@ pub const SLUB_MAX_ORDER: usize = 12;
 pub const SLUB_MIN_ORDER: usize = 4;
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
 
-pub const USERLAND_OFFSET: usize = 0xffffffc000000000;
+pub const USERLAND_OFFSET: usize = 0xffff_ffc0_0000_0000;
+
+pub const PTE_NUMBER: usize = 512;

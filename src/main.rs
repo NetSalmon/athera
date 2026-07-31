@@ -22,10 +22,12 @@ use core::{arch::global_asm, panic::PanicInfo};
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
-    mem::page_table::identity_map,
+    mem::{
+        addr::{PhysicalAddr, VirtualAddr},
+        page_table::identity_map,
+    },
     trap::restore_context,
 };
-use crate::mem::addr::{PhysicalAddr, VirtualAddr};
 
 global_asm!(include_str!("entry.asm"));
 
