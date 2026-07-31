@@ -121,18 +121,26 @@ impl VirtioBlk {
     }
 
     pub fn handshake(&mut self) -> Result<(), Error> {
-        let mut cfg = VirtqCfg { device: self.device };
+        let mut cfg = VirtqCfg {
+            device: self.device,
+        };
         let is_modern = cfg.version() != VIRTIO_VERSION_LEGACY;
 
         let queues = if is_modern {
             cfg.handshake()
                 .modern(|_low, high| if high & 1 != 0 { (0, 1) } else { (0, 0) })?
-                .setup_queue(QueueConfig { index: 0, size: RING_MAX_SIZE as u32 })?
+                .setup_queue(QueueConfig {
+                    index: 0,
+                    size: RING_MAX_SIZE as u32,
+                })?
                 .finish()
         } else {
             cfg.handshake()
                 .legacy(|_f| 0u32)?
-                .setup_queue(QueueConfig { index: 0, size: RING_MAX_SIZE as u32 })?
+                .setup_queue(QueueConfig {
+                    index: 0,
+                    size: RING_MAX_SIZE as u32,
+                })?
                 .finish()
         };
 

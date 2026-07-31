@@ -1,16 +1,17 @@
-use alloc::vec::Vec;
-use core::ptr;
+use alloc::{sync::Arc, vec::Vec};
+use core::{ptr, ptr::slice_from_raw_parts, slice};
 
 use novus_const::const_val;
 
 use crate::{
     arch::registers::csr::Sstatus,
     bits,
-    constants::PHY_PAGE_SIZE,
+    constants::{PHY_PAGE_SIZE, USERLAND_OFFSET},
     debug,
     elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
     error::Error,
-    mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
+    mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR, page_table::PageTable},
+    proc::MemorySet,
 };
 
 bits! {
@@ -24,7 +25,7 @@ bits! {
 const USER_STACK_SIZE: usize = PHY_PAGE_SIZE * 8;
 
 /// 解析并加载`ELF`各段
-pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
+pub fn load_elf(elf: &[u8]) -> Result<MemorySet, Error> {
     let ptr = elf.as_ptr();
     let header = unsafe { &*(ptr as *const Elf64Ehdr) };
 
@@ -40,38 +41,42 @@ pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
         return Err(Error::NotLsb);
     }
 
+    let userland_page_table = PageTable::new();
     let ph_offset = header.e_phoff;
     let ph_size = header.e_phnum;
 
     debug!("elf machine: {:?}", header.e_machine);
     debug!("elf os abi: {:?}", header.e_ident.os_abi());
+    debug!("elf entry: {:#p}", header.e_entry as *const ());
 
     let mut alloc_pages = Vec::new();
 
     let ph_ptr = unsafe { ptr.add(ph_offset as usize) as *const Elf64Phdr };
+
     for i in 0..ph_size {
         debug!("============ ph{i} ============");
         let ph = unsafe { &*ph_ptr.add(i as usize) };
-        let ty = ph.p_type;
-        debug!("type: {:?}", ty);
+
         let offset = ph.p_offset as usize;
         let file_size = ph.p_filesz as usize;
-
-        debug!("file size: {}, offset: {}", file_size, offset);
-
-        let addr = ph.p_vaddr as usize;
         let mem_size = ph.p_memsz as usize;
-
-        debug!("mem size: {}, addr: {}", mem_size, addr);
-
         let flags = ph.p_flags;
         let align = ph.p_align as usize;
 
+        debug!("type: {:?}", ph.p_type);
+        debug!("file size: {}, offset: {}", file_size, offset);
+        debug!(
+            "mem size: {}, vaddr: {:#p}",
+            mem_size, ph.p_vaddr as *const ()
+        );
         debug!("align: {}, flags: {}", align, flags);
 
-        if ty != PType::LOAD {
+        if ph.p_type != PType::LOAD {
             continue;
         }
+
+        let inside_offset = (ph.p_vaddr % ph.p_align) as usize;
+        debug!("inside offset: {}", inside_offset);
 
         let alloc_page = FRAME_ALLOCATOR
             .force()
@@ -84,7 +89,20 @@ pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
             size: mem_size,
         });
 
-        unsafe { ptr::copy(ptr.add(offset), alloc_page as *mut u8, file_size) }
+        unsafe {
+            ptr::copy(
+                ptr.add(offset),
+                (alloc_page + inside_offset) as *mut u8,
+                file_size,
+            )
+        }
+
+        // check
+        unsafe {
+            let s1 = slice::from_raw_parts((alloc_page + inside_offset) as *const u8, file_size);
+            let s2 = slice::from_raw_parts(ptr.add(offset), file_size);
+            assert_eq!(s1, s2);
+        }
 
         for i in file_size..mem_size {
             unsafe { (alloc_page as *mut u8).add(i).write(0) }
@@ -93,7 +111,10 @@ pub fn exec(elf: &[u8]) -> Result<Vec<AllocPage>, Error> {
         debug!("load ok");
     }
 
-    Ok(alloc_pages)
+    Ok(MemorySet {
+        used_page: alloc_pages,
+        user_root_page_table: userland_page_table.as_phys_addr(),
+    })
 }
 
 /// 设置`sstatus`寄存器`SPP`位为`0`

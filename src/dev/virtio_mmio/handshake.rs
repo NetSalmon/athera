@@ -45,7 +45,10 @@ impl VirtqCfg {
 }
 
 impl<'a> HandshakeBegin<'a> {
-    pub fn legacy(self, negotiate: impl FnOnce(u32) -> u32) -> Result<FeaturesNegotiated<'a>, Error> {
+    pub fn legacy(
+        self,
+        negotiate: impl FnOnce(u32) -> u32,
+    ) -> Result<FeaturesNegotiated<'a>, Error> {
         self.cfg.write_device_features_sel(0);
         let features: u32 = self.cfg.device_features();
 
@@ -121,11 +124,14 @@ impl<'a> FeaturesNegotiated<'a> {
                 self.cfg.write_queue_pfn(pa.ppn() as u32);
             } else {
                 self.cfg.write_queue_desc_low(virtq.desc_addr() as u32);
-                self.cfg.write_queue_desc_high((virtq.desc_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_desc_high((virtq.desc_addr() >> 32) as u32);
                 self.cfg.write_queue_driver_low(virtq.avail_addr() as u32);
-                self.cfg.write_queue_driver_high((virtq.avail_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_driver_high((virtq.avail_addr() >> 32) as u32);
                 self.cfg.write_queue_device_low(virtq.used_addr() as u32);
-                self.cfg.write_queue_device_high((virtq.used_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_device_high((virtq.used_addr() >> 32) as u32);
                 self.cfg.write_queue_ready(1);
             }
 
@@ -172,11 +178,14 @@ impl<'a> QueuesReady<'a> {
                 self.cfg.write_queue_pfn(pa.ppn() as u32);
             } else {
                 self.cfg.write_queue_desc_low(virtq.desc_addr() as u32);
-                self.cfg.write_queue_desc_high((virtq.desc_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_desc_high((virtq.desc_addr() >> 32) as u32);
                 self.cfg.write_queue_driver_low(virtq.avail_addr() as u32);
-                self.cfg.write_queue_driver_high((virtq.avail_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_driver_high((virtq.avail_addr() >> 32) as u32);
                 self.cfg.write_queue_device_low(virtq.used_addr() as u32);
-                self.cfg.write_queue_device_high((virtq.used_addr() >> 32) as u32);
+                self.cfg
+                    .write_queue_device_high((virtq.used_addr() >> 32) as u32);
                 self.cfg.write_queue_ready(1);
             }
 

@@ -22,13 +22,10 @@ use core::{arch::global_asm, panic::PanicInfo};
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
-    dev::{
-        FDT, VIRTIO_BLK,
-        virtio_blk::VirtioBlk,
-        virtio_mmio::{VirtqCfg, handshake::QueueConfig},
-    },
     mem::page_table::identity_map,
+    trap::restore_context,
 };
+use crate::mem::addr::{PhysicalAddr, VirtualAddr};
 
 global_asm!(include_str!("entry.asm"));
 
@@ -58,60 +55,12 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     debug!("page table setup ok");
 
-    debug!("--- virtio_mmio handshake test ---");
+    usr::load_elf(&ELF.0).expect("failed to load ELF");
 
-    if let Some(ref blk) = *VIRTIO_BLK {
-        let mut cfg = VirtqCfg { device: blk.device };
-
-        debug!("device version: {}", cfg.version());
-        debug!("device id: {}", cfg.device_id());
-
-        let result = cfg.handshake()
-            .legacy(|f| f);
-
-        match result {
-            Ok(features) => {
-                debug!("[generic] handshake ok, setting up queue 0...");
-
-                match features.setup_queue(QueueConfig { index: 0, size: 32 }) {
-                    Ok(ready) => {
-                        let _queues = ready.finish();
-                        debug!("[generic] queue setup ok, {} queue(s) ready", _queues.len());
-                    }
-                    Err(e) => {
-                        error!("[generic] queue setup failed: {:?}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                error!("[generic] handshake failed: {:?}", e);
-            }
-        }
-
-        debug!("--- virtio_blk handshake test ---");
-        let fdt = unsafe { fdt::Fdt::from_ptr(FDT_ADDR) }.expect("failed to parse FDT");
-        if let Some(mut blk2) = VirtioBlk::probe(&fdt) {
-            match blk2.handshake() {
-                Ok(()) => {
-                    debug!(
-                        "[virtio_blk] handshake ok, {} queue(s)",
-                        blk2.queues.as_ref().map(|q| q.len()).unwrap_or(0)
-                    );
-                }
-                Err(e) => {
-                    error!("[virtio_blk] handshake failed: {:?}", e);
-                }
-            }
-        } else {
-            debug!("[virtio_blk] no device found");
-        }
-    } else {
-        debug!("no virtio blk device found in FDT");
-    }
-
-    debug!("fdt len: {:x?}", FDT.len());
-
-    usr::exec(&ELF.0).expect("failed to load ELF");
+    debug!(
+        "address of restore_context: {:#p}",
+        restore_context as *const ()
+    );
 
     debug!("read elf ok");
 

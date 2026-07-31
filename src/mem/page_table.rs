@@ -1,4 +1,7 @@
-use core::arch::asm;
+pub mod handle;
+
+use alloc::collections::BTreeMap;
+use core::{arch::asm, cell::UnsafeCell};
 
 use novus_const::lazy;
 
@@ -105,80 +108,36 @@ impl PageTable {
     }
 }
 
-#[inline]
-fn get_or_create_table(pte: &mut PageTableEntry) -> &mut PageTable {
-    if !pte.v() {
-        let addr = alloc_frame().expect("out of memory");
-        unsafe { (addr as *mut PageTable).write(PageTable::new()) };
-        pte.set_ppn((addr >> 12) as u64);
-        pte.set_v(true);
-    }
-    let ppn = pte.ppn() as usize;
-    unsafe { &mut *((ppn << 12) as *mut PageTable) }
-}
-
-#[inline]
-pub fn map(va: VirtualAddr, pa: PhysicalAddr, flush: bool, u: bool) {
-    let root_pa = *ROOT_PAGE_TABLE.force();
-    let root = unsafe { &mut *(root_pa as *mut PageTable) };
-
-    let l1_table = get_or_create_table(&mut root.entries[va.vpn2()]);
-    let l0_table = get_or_create_table(&mut l1_table.entries[va.vpn1()]);
-
-    let vpn0 = va.vpn0();
-    let mut pte = PageTableEntry::new();
-    pte.set_v(true);
-    pte.set_r(true);
-    pte.set_w(true);
-    pte.set_x(true);
-    pte.set_u(u);
-    pte.set_ppn(pa.ppn() as u64);
-    l0_table.entries[vpn0] = pte;
-
-    if flush {
-        unsafe { asm!("sfence.vma") }
-    }
-}
-
-#[inline]
-pub fn unmap(va: VirtualAddr, flush: bool) {
-    let root_pa = *ROOT_PAGE_TABLE.force();
-    let root = unsafe { &mut *(root_pa as *mut PageTable) };
-
-    let pte2 = &root.entries[va.vpn2()];
-    if !pte2.v() {
-        return;
-    }
-    let l1_table = unsafe { &mut *(((pte2.ppn() as usize) << 12) as *mut PageTable) };
-
-    let pte1 = &l1_table.entries[va.vpn1()];
-    if !pte1.v() {
-        return;
-    }
-    let l0_table = unsafe { &mut *(((pte1.ppn() as usize) << 12) as *mut PageTable) };
-
-    l0_table.entries[va.vpn0()] = PageTableEntry::new();
-
-    if flush {
-        unsafe { asm!("sfence.vma") }
-    }
-}
+#[lazy(spin)]
+pub static PAGE_TABLE_MANAGER: PageTableManager<'static> = PageTableManager::new();
 
 pub fn identity_map() {
     debug!("start identity mapping memory");
+
+    let root_pa = *ROOT_PAGE_TABLE.force();
+    let root_addr = PhysicalAddr::from(root_pa);
+    let root_cell: &'static UnsafeCell<PageTable> =
+        unsafe { &*(root_pa as *const UnsafeCell<PageTable>) };
+
+    let mut mgr = PAGE_TABLE_MANAGER.lock();
+    mgr.insert(root_addr, root_cell);
+
     let start = SYSTEM_MEMORY.device.mmio.start;
     let end = start + SYSTEM_MEMORY.device.mmio.size;
+    mgr.identity_map(root_addr, start, end);
 
-    for i in (start..end).step_by(PAGE_SIZE) {
-        map(VirtualAddr::from(i), PhysicalAddr::from(i), false, false);
-    }
+    let mut flags = PageTableEntryFlags::new();
+    flags.set_r(true);
+    flags.set_w(true);
+    flags.set_x(true);
 
     if let Some(ref uart) = *UART {
         let start = uart.lock().device.mmio.start;
-        map(
+        mgr.map(
+            root_addr,
             VirtualAddr::from(start),
             PhysicalAddr::from(start),
-            false,
+            flags,
             false,
         );
     }
@@ -186,33 +145,184 @@ pub fn identity_map() {
     if let Some(ref blk) = *VIRTIO_BLK {
         let start = blk.device.mmio.start;
         let end = start + blk.device.mmio.size;
-
-        for i in (start..end).step_by(PAGE_SIZE) {
-            map(VirtualAddr::from(i), PhysicalAddr::from(i), false, false);
-        }
+        mgr.identity_map(root_addr, start, end);
     }
 
     debug!("map ok");
+    debug!("root pt addr at: {:?}", root_addr);
 
-    let root_pt_addr = PhysicalAddr::from(*ROOT_PAGE_TABLE.force());
-    debug!("root pt addr at: {:?}", root_pt_addr);
+    mgr.activate(root_addr);
 
-    let ppn = root_pt_addr.ppn() as u64;
-
-    let mut value = SatpValue::new();
-    value.set_ppn(ppn);
-    value.set_mode(SatpMode::SV39.into());
-
-    debug!("value: {:?}", value);
-
-    Satp::write(value.into());
-
-    debug!("storage satp ok");
-    flush();
     debug!("identity mapping memory end");
 }
 
-#[inline]
-pub fn flush() {
-    unsafe { asm!("sfence.vma") }
+pub struct PageTableManager<'a> {
+    page_tables: BTreeMap<PhysicalAddr, &'a UnsafeCell<PageTable>>,
+}
+
+impl<'a> PageTableManager<'a> {
+    pub fn new() -> Self {
+        Self {
+            page_tables: BTreeMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, pa: PhysicalAddr, pt: &'a UnsafeCell<PageTable>) {
+        self.page_tables.insert(pa, pt);
+    }
+
+    pub fn get(&self, pa: PhysicalAddr) -> Option<&'a UnsafeCell<PageTable>> {
+        self.page_tables.get(&pa).copied()
+    }
+
+    pub fn contains(&self, pa: PhysicalAddr) -> bool {
+        self.page_tables.contains_key(&pa)
+    }
+
+    pub fn remove(&mut self, pa: PhysicalAddr) -> Option<&'a UnsafeCell<PageTable>> {
+        self.page_tables.remove(&pa)
+    }
+
+    fn allocate_table(&mut self) -> *mut PageTable {
+        let addr = alloc_frame().expect("out of memory");
+        unsafe { (addr as *mut PageTable).write(PageTable::new()) };
+        let cell_ref: &'a UnsafeCell<PageTable> =
+            unsafe { &*(addr as *const UnsafeCell<PageTable>) };
+        let pa = PhysicalAddr::from(addr);
+        self.page_tables.insert(pa, cell_ref);
+        addr as *mut PageTable
+    }
+
+    pub fn map(
+        &mut self,
+        root: PhysicalAddr,
+        va: VirtualAddr,
+        pa: PhysicalAddr,
+        flags: PageTableEntryFlags,
+        flush: bool,
+    ) {
+        let root_ptr = self
+            .page_tables
+            .get(&root)
+            .expect("root page table not found")
+            .get();
+        let root = unsafe { &mut *root_ptr };
+
+        let l1_ptr = if !root.entries[va.vpn2()].v() {
+            let table = self.allocate_table();
+            root.entries[va.vpn2()].set_ppn((table as usize >> 12) as u64);
+            root.entries[va.vpn2()].set_v(true);
+            table
+        } else {
+            ((root.entries[va.vpn2()].ppn() as usize) << 12) as *mut PageTable
+        };
+
+        let l1_table = unsafe { &mut *l1_ptr };
+        let l0_ptr = if !l1_table.entries[va.vpn1()].v() {
+            let table = self.allocate_table();
+            l1_table.entries[va.vpn1()].set_ppn((table as usize >> 12) as u64);
+            l1_table.entries[va.vpn1()].set_v(true);
+            table
+        } else {
+            ((l1_table.entries[va.vpn1()].ppn() as usize) << 12) as *mut PageTable
+        };
+
+        let l0_table = unsafe { &mut *l0_ptr };
+        let mut pte = PageTableEntry::new();
+        pte.set_v(true);
+        pte.set_r(flags.r());
+        pte.set_w(flags.w());
+        pte.set_x(flags.x());
+        pte.set_u(flags.u());
+        pte.set_ppn(pa.ppn() as u64);
+        l0_table.entries[va.vpn0()] = pte;
+
+        if flush {
+            Self::flush();
+        }
+    }
+
+    pub fn unmap(&self, root: PhysicalAddr, va: VirtualAddr, flush: bool) {
+        let root_ptr = self
+            .page_tables
+            .get(&root)
+            .expect("root page table not found")
+            .get();
+        let root = unsafe { &mut *root_ptr };
+
+        let pte2 = &root.entries[va.vpn2()];
+        if !pte2.v() {
+            return;
+        }
+        let l1_table = unsafe { &mut *(((pte2.ppn() as usize) << 12) as *mut PageTable) };
+
+        let pte1 = &l1_table.entries[va.vpn1()];
+        if !pte1.v() {
+            return;
+        }
+        let l0_table = unsafe { &mut *(((pte1.ppn() as usize) << 12) as *mut PageTable) };
+
+        l0_table.entries[va.vpn0()] = PageTableEntry::new();
+
+        if flush {
+            Self::flush();
+        }
+    }
+
+    pub fn translate(&self, root: PhysicalAddr, va: VirtualAddr) -> Option<PhysicalAddr> {
+        let root_ptr = self.page_tables.get(&root)?.get();
+        let root = unsafe { &*root_ptr };
+
+        let pte2 = root.nth(va.vpn2())?;
+        if !pte2.v() {
+            return None;
+        }
+        let l1_table = unsafe { &*(((pte2.ppn() as usize) << 12) as *const PageTable) };
+
+        let pte1 = l1_table.nth(va.vpn1())?;
+        if !pte1.v() {
+            return None;
+        }
+        let l0_table = unsafe { &*(((pte1.ppn() as usize) << 12) as *const PageTable) };
+
+        let pte0 = l0_table.nth(va.vpn0())?;
+        if !pte0.v() {
+            return None;
+        }
+
+        let mut pa = PhysicalAddr::new();
+        pa.set_ppn(pte0.ppn() as usize);
+        pa.set_page_offset(va.page_offset());
+        Some(pa)
+    }
+
+    pub fn activate(&self, root: PhysicalAddr) {
+        let ppn = root.ppn() as u64;
+        let mut value = SatpValue::new();
+        value.set_ppn(ppn);
+        value.set_mode(SatpMode::SV39.into());
+        Satp::write(value.into());
+        Self::flush();
+    }
+
+    pub fn identity_map(&mut self, root: PhysicalAddr, start: usize, end: usize) {
+        let mut flags = PageTableEntryFlags::new();
+        flags.set_r(true);
+        flags.set_w(true);
+        flags.set_x(true);
+        for i in (start..end).step_by(PAGE_SIZE) {
+            self.map(
+                root,
+                VirtualAddr::from(i),
+                PhysicalAddr::from(i),
+                flags,
+                false,
+            );
+        }
+    }
+
+    #[inline]
+    pub fn flush() {
+        unsafe { asm!("sfence.vma") }
+    }
 }

@@ -65,3 +65,5 @@ pub const SLUB_MAX_ORDER: usize = 12;
 #[const_val(min = 3)]
 pub const SLUB_MIN_ORDER: usize = 4;
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
+
+pub const USERLAND_OFFSET: usize = 0xffffffc000000000;
