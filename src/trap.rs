@@ -3,9 +3,7 @@ use core::arch::asm;
 use crate::{
     arch,
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
-    debug, numeric,
-    proc::MemorySet,
-    syscall, trap_entry,
+    debug, error, numeric, syscall, trace, trap_entry, warn,
 };
 
 const INTERRUPT_MASK: i64 = 1 << 63;
@@ -98,7 +96,7 @@ fn trap_handler(
         Trap::Exception(Exception::U_MODE_ECALL) => {
             let args = unsafe { &*((trap_frame_sp + 80) as *const [u64; 8]) };
 
-            debug!("args: {:?}", args);
+            trace!("syscall args: {:?}", args);
 
             let (ret, next) = syscall::handle(args, sepc);
 
@@ -114,7 +112,8 @@ fn trap_handler(
             arch::registers::csr::Sepc::write(sepc + 4);
         }
         Trap::Exception(Exception::ILLEGAL_INSTRUCTION) => {
-            system_reset(ResetType::Shutdown, ResetReason::None);
+            error!("illegal instruction at sepc = {:#x}", sepc);
+            system_reset(ResetType::Shutdown, ResetReason::SysFail);
         }
         Trap::Interrupt(Interrupt::SUPERVISOR_EXTERNAL) => {}
         Trap::Exception(
@@ -123,9 +122,15 @@ fn trap_handler(
             | Exception::STORE_ACCESS_FAULT
             | Exception::INSTRUCTION_ACCESS_FAULT,
         ) => {
+            error!("memory access fault: {trap:?}, sepc = {sepc:#x}");
             system_reset(ResetType::Shutdown, ResetReason::SysFail);
         }
-        _ => core::hint::spin_loop(),
+        other => {
+            warn!("unhandled trap: {other:?}, sepc = {sepc:#x}");
+            loop {
+                core::hint::spin_loop();
+            }
+        }
     }
 }
 
@@ -136,43 +141,39 @@ pub fn set_next_timer() {
     arch::registers::csr::Stimecmp::write(t + GAP);
 }
 
-pub type TrapFrame = [u64; 512];
-
+#[derive(Clone)]
 pub struct TrapContext {
-    pub context: TrapFrame,
+    pub context: [u64; 32],
     pub satp: u64,
     pub sepc: u64,
     pub sstatus: u64,
-    pub stval: u64,
-    pub stvec: u64,
 }
 
 impl TrapContext {
-    pub fn new(sepc: u64, stval: u64, sstatus: u64, satp: u64, sp: u64) -> TrapContext {
-        let trap_frame = unsafe { (sp as *const TrapFrame).read_volatile() };
+    pub fn user(sepc: u64, sp: u64, satp: u64, sstatus: u64) -> TrapContext {
+        let mut context = [0; 32];
+        context[2] = sp;
 
         TrapContext {
-            context: trap_frame,
-            sstatus,
+            context,
             satp,
-            stval,
             sepc,
-            stvec: trap_entry as *const () as u64,
+            sstatus,
         }
     }
 }
 
-pub fn restore_context(context: TrapContext) {
+pub fn restore_context(context: &TrapContext) -> ! {
     let context_addr = context.context.as_ptr() as u64;
     unsafe {
-        asm!(r#"
-            csrw sstatus, {}
-            csrw satp, {}
-            csrw stval, {}
-            csrw sepc, {}
-            csrw stvec, {}
+        asm!(
+            r#"
+            csrw sstatus, {sstatus}
+            csrw sepc, {sepc}
+            csrw stvec, {stvec}
+            csrw satp, {satp}
+            sfence.vma
 
-            ld x0, 0(t0)
             ld x1, 8(t0)
             ld x2, 16(t0)
             ld x3, 24(t0)
@@ -203,17 +204,19 @@ pub fn restore_context(context: TrapContext) {
             ld x29, 232(t0)
             ld x30, 240(t0)
             ld x31, 248(t0)
-            
+
             # restore t0
             ld x5, 40(t0)
+
+            sret
             "#,
-            in(reg) context.sstatus,
-            in(reg) context.satp,
-            in(reg) context.stval,
-            in(reg) context.sepc,
-            in(reg) context.stvec,
+            sstatus = in(reg) context.sstatus,
+            sepc = in(reg) context.sepc,
+            stvec = in(reg) trap_entry as *const () as u64,
+            satp = in(reg) context.satp,
 
             in("t0") context_addr,
+            options(noreturn),
         )
     }
 }

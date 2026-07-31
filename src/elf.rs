@@ -21,6 +21,13 @@ pub struct Elf64Ehdr {
     pub e_shstrndx: u16,
 }
 
+impl<T: AsRef<[u8]>> From<T> for Elf64Ehdr {
+    fn from(value: T) -> Self {
+        let ptr = value.as_ref().as_ptr() as *const Elf64Ehdr;
+        unsafe { ptr.read() }
+    }
+}
+
 numeric! {
     pub enum EType : u16 {
         NONE = 0,
@@ -320,9 +327,9 @@ numeric! {
 
 bits! {
     pub type PFlags : u32 {
-        read: 0,
+        execute: 0,
         write: 1,
-        execute: 2,
+        read: 2,
     }
 }
 

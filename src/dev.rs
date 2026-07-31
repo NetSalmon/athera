@@ -1,5 +1,5 @@
 use alloc::{vec, vec::Vec};
-use core::{arch::asm, ptr::slice_from_raw_parts, slice};
+use core::{arch::asm, slice};
 
 use novus_const::lazy;
 

@@ -13,8 +13,8 @@ use crate::{
             queue::{Flags, VRingDesc, Virtq},
         },
     },
-    error::Error,
-    mmio_regs, print, println,
+    error::{Error, Result},
+    mmio_regs, print, println, trace,
 };
 
 pub struct VirtioBlk {
@@ -120,7 +120,7 @@ impl VirtioBlk {
         })
     }
 
-    pub fn handshake(&mut self) -> Result<(), Error> {
+    pub fn handshake(&mut self) -> Result<()> {
         let mut cfg = VirtqCfg {
             device: self.device,
         };
@@ -155,7 +155,7 @@ impl VirtioBlk {
         }
     }
 
-    pub fn print_info(&mut self) -> Result<(), Error> {
+    pub fn print_info(&mut self) -> Result<()> {
         let start = self.device.mmio.start;
         let size = self.device.mmio.size;
 
@@ -255,11 +255,11 @@ impl VirtioBlk {
 
         core::sync::atomic::fence(Ordering::SeqCst);
 
-        debug!("BEFORE NOTIFY: avail_idx queue @ 0x{:x}", queue_ptr,);
+        trace!("BEFORE NOTIFY: avail_idx queue @ 0x{:x}", queue_ptr,);
 
         self.write_queue_notify(0);
         core::sync::atomic::fence(Ordering::SeqCst);
-        debug!("AFTER NOTIFY");
+        trace!("AFTER NOTIFY");
 
         let mut guard = 0usize;
         {
@@ -272,7 +272,7 @@ impl VirtioBlk {
                 core::sync::atomic::fence(Ordering::SeqCst);
                 guard += 1;
                 if guard.is_multiple_of(100000000) {
-                    debug!(
+                    trace!(
                         "polling used: idx={} last={} guard={}",
                         queue.used.idx, last_used, guard
                     );
@@ -280,12 +280,12 @@ impl VirtioBlk {
             }
         }
 
-        debug!("DONE polling, guard={}", guard);
+        trace!("DONE polling, guard={}", guard);
 
         let buf_slice =
             unsafe { core::slice::from_raw_parts(addr_of!(DISK_BUF) as *const u8, 512) };
 
-        debug!("buffer: {:?}", buf_slice);
+        trace!("buffer: {:?}", buf_slice);
 
         for i in buf_slice.iter() {
             print!("{}", *i as char);

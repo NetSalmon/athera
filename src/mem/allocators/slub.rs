@@ -2,8 +2,8 @@ use core::{alloc::Layout, cmp::max, fmt, marker::PhantomData, ptr::null_mut};
 
 use crate::{
     constants::{CACHES_MAX, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MIN_ORDER, align},
-    debug,
     mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList},
+    trace,
 };
 
 #[derive(Debug)]
@@ -36,7 +36,7 @@ impl Caches {
             .map(|p| p as *mut u8)
             .unwrap_or(null_mut());
 
-        debug!(
+        trace!(
             "alloc size: {}, order: {}, ptr: {:#x}",
             layout.size(),
             order,
@@ -59,7 +59,7 @@ impl Caches {
 
         self.0[index].dealloc(ptr as usize);
 
-        debug!(
+        trace!(
             "dealloc size: {}, order: {}, ptr: {:#x}",
             layout.size(),
             order,

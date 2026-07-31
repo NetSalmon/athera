@@ -13,13 +13,14 @@ use crate::{
     bits,
     constants::{PAGE_SIZE, PTE_NUMBER},
     debug,
+    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK},
+    info,
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
     },
     proc::Tid,
 };
-use crate::dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK};
 
 bits! {
     pub type PageTableEntry: u64 {
@@ -291,6 +292,10 @@ impl PageTableManager {
 
     pub fn kernel_root_addr(&self) -> PhysicalAddr {
         self.kernel.root.as_phys_addr()
+    }
+
+    pub fn user_root_addr(&self, tid: Tid) -> PhysicalAddr {
+        self.user.get(&tid).unwrap().root.as_phys_addr()
     }
 
     pub fn map(

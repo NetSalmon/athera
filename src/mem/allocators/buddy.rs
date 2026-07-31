@@ -2,8 +2,8 @@ use core::ops::Range;
 
 use crate::{
     constants::{BUDDY_MAX_ORDER, PAGE_SIZE_LOG_2, align, ilog2_ceil},
-    debug,
     mem::allocators::intrusive_list::IntrusiveList,
+    trace,
 };
 
 pub struct BuddyAllocator {
@@ -20,7 +20,7 @@ impl BuddyAllocator {
     fn add_frame(&mut self, start: usize, end: usize) {
         let mut current = start;
         for order in (0..BUDDY_MAX_ORDER).rev() {
-            debug!("order: {order}, current start: {current:#x}");
+            trace!("order: {order}, current start: {current:#x}");
             if current >= end {
                 break;
             }
@@ -29,7 +29,7 @@ impl BuddyAllocator {
             let chunks = (end - current) / order_size;
 
             for _ in 0..chunks {
-                debug!("order: {order}, push chunk: {current:#x}");
+                trace!("order: {order}, push chunk: {current:#x}");
                 self.free_list[order].push(current as *mut _);
                 current += order_size;
             }

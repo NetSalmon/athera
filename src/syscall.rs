@@ -4,9 +4,8 @@ use crate::{
         sbi,
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
-    debug,
     dev::UART,
-    kernel_halt, numeric, print,
+    info, kernel_halt, numeric, print,
     usr::SStatusBits,
 };
 
@@ -102,7 +101,7 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             (ret, sepc + 4)
         }
         Syscall::EXIT => {
-            debug!("user program exit, code: {}", args[0] as i32);
+            info!("user program exit, code: {}", args[0] as i32);
             let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
             s.set_spp(true);
             arch::registers::csr::Sstatus::write(s.into());

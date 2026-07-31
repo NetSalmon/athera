@@ -16,6 +16,10 @@
 /// - `Copy`, `Clone`, `PartialEq`, `Eq`, `PartialOrd`, `Ord`, `Hash`, `Debug`, `Default`
 /// - A `const fn from(value) -> Self` and `const fn new() -> Self` (zero-initialized) constructor
 ///
+/// A consuming builder is generated alongside the struct (`StructBuilder`):
+/// `Struct::builder().set_name(value).build()`, where each setter consumes the
+/// builder and returns it, and `build()` produces the final bitfield struct.
+///
 /// # Syntax
 /// ```ignore
 /// bits! {
@@ -45,6 +49,11 @@
 /// assert_eq!(s.mode(), 5);
 /// let raw: u8 = s.into();
 /// assert_eq!(raw, 0b00010101);
+///
+/// // Or via the builder:
+/// let s = Status::builder().set_ready(true).set_mode(5).build();
+/// assert_eq!(s.mode(), 5);
+/// assert!(s.ready());
 /// ```
 ///
 /// # Note
@@ -91,6 +100,28 @@ macro_rules! bits {
             }
         }
     };
+    (@bset $v:vis $part_name:ident, $from:expr, $to:expr, $ori_type:ty) => {
+        paste::paste! {
+            #[inline]
+            pub fn [<set_ $part_name>](mut self, value: $ori_type) -> Self {
+                const CLR_MASK: $ori_type = !(((1 << ($to - $from + 1)) - 1) << $from);
+                let res = (self.0 & CLR_MASK) | ((value & ((1 << ($to - $from + 1)) - 1)) << $from);
+                self.0 = res as $ori_type;
+                self
+            }
+        }
+    };
+    (@bset $v:vis $part_name:ident, $from:expr, $ori_type:ty) => {
+        paste::paste! {
+            #[inline]
+            pub fn [<set_ $part_name>](mut self, value: bool) -> Self {
+                const CLR_MASK: $ori_type = !(1 << $from);
+                let res = (self.0 & CLR_MASK) | ((if value {1} else {0}) << $from);
+                self.0 = res as $ori_type;
+                self
+            }
+        }
+    };
     (
         $v:vis type $type_name:ident : $ori_type:ty {
             $($part_name:ident : $from:expr $(=> $to:expr)?),* $(,)?
@@ -108,10 +139,31 @@ macro_rules! bits {
 
                 pub const fn new() -> Self { Self(0) }
 
+                pub fn builder() -> [< $type_name Builder >] {
+                    [< $type_name Builder >]::new()
+                }
+
                 $(
                     bits!(@get $v $part_name, $from $(, $to)?, $ori_type);
                     bits!(@set $v $part_name, $from $(, $to)?, $ori_type);
                 )*
+            }
+
+            #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+            $v struct [< $type_name Builder >]($ori_type);
+
+            impl [< $type_name Builder >] {
+                pub const fn new() -> Self {
+                    Self(0)
+                }
+
+                $(
+                    bits!(@bset $v $part_name, $from $(, $to)?, $ori_type);
+                )*
+
+                pub fn build(self) -> $type_name {
+                    $type_name::from(self.0)
+                }
             }
 
             impl From<$ori_type> for $type_name {

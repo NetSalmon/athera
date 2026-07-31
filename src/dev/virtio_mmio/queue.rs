@@ -2,7 +2,7 @@ use core::alloc::Layout;
 
 use crate::{
     bits,
-    error::Error,
+    error::{Error, Result},
     mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
 };
 
@@ -64,7 +64,7 @@ pub struct Virtq {
 }
 
 impl Virtq {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self> {
         let layout = Layout::new::<Queue>();
         let start = FRAME_ALLOCATOR
             .force()

@@ -2,6 +2,7 @@ use core::ptr;
 
 use crate::mem::allocators::FRAME_ALLOCATOR;
 
+#[derive(Debug)]
 pub struct AllocPage {
     pub start: usize,
     pub size: usize,

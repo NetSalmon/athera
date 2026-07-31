@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     dev::virtio_mmio::{DeviceStatus, VirtqCfg, queue::Virtq},
-    error::Error,
+    error::{Error, Result},
     mem::addr::PhysicalAddr,
 };
 
@@ -45,10 +45,7 @@ impl VirtqCfg {
 }
 
 impl<'a> HandshakeBegin<'a> {
-    pub fn legacy(
-        self,
-        negotiate: impl FnOnce(u32) -> u32,
-    ) -> Result<FeaturesNegotiated<'a>, Error> {
+    pub fn legacy(self, negotiate: impl FnOnce(u32) -> u32) -> Result<FeaturesNegotiated<'a>> {
         self.cfg.write_device_features_sel(0);
         let features: u32 = self.cfg.device_features();
 
@@ -63,7 +60,7 @@ impl<'a> HandshakeBegin<'a> {
     pub fn modern(
         self,
         negotiate: impl FnOnce(u32, u32) -> (u32, u32),
-    ) -> Result<FeaturesNegotiated<'a>, Error> {
+    ) -> Result<FeaturesNegotiated<'a>> {
         self.cfg.write_device_features_sel(0);
         let features_low: u32 = self.cfg.device_features();
 
@@ -81,7 +78,7 @@ impl<'a> HandshakeBegin<'a> {
         Self::commit_features(self.cfg)
     }
 
-    fn commit_features(cfg: &mut VirtqCfg) -> Result<FeaturesNegotiated<'_>, Error> {
+    fn commit_features(cfg: &mut VirtqCfg) -> Result<FeaturesNegotiated<'_>> {
         let mut status: DeviceStatus = cfg.status().into();
         status.set_features_ok(true);
         cfg.write_status(status.into());
@@ -98,11 +95,11 @@ impl<'a> HandshakeBegin<'a> {
 }
 
 impl<'a> FeaturesNegotiated<'a> {
-    pub fn setup_queue(mut self, config: QueueConfig) -> Result<QueuesReady<'a>, Error> {
+    pub fn setup_queue(mut self, config: QueueConfig) -> Result<QueuesReady<'a>> {
         self.setup_queues(&[config])
     }
 
-    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<QueuesReady<'a>, Error> {
+    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<QueuesReady<'a>> {
         let version = self.cfg.version();
         let mut queues = Vec::new();
 
@@ -146,18 +143,18 @@ impl<'a> FeaturesNegotiated<'a> {
 }
 
 impl<'a> QueuesReady<'a> {
-    pub fn setup_queue(mut self, config: QueueConfig) -> Result<Self, Error> {
+    pub fn setup_queue(mut self, config: QueueConfig) -> Result<Self> {
         let configs = [config];
         self.add_queues(&configs)?;
         Ok(self)
     }
 
-    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<Self, Error> {
+    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<Self> {
         self.add_queues(configs)?;
         Ok(self)
     }
 
-    fn add_queues(&mut self, configs: &[QueueConfig]) -> Result<(), Error> {
+    fn add_queues(&mut self, configs: &[QueueConfig]) -> Result<()> {
         let version = self.cfg.version();
 
         for qcfg in configs {

@@ -14,7 +14,8 @@ _start:
     li   t0, (1 << 1) | (1 << 5) | (1 << 9)
     csrw sie, t0
 
-    csrsi sstatus, 0x2
+    li   t0, (1 << 1) | (1 << 18)
+    csrs sstatus, t0
 
     call main
 

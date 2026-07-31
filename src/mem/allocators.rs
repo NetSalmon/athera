@@ -3,7 +3,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use novus_const::lazy;
 
 use crate::{
-    constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
+    constants::{AVAIL_RANGE, PAGE_SIZE, PHY_PAGE_SIZE},
     debug,
     locks::{LazyLock, SpinLock},
     mem::{
@@ -26,15 +26,14 @@ pub static FRAME_ALLOCATOR: BuddyAllocator = {
     allocator
 };
 
-pub fn alloc_frame() -> Option<AllocPage> {
+pub fn alloc_frame(size: Option<usize>) -> Option<AllocPage> {
+    let size = size.unwrap_or(PHY_PAGE_SIZE);
+
     FRAME_ALLOCATOR
         .force()
         .lock()
-        .alloc_frame(PHY_PAGE_SIZE)
-        .map(|addr| AllocPage {
-            start: addr,
-            size: PHY_PAGE_SIZE,
-        })
+        .alloc_frame(size)
+        .map(|start| AllocPage { start, size })
 }
 
 pub fn dealloc_frame(AllocPage { start, size }: AllocPage) {

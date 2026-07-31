@@ -5,7 +5,7 @@ use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
 };
 
-use crate::arch::registers::csr::Sie;
+use crate::{arch::registers::csr::Sie, mem::addr::PhysicalAddr, proc::Tid};
 
 pub struct SpinLock<T> {
     lock: AtomicBool,

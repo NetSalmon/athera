@@ -17,16 +17,13 @@ mod usr;
 
 extern crate alloc;
 
-use core::{arch::global_asm, panic::PanicInfo};
+use core::{arch::global_asm, panic::PanicInfo, sync::atomic::AtomicBool};
 
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
-    mem::{
-        addr::{PhysicalAddr, VirtualAddr},
-        page_table::identity_map,
-    },
-    trap::restore_context,
+    log::Level,
+    mem::page_table::identity_map,
 };
 
 global_asm!(include_str!("entry.asm"));
@@ -44,36 +41,33 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         }
     }
 
-    debug!("system info: {SYS} {VERSION} {RELEASE} {ARCH}");
+    #[cfg(debug_assertions)]
+    log::set_level(Level::Trace);
+    #[cfg(not(debug_assertions))]
+    log::set_level(Level::Info);
 
-    debug!("page size: {}", PAGE_SIZE);
-    debug!("buddy max order: {}", BUDDY_MAX_ORDER);
-    debug!("slub min order: {}", SLUB_MIN_ORDER);
-    debug!("slub max order: {}", SLUB_MAX_ORDER);
+    info!("system info: {SYS} {VERSION} {RELEASE} {ARCH}");
 
-    debug!("kernel end: {:#x}", _end as *const () as usize);
+    info!("page size: {}", PAGE_SIZE);
+    info!("buddy max order: {}", BUDDY_MAX_ORDER);
+    info!("slub min order: {}", SLUB_MIN_ORDER);
+    info!("slub max order: {}", SLUB_MAX_ORDER);
+
+    info!("kernel end: {:#x}", _end as *const () as usize);
 
     identity_map();
 
-    debug!("page table setup ok");
+    info!("page table setup ok");
 
-    usr::load_elf(&ELF.0).expect("failed to load ELF");
-
-    debug!(
-        "address of restore_context: {:#p}",
-        restore_context as *const ()
-    );
-
-    debug!("read elf ok");
-
-    system_reset(ResetType::Shutdown, ResetReason::None);
+    proc::execute_buffer(&ELF.0);
 
     kernel_halt()
 }
 
 #[unsafe(no_mangle)]
 fn kernel_halt() -> ! {
-    debug!("do no thing");
+    info!("kernel halted");
+    system_reset(ResetType::Shutdown, ResetReason::None);
     loop {
         core::hint::spin_loop();
     }
@@ -81,17 +75,25 @@ fn kernel_halt() -> ! {
 
 #[panic_handler]
 fn panic_handle(info: &PanicInfo) -> ! {
-    if let Some(location) = info.location() {
-        error!(
-            "panic at => {}:{}:{} : {}",
-            location.file(),
-            location.line(),
-            location.column(),
-            info.message()
-        );
-    } else {
-        error!("panic: {}", info.message());
+    error!("========= kernel panic =========");
+
+    match info.location() {
+        Some(location) => {
+            error!(
+                "at {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
+        }
+        None => {
+            error!("location unknown");
+        }
     }
+
+    error!("{}", info.message());
+
+    error!("================================");
 
     let _ = system_reset(ResetType::Shutdown, ResetReason::SysFail);
 

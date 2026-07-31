@@ -13,6 +13,7 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
 pub struct PageTableHandle {
     ptr: NonNull<PageTable>,
     page: AllocPage,
@@ -29,7 +30,7 @@ impl PageTableHandle {
     }
 
     pub fn create() -> Self {
-        let page = alloc_frame().expect("out of memory");
+        let page = alloc_frame(None).expect("out of memory");
 
         let page_table = unsafe { &mut *(page.start as *mut PageTable) };
 
