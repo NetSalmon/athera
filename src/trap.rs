@@ -4,7 +4,7 @@ use core::arch::asm;
 use crate::{
     arch,
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
-    debug, error, numeric, syscall, trace, trap_entry, warn,
+    debug, error, numeric, syscall, trace, trap_entry,
 };
 
 const INTERRUPT_MASK: i64 = 1 << 63;
@@ -127,7 +127,7 @@ fn trap_handler(
             system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         other => {
-            warn!("unhandled trap: {other:?}, sepc = {sepc:#x}");
+            error!("unhandled trap: {other:?}, sepc = {sepc:#x}, halting");
             loop {
                 core::hint::spin_loop();
             }
@@ -142,7 +142,7 @@ pub fn set_next_timer() {
     arch::registers::csr::Stimecmp::write(t + GAP);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TrapContext {
     pub context: [u64; 32],
     pub satp: u64,

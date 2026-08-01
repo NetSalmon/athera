@@ -41,13 +41,22 @@ fn color(level: Level) -> &'static str {
 
 fn label(level: Level) -> &'static str {
     match level {
-        Level::TRACE => "trace",
-        Level::DEBUG => "debug",
-        Level::INFO => "info",
-        Level::WARN => "warn",
-        Level::ERROR => "error",
-        Level::OFF => "off",
-        _ => "",
+        Level::TRACE => "TRACE",
+        Level::DEBUG => "DEBUG",
+        Level::INFO => "INFO",
+        Level::WARN => "WARN",
+        Level::ERROR => "ERROR",
+        Level::OFF => "OFF",
+        _ => "?",
+    }
+}
+
+/// Show only the last segment of a `module_path!()` (e.g. `novus::dev::virtio_blk`
+/// becomes `virtio_blk`) so log lines stay short and aligned.
+fn short_module(module: &str) -> &str {
+    match module.rsplit_once("::") {
+        Some((_, last)) => last,
+        None => module,
     }
 }
 
@@ -56,10 +65,10 @@ pub fn log(level: Level, module: &str, args: fmt::Arguments) {
         return;
     }
     crate::print!(
-        "{}[{} {}]\x1b[0m {}\n",
+        "{}[{: <5} {}]\x1b[0m {}\n",
         color(level),
         label(level),
-        module,
+        short_module(module),
         args
     );
 }

@@ -20,7 +20,7 @@ use crate::{
         addr::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
     },
-    proc::Tid,
+    proc::task::Tid,
 };
 
 bits! {

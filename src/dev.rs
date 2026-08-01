@@ -19,8 +19,6 @@ pub mod ns16550a;
 pub mod virtio_blk;
 pub mod virtio_mmio;
 
-pub use device::{Device, Resource};
-
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
     unsafe { fdt::Fdt::from_ptr(FDT_ADDR) }.map_err(|_| Error::Fdt)
 }

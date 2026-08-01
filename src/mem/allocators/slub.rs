@@ -21,7 +21,7 @@ impl Caches {
     pub(crate) fn alloc(&mut self, layout: Layout) -> *mut u8 {
         let order = layout_order(&layout);
 
-        if order > SLUB_MAX_ORDER {
+        if order >= SLUB_MAX_ORDER {
             return FRAME_ALLOCATOR
                 .force()
                 .lock()

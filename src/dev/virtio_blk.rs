@@ -9,7 +9,7 @@ use crate::{
     constants::{MAGIC_VALUE, RING_MAX_SIZE, VIRTIO_VERSION_LEGACY},
     debug,
     dev::{
-        Device, Resource,
+        device::{Device, Resource},
         virtio_mmio::{
             VirtqCfg,
             handshake::QueueConfig,
@@ -17,7 +17,7 @@ use crate::{
         },
     },
     error::{Error, Result},
-    mmio_regs, print, println, trace,
+    mmio_regs, trace,
 };
 
 pub struct VirtioBlk {
@@ -160,16 +160,14 @@ impl VirtioBlk {
 
         let magic_value = self.magic_value();
         let is_virtio_mmio = magic_value == MAGIC_VALUE;
-
         let version = self.version();
+        let device_id = self.device_id();
 
         debug!(
-            "version: {} - {}",
+            "version: {} ({})",
             version,
             if version == 1 { "legacy" } else { "modern" }
         );
-
-        let device_id = self.device_id();
 
         if is_virtio_mmio && device_id == 2 {
             self.handshake()?;
@@ -178,13 +176,9 @@ impl VirtioBlk {
             return Err(Error::VirtioNotSupported);
         }
 
-        debug!("start print");
-        debug!("start: {}", start);
-        debug!("size: {}", size);
-        debug!("magic value: {}", magic_value);
-        debug!("version: {}", version);
-        debug!("device_id: {}", device_id);
-        debug!("is virtio_mmio: {}", is_virtio_mmio);
+        debug!(
+            "device: start = {start:#x}, size = {size:#x}, magic = {magic_value:#x}, version = {version}, device_id = {device_id}, virtio_mmio = {is_virtio_mmio}"
+        );
 
         Ok(())
     }
@@ -221,7 +215,10 @@ impl VirtioBlk {
 
         {
             let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
-            let queue = queues[0].as_mut();
+            let queue = queues
+                .first_mut()
+                .ok_or(Error::VirtioHandshakeFailed)?
+                .as_mut();
 
             last_used = queue.used.idx;
 
@@ -254,16 +251,18 @@ impl VirtioBlk {
 
         core::sync::atomic::fence(Ordering::SeqCst);
 
-        trace!("BEFORE NOTIFY: avail_idx queue @ 0x{:x}", queue_ptr,);
+        trace!("notify: queue @ {queue_ptr:#x}, avail_idx = 2");
 
         self.write_queue_notify(0);
         core::sync::atomic::fence(Ordering::SeqCst);
-        trace!("AFTER NOTIFY");
 
         let mut guard = 0usize;
         {
             let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
-            let queue = queues[0].as_mut();
+            let queue = queues
+                .first_mut()
+                .ok_or(Error::VirtioHandshakeFailed)?
+                .as_mut();
 
             let idx_ptr = &queue.used.idx as *const u16;
 
@@ -272,25 +271,21 @@ impl VirtioBlk {
                 guard += 1;
                 if guard.is_multiple_of(100000000) {
                     trace!(
-                        "polling used: idx={} last={} guard={}",
+                        "polling used: idx = {}, last = {}, guard = {}",
                         queue.used.idx, last_used, guard
                     );
                 }
             }
         }
 
-        trace!("DONE polling, guard={}", guard);
+        trace!("polling done, guard = {guard}");
 
         let buf_slice =
             unsafe { core::slice::from_raw_parts(addr_of!(DISK_BUF) as *const u8, 512) };
 
-        trace!("buffer: {:?}", buf_slice);
+        debug!("read {} bytes from disk", buf_slice.len());
+        trace!("buffer: {buf_slice:?}");
 
-        for i in buf_slice.iter() {
-            print!("{}", *i as char);
-        }
-
-        println!();
         Ok(())
     }
 }

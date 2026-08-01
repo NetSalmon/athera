@@ -3,7 +3,7 @@ use fdt::Fdt;
 
 use crate::{
     bits,
-    dev::{Device, Resource},
+    dev::device::{Device, Resource},
     mmio_regs,
 };
 

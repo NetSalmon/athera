@@ -42,7 +42,8 @@ impl From<SbiResult> for Result {
                 -7 => SbiError::ALREADY_STARTED,
                 -8 => SbiError::ALREADY_STOPPED,
                 -9 => SbiError::NO_SHMEM,
-                _ => unreachable!(),
+                // Preserve unknown SBI error codes instead of panicking.
+                _ => SbiError::from(result.error),
             };
             Result::Err(err)
         } else {
@@ -239,11 +240,7 @@ pub mod srst {
     }
 
     pub fn system_reset(reset_type: ResetType, reset_reason: ResetReason) -> Result {
-        ecall(
-            Eid::SRST,
-            0,
-            [reset_type.0, reset_reason.0, 0, 0, 0, 0],
-        )
+        ecall(Eid::SRST, 0, [reset_type.0, reset_reason.0, 0, 0, 0, 0])
     }
 }
 

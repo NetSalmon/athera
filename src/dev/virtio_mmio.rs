@@ -2,7 +2,7 @@
 pub mod handshake;
 pub mod queue;
 
-use crate::{bits, dev::Device, mmio_regs, numeric};
+use crate::{bits, dev::device::Device, mmio_regs, numeric};
 
 pub struct VirtqCfg {
     pub device: Device,

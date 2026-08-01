@@ -29,6 +29,8 @@ global_asm!(include_str!("entry.asm"));
 
 #[unsafe(no_mangle)]
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
+    arch::registers::gpr::Tp::write(hart_id as u64);
+
     if hart_id != 0 {
         core::hint::spin_loop();
     }
@@ -46,12 +48,9 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     log::set_level(Level::INFO);
 
     info!("system info: {SYS} {VERSION} {RELEASE} {ARCH}");
-
-    info!("page size: {}", PAGE_SIZE);
-    info!("buddy max order: {}", BUDDY_MAX_ORDER);
-    info!("slub min order: {}", SLUB_MIN_ORDER);
-    info!("slub max order: {}", SLUB_MAX_ORDER);
-
+    info!(
+        "memory config: page size = {PAGE_SIZE}, buddy max order = {BUDDY_MAX_ORDER}, slub = {SLUB_MIN_ORDER}..={SLUB_MAX_ORDER}"
+    );
     info!("kernel end: {:#x}", _end as *const () as usize);
 
     if let Err(err) = identity_map() {
@@ -61,7 +60,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
-    if let Err(err) = proc::execute_buffer(&ELF.0) {
+    if let Err(err) = proc::exec::execute_buffer(&ELF.0) {
         error!("failed to execute user program: {err}");
         kernel_halt()
     }
@@ -81,6 +80,7 @@ fn kernel_halt() -> ! {
 #[panic_handler]
 fn panic_handle(info: &PanicInfo) -> ! {
     error!("========= kernel panic =========");
+    error!("{}", info.message());
 
     match info.location() {
         Some(location) => {
@@ -95,8 +95,6 @@ fn panic_handle(info: &PanicInfo) -> ! {
             error!("location unknown");
         }
     }
-
-    error!("{}", info.message());
 
     error!("================================");
 

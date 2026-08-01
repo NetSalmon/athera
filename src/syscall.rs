@@ -5,8 +5,10 @@ use crate::{
         sbi,
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
+    debug,
     dev::UART,
-    info, kernel_halt, numeric, print,
+    error, info, kernel_halt, numeric, print,
+    proc::{CURRENT_TASK, task::TASKS},
 };
 
 numeric! {
@@ -66,24 +68,28 @@ fn write(_fd: u64, buf: &[u8]) -> u64 {
 }
 
 fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
-    if magic != 0xfee1dead {
-        return -1;
-    }
-    if magic2 != 0x28121969 {
+    if magic != 0xfee1dead || magic2 != 0x28121969 {
+        debug!("reboot: invalid magic (magic = {magic:#x}, magic2 = {magic2:#x})");
         return -1;
     }
 
     match RebootCmd::from(cmd) {
         RebootCmd::POWER_OFF => {
+            info!("reboot: power off requested");
             system_reset(ResetType::SHUTDOWN, ResetReason::NONE);
         }
         RebootCmd::RESTART => {
+            info!("reboot: restart requested");
             system_reset(ResetType::COLD_REBOOT, ResetReason::NONE);
         }
         RebootCmd::HALT => {
+            info!("reboot: halt requested");
             sbi::hsm::hart_stop();
         }
-        _ => return -1,
+        _ => {
+            debug!("reboot: unsupported command {cmd:#x}");
+            return -1;
+        }
     }
     -1
 }
@@ -104,10 +110,22 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             (ret, sepc + 4)
         }
         Syscall::EXIT => {
-            info!("user program exit, code: {}", args[0] as i32);
+            let code = args[0] as i32;
             let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
             s.set_spp(true);
             arch::registers::csr::Sstatus::write(s.into());
+
+            match *CURRENT_TASK.current() {
+                Some(tid) => {
+                    info!("task {} exited with code {code}", tid.0);
+                    TASKS.force().lock().remove(&tid);
+                    debug!("current tasks: {:#?}", *TASKS.force().lock());
+                }
+                None => {
+                    error!("exit syscall with no current task (code {code})");
+                }
+            }
+
             (args[0], kernel_halt as *const () as u64)
         }
         Syscall::REBOOT => {
