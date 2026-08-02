@@ -7,7 +7,7 @@
 use core::ops::Range;
 
 use fdt::Fdt;
-use novus_const::{const_val, lazy};
+use athera_const::{const_val, lazy};
 
 use crate::FDT_ADDR;
 

@@ -7,7 +7,7 @@
 use alloc::{vec, vec::Vec};
 use core::{arch::asm, slice};
 
-use novus_const::lazy;
+use athera_const::lazy;
 
 use crate::{
     FDT_ADDR,

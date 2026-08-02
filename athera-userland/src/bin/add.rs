@@ -8,7 +8,7 @@ fn main() {
 
     let c = add(a, b);
 
-    novus_userland::syscall::write(
+    athera_userland::syscall::write(
         0,
         &[
             num_to_char(a),

@@ -12,6 +12,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "athera"
+version = "0.1.0"
+dependencies = [
+ "athera-const",
+ "athera-id-alloc",
+ "chrono",
+ "fdt",
+ "paste",
+ "toml",
+]
+
+[[package]]
+name = "athera-const"
+version = "0.1.0"
+dependencies = [
+ "athera-const-macros",
+ "paste",
+]
+
+[[package]]
+name = "athera-const-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "athera-id-alloc"
+version = "0.1.0"
+
+[[package]]
+name = "athera-userland"
+version = "0.1.0"
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,42 +198,6 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
-
-[[package]]
-name = "novus"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "fdt",
- "novus-const",
- "novus-id-alloc",
- "paste",
- "toml",
-]
-
-[[package]]
-name = "novus-const"
-version = "0.1.0"
-dependencies = [
- "novus-const-macros",
- "paste",
-]
-
-[[package]]
-name = "novus-const-macros"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn",
-]
-
-[[package]]
-name = "novus-id-alloc"
-version = "0.1.0"
-
-[[package]]
-name = "novus-userland"
-version = "0.1.0"
 
 [[package]]
 name = "num-traits"

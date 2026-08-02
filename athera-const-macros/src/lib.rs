@@ -1,4 +1,4 @@
-//! `novus-const` 的过程宏实现。
+//! `athera-const` 的过程宏实现。
 //!
 //! - [`const_val`](macro@const_val)：编译期常量属性宏（支持
 //!   min / max / multiple_of 约束）；
@@ -112,7 +112,7 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
                         #vis const #name: #ty = {
                             #checks
                             match option_env!( #name_str ) {
-                                Some(v) => novus_const::num::#function(v, #value),
+                                Some(v) => athera_const::num::#function(v, #value),
                                 None => #value,
                             }
                         };

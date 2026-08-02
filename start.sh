@@ -7,7 +7,7 @@ QEMU_ARGS=(
     -trace virtio_blk_submit_multireq
     -trace virtio_blk_rw_complete
     -trace virtio_blk_req_complete
-    -kernel target/riscv64gc-unknown-none-elf/release/novus
+    -kernel target/riscv64gc-unknown-none-elf/release/athera
 )
 
 QEMU_OPTS=()

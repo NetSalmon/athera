@@ -1,6 +1,6 @@
 //! 内嵌用户程序 ELF。
 //!
-//! 编译期通过 `include_bytes!` 把 `novus-userland` 构建产物内嵌进内核，
+//! 编译期通过 `include_bytes!` 把 `athera-userland` 构建产物内嵌进内核，
 //! 由 [`crate::proc::exec`] 加载执行。
 #[repr(align(8))]
 pub struct Elf(

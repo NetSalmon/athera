@@ -6,5 +6,5 @@ const TEXT: &str = "Hello world!!!\n";
 fn main() {
     let data = TEXT.as_bytes();
 
-    novus_userland::syscall::write(1, data);
+    athera_userland::syscall::write(1, data);
 }

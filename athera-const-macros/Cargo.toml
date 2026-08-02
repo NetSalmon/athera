@@ -1,5 +1,5 @@
 [package]
-name = "novus-const-macros"
+name = "athera-const-macros"
 version = "0.1.0"
 edition = "2024"
 

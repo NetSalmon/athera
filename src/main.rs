@@ -13,6 +13,7 @@ mod mem;
 mod proc;
 mod syscall;
 mod trap;
+mod schedule;
 
 extern crate alloc;
 
@@ -70,10 +71,14 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
         info!("buf size: {}", buf.len());
 
+        if let Err(err) = blk.write_at(&ELF.0, 9520) {
+            error!("{}", err);
+        }
+
         match blk.read_at(&mut buf, 0) {
             Ok(size) => {
                 info!("read {size} bytes");
-                if let Err(err) = proc::exec::execute_buffer(&buf) {
+                if let Err(err) = proc::exec::execute_buffer(&buf, None) {
                     error!("{}", err);
                 };
             }
@@ -83,7 +88,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         }
     }
 
-    if let Err(err) = proc::exec::execute_buffer(&ELF.0) {
+    if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
         error!("failed to execute user program: {err}");
         kernel_halt()
     }

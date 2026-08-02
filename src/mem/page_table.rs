@@ -9,7 +9,7 @@ pub mod handle;
 use alloc::collections::BTreeMap;
 use core::arch::asm;
 
-use novus_const::lazy;
+use athera_const::lazy;
 
 use crate::{
     arch::registers::{

@@ -17,7 +17,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use novus_const::const_val;
+use athera_const::const_val;
 
 use crate::arch::registers::gpr::Tp;
 

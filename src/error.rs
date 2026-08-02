@@ -13,6 +13,7 @@ pub enum Error {
     VirtioNotSupported,
     VirtioFeaturesNotOk,
     VirtioBlockFailed,
+    NoVirtioBlock,
     NoUart,
     NoTidAvailable,
     AddressSpaceNotFound,
@@ -41,6 +42,7 @@ impl core::fmt::Display for Error {
             Error::AddressSpaceNotFound => "user address space not found",
             Error::PageTableMissing => "page table not found",
             Error::NullPointer => "null pointer",
+            Error::NoVirtioBlock => "no Virtio Block device found",
         };
         f.write_str(message)
     }

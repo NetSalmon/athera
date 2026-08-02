@@ -1,5 +1,5 @@
 [package]
-name = "novus"
+name = "athera"
 version = "0.1.0"
 edition = "2024"
 authors = ["Netsalmon <netsalmon@disroot.org>"]
@@ -9,7 +9,7 @@ build = "build.rs"
 
 
 [[bin]]
-name = "novus"
+name = "athera"
 path = "src/main.rs"
 test = false
 doctest = false
@@ -18,8 +18,8 @@ bench = false
 [dependencies]
 paste = "1.0.15"
 fdt = "0.1.5"
-novus-const = { path = "novus-const" }
-novus-id-alloc = { path = "novus-id-alloc" }
+athera-const = { path = "athera-const" }
+athera-id-alloc = { path = "athera-id-alloc" }
 
 [build-dependencies]
 toml = "1.1.2"
@@ -27,8 +27,8 @@ chrono = "0.4.45"
 
 [workspace]
 members = [
-    "novus-const",
-    "novus-const-macros",
-    "novus-userland",
-    "novus-id-alloc"
+    "athera-const",
+    "athera-const-macros",
+    "athera-userland",
+    "athera-id-alloc"
 ]

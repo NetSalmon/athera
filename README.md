@@ -1,4 +1,4 @@
-# Novus
+# Athera
 
 一个用 Rust 编写的简易 RISC-V 64 操作系统。
 
@@ -12,7 +12,7 @@
 - 陷阱处理与用户态上下文恢复（`TrapContext` / `restore_context`）
 - ELF 加载器（支持 32/64 位、大小端，用户程序经 `include_bytes!` 内嵌）
 - 用户态进程管理与 ecall 系统调用（read/write/exit/reboot）
-- TID 分配器（`novus-id-alloc`）
+- TID 分配器（`athera-id-alloc`）
 - 同步原语：`SpinLock`（关中断自旋锁）/ `OnceLock` / `LazyLock`（懒加载静态）/ `PerCpu`（每 hart 存储）
 - 日志宏：`debug!` / `info!` / `error!`
 - 构建时配置（`config.toml`）
@@ -20,7 +20,7 @@
 ## 工作区结构
 
 ```
-novus/                       # 内核（根 crate）
+athera/                       # 内核（根 crate）
 ├── src/
 │   ├── arch/               RISC-V 相关
 │   │   ├── registers/      csr / gpr / values（寄存器抽象）
@@ -63,7 +63,7 @@ novus/                       # 内核（根 crate）
 │   ├── macros.rs           宏定义（bits!/numeric!/mmio_regs!/array_struct!）
 │   ├── error.rs            错误类型
 │   └── main.rs             内核入口
-├── novus-userland/         用户程序（子 crate）
+├── athera-userland/         用户程序（子 crate）
 │   ├── src/
 │   │   ├── bin/            hello_world.rs / add.rs
 │   │   ├── lib.rs          入口 _start
@@ -71,9 +71,9 @@ novus/                       # 内核（根 crate）
 │   │   ├── panic.rs
 │   │   └── linker.ld
 │   └── build.rs
-├── novus-const/            编译期常量与属性宏（const_val / lazy / spin）
-├── novus-const-macros/     proc-macro crate（const_val / lazy / spin）
-├── novus-id-alloc/         ID 分配器（用于 TID）
+├── athera-const/            编译期常量与属性宏（const_val / lazy / spin）
+├── athera-const-macros/     proc-macro crate（const_val / lazy / spin）
+├── athera-id-alloc/         ID 分配器（用于 TID）
 ├── linker.ld               内核链接脚本
 ├── config.toml             构建时配置
 ├── build.rs
@@ -91,7 +91,7 @@ novus/                       # 内核（根 crate）
 
 ```bash
 # 先构建用户程序
-cargo build -p novus-userland --release
+cargo build -p athera-userland --release
 
 # 构建内核并启动
 cargo build --release
@@ -132,7 +132,7 @@ cargo build --release
 
 ## 初始化依赖
 
-内核大量使用 `LazyLock`（经 `novus-const` 的 `#[lazy]` / `#[lazy(spin)]` 宏生成）实现懒加载静态。
+内核大量使用 `LazyLock`（经 `athera-const` 的 `#[lazy]` / `#[lazy(spin)]` 宏生成）实现懒加载静态。
 各静态首次通过 `.force()` 访问时按需初始化，其依赖关系如下：
 
 ```mermaid

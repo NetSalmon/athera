@@ -1,5 +1,5 @@
 [package]
-name = "novus-const"
+name = "athera-const"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,6 +10,6 @@ doctest = false
 
 [dependencies]
 paste = "1.0.15"
-novus-const-macros = { path = "../novus-const-macros" }
+athera-const-macros = { path = "../athera-const-macros" }
 
 [dev-dependencies]

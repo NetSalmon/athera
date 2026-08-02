@@ -6,8 +6,8 @@
 use alloc::{collections::BTreeMap, rc::Weak, sync::Arc, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
-use novus_const::lazy;
-use novus_id_alloc::IdAllocator;
+use athera_const::lazy;
+use athera_id_alloc::IdAllocator;
 
 use crate::{
     constants::TID_MAX,
@@ -53,6 +53,7 @@ pub struct TaskControlBlock {
     pub memory_set: MemorySet,
     pub trap_context: TrapContext,
     pub exit_code: i32,
+    pub priority: i8,
 }
 
 #[derive(Debug)]

@@ -6,7 +6,7 @@
 //!   `Vec` / `String` / `BTreeMap` 等 `alloc` 结构可用。
 use core::alloc::{GlobalAlloc, Layout};
 
-use novus_const::lazy;
+use athera_const::lazy;
 
 use crate::{
     constants::{AVAIL_RANGE, PHY_PAGE_SIZE},

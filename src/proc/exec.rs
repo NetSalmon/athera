@@ -33,7 +33,7 @@ use crate::elf::{Class, Endianness};
 /// 分配 TID、创建用户地址空间，逐个处理 `PT_LOAD` 段（分配物理页、
 /// 清零并拷贝段数据、映射到用户虚拟地址），最后建立用户栈并切换到
 /// 用户态。
-pub fn execute_buffer(buffer: &[u8]) -> Result<()> {
+pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
     let elf_header = Elf64Ehdr::from(buffer);
 
     if !elf_header.e_ident.is_elf() {
@@ -191,6 +191,7 @@ pub fn execute_buffer(buffer: &[u8]) -> Result<()> {
         memory_set,
         trap_context: context.clone(),
         exit_code: 0,
+        priority: priority.unwrap_or_default(),
     };
 
     TASKS.force().lock().insert(tid, tcb);

@@ -1,11 +1,11 @@
 [package]
-name = "novus-userland"
+name = "athera-userland"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
 [lib]
-name = "novus_userland"
+name = "athera_userland"
 path = "src/lib.rs"
 test = false
 doctest = false

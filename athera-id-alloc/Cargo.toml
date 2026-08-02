@@ -1,5 +1,5 @@
 [package]
-name = "novus-id-alloc"
+name = "athera-id-alloc"
 version = "0.1.0"
 edition = "2024"
 
