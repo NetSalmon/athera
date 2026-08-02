@@ -136,7 +136,7 @@ pub fn identity_map() -> Result<()> {
         )?;
     }
 
-    if let Some(ref blk) = *VIRTIO_BLK {
+    if let Some(ref blk) = *VIRTIO_BLK.lock() {
         let start = blk.device.mmio.start;
         let end = start + blk.device.mmio.size;
         mgr.identity_map(start, end)?;

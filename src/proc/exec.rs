@@ -26,6 +26,7 @@ use crate::{
     trace,
     trap::{TrapContext, restore_context},
 };
+use crate::elf::{Class, Endianness};
 
 /// 加载并执行一段用户程序 ELF。
 ///
@@ -34,6 +35,18 @@ use crate::{
 /// 用户态。
 pub fn execute_buffer(buffer: &[u8]) -> Result<()> {
     let elf_header = Elf64Ehdr::from(buffer);
+
+    if !elf_header.e_ident.is_elf() {
+        return Err(Error::NotElf);
+    }
+
+    if elf_header.e_ident.data() != Endianness::LSB {
+        return Err(Error::NotLsb);
+    }
+
+    if elf_header.e_ident.class() != Class::CLASS64 {
+        return Err(Error::Not64Bit);
+    }
 
     let entry = elf_header.e_entry as usize;
 

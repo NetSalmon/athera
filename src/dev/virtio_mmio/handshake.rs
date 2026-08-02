@@ -120,6 +120,8 @@ impl<'a> FeaturesNegotiated<'a> {
 
             if version == VIRTIO_VERSION_LEGACY {
                 self.cfg.write_guest_page_size(4096);
+                // used 环按页对齐，与 Queue 布局保持一致。
+                self.cfg.write_queue_align(4096);
 
                 let pa: PhysicalAddr = (virtq.queue_ptr() as usize).into();
                 self.cfg.write_queue_pfn(pa.ppn() as u32);
@@ -174,6 +176,8 @@ impl<'a> QueuesReady<'a> {
 
             if version == VIRTIO_VERSION_LEGACY {
                 self.cfg.write_guest_page_size(4096);
+                // used 环按页对齐，与 Queue 布局保持一致。
+                self.cfg.write_queue_align(4096);
 
                 let pa: PhysicalAddr = (virtq.queue_ptr() as usize).into();
                 self.cfg.write_queue_pfn(pa.ppn() as u32);

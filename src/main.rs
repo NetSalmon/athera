@@ -16,11 +16,13 @@ mod trap;
 
 extern crate alloc;
 
+use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
+    dev::{VIRTIO_BLK, abstracts::BlockDevice},
     log::Level,
     mem::page_table::identity_map,
 };
@@ -62,6 +64,24 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     }
 
     info!("page table setup ok");
+
+    if let Some(ref mut blk) = *VIRTIO_BLK.force().lock() {
+        let mut buf = vec![0u8; 9520];
+
+        info!("buf size: {}", buf.len());
+
+        match blk.read_at(&mut buf, 0) {
+            Ok(size) => {
+                info!("read {size} bytes");
+                if let Err(err) = proc::exec::execute_buffer(&buf) {
+                    error!("{}", err);
+                };
+            }
+            Err(err) => {
+                error!("failed to read bytes: {err}");
+            }
+        }
+    }
 
     if let Err(err) = proc::exec::execute_buffer(&ELF.0) {
         error!("failed to execute user program: {err}");

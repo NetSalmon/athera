@@ -19,6 +19,7 @@ use crate::{
     warn,
 };
 
+pub mod abstracts;
 pub mod device;
 pub mod memory;
 pub mod ns16550a;
@@ -47,7 +48,7 @@ pub static UART: Option<SpinLock<Ns16550a>> = {
     }
 };
 
-#[lazy]
+#[lazy(spin)]
 pub static VIRTIO_BLK: Option<VirtioBlk> = {
     match parse_fdt() {
         Ok(fdt) => VirtioBlk::probe(&fdt),
