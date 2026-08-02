@@ -4,6 +4,4 @@ pub enum ScheduleRule {
 }
 
 #[unsafe(no_mangle)]
-pub fn schedule() {
-
-}
+pub fn schedule() {}

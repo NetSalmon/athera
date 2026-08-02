@@ -58,7 +58,7 @@ pub struct Queue {
     pub avail: VirtqAvail,
     // 把 used 环对齐到下一页：legacy virtio 要求 used 环落在页边界上
     // （avail 紧跟 desc 表，offset = 16 * RING_SIZE = 4096）。
-    _pad: [u8; 4096 - core::mem::size_of::<VirtqAvail>()],
+    _pad: [u8; 4096 - size_of::<VirtqAvail>()],
     pub used: VirtqUsed,
 }
 

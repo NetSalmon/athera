@@ -11,9 +11,9 @@ mod log;
 mod macros;
 mod mem;
 mod proc;
+mod schedule;
 mod syscall;
 mod trap;
-mod schedule;
 
 extern crate alloc;
 
@@ -26,6 +26,7 @@ use crate::{
     dev::{VIRTIO_BLK, abstracts::BlockDevice},
     log::Level,
     mem::page_table::identity_map,
+    trap::set_next_timer,
 };
 
 global_asm!(include_str!("entry.asm"));
@@ -40,6 +41,8 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     if hart_id != 0 {
         core::hint::spin_loop();
     }
+
+    set_next_timer();
 
     // checking
     unsafe {
@@ -100,7 +103,10 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 /// 停机：输出日志并通过 SBI 复位（关机）。
 fn kernel_halt() -> ! {
     info!("kernel halted");
+
+    #[cfg(feature = "halt_directly")]
     system_reset(ResetType::SHUTDOWN, ResetReason::NONE);
+
     loop {
         core::hint::spin_loop();
     }

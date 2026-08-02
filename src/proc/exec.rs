@@ -12,7 +12,7 @@ use crate::{
         values::{SStatusBits, SatpMode, SatpValue},
     },
     constants::{PHY_PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
-    elf::{Elf64Ehdr, Elf64Phdr, PType},
+    elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
     error::{Error, Result},
     info,
     mem::{
@@ -26,7 +26,6 @@ use crate::{
     trace,
     trap::{TrapContext, restore_context},
 };
-use crate::elf::{Class, Endianness};
 
 /// 加载并执行一段用户程序 ELF。
 ///

@@ -6,8 +6,8 @@
 //! 参数与用户栈布局常量。
 use core::ops::Range;
 
-use fdt::Fdt;
 use athera_const::{const_val, lazy};
+use fdt::Fdt;
 
 use crate::FDT_ADDR;
 

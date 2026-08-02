@@ -32,3 +32,6 @@ members = [
     "athera-userland",
     "athera-id-alloc"
 ]
+
+[features]
+halt_directly = []

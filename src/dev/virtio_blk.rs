@@ -22,7 +22,7 @@ use crate::{
         virtio_mmio::{
             VirtqCfg,
             handshake::QueueConfig,
-            queue::{Flags, VRingDesc, Virtq, VirtqUsedElem},
+            queue::{Flags, VRingDesc, Virtq},
         },
     },
     error::{Error, Result},
@@ -36,7 +36,7 @@ const VIRTIO_BLK_T_OUT: u32 = 1;
 const VIRTIO_BLK_S_OK: u8 = 0;
 /// 设备扇区大小（字节）。
 const SECTOR_SIZE: usize = 512;
-/// `queue_notify` 寄存器偏移（见 [`super::virtio_mmio::VirtqCfg`]）。
+/// `queue_notify` 寄存器偏移（见 [`VirtqCfg`]）。
 const QUEUE_NOTIFY_OFFSET: usize = 0x050;
 
 pub struct VirtioBlk {
@@ -226,9 +226,7 @@ impl VirtioBlk {
             let used_idx = unsafe { addr_of!(queue.used.idx).read_volatile() };
             if used_idx != last_used {
                 let slot = used_idx.wrapping_sub(1) as usize % RING_SIZE;
-                let elem = unsafe {
-                    (addr_of!(queue.used.ring[slot]) as *const VirtqUsedElem).read_volatile()
-                };
+                let elem = unsafe { addr_of!(queue.used.ring[slot]).read_volatile() };
                 if elem.id != 0 {
                     return Err(Error::VirtioBlockFailed);
                 }
