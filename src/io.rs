@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! 格式化输出。
+//!
+//! 让 [`Ns16550a`] 实现
+//! `core::fmt::Write`，并提供 `print!` / `println!` 宏与 UART 字符读取。
 use core::fmt;
 
 use crate::dev::{UART, ns16550a::Ns16550a};
@@ -35,3 +39,4 @@ macro_rules! println {
 pub fn getchar() -> Option<u8> {
     UART.force().as_ref()?.lock().getchar()
 }
+

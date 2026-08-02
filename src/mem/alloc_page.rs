@@ -1,8 +1,14 @@
 #![allow(dead_code)]
+//! 物理页帧句柄 [`AllocPage`]。
+//!
+//! 持有起始物理地址与大小；`Drop` 时自动归还给 `FRAME_ALLOCATOR`。
 use core::ptr;
 
 use crate::mem::allocators::FRAME_ALLOCATOR;
 
+/// 物理页帧句柄：持有物理内存区间的起始地址与大小。
+///
+/// `Drop` 时会把该区间归还给 `FRAME_ALLOCATOR`。
 #[derive(Debug)]
 pub struct AllocPage {
     pub start: usize,
@@ -10,6 +16,12 @@ pub struct AllocPage {
 }
 
 impl AllocPage {
+    /// 从裸物理地址构造句柄（不经过伙伴系统分配）。
+    ///
+    /// # Safety
+    ///
+    /// `start..start+size` 必须是合法、未归还的物理内存区间，且后续
+    /// 归还（`Drop`）时不得与其它分配重叠。
     pub unsafe fn from_raw(start: usize, size: usize) -> Self {
         Self { start, size }
     }
@@ -21,6 +33,10 @@ impl AllocPage {
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe { &mut *ptr::slice_from_raw_parts_mut(self.start as *mut u8, self.size) }
     }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.start as *const u8
+    }
 }
 
 impl Drop for AllocPage {
@@ -31,3 +47,4 @@ impl Drop for AllocPage {
             .dealloc_frame(self.start, self.size);
     }
 }
+

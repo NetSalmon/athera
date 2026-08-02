@@ -1,3 +1,7 @@
+//! 系统内存探测。
+//!
+//! 从设备树 `/memory` 节点解析物理内存起始地址与大小，包装成
+//! [`Device`]。
 use fdt::Fdt;
 
 use crate::dev::device::{Device, Resource};

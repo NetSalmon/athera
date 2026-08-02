@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! Sv39 地址位域。
+//!
+//! [`VirtualAddr`] 与 [`PhysicalAddr`] 由 `bits!` 生成，可拆出
+//! `page_offset` / `vpn` / `ppn` 等字段；[`AsPAddr`] / [`AsVAddr`] 为
+//! 指针与引用提供到物理/虚拟地址的转换。
 use crate::bits;
 
 pub trait AsPAddr {
@@ -76,3 +81,4 @@ impl<T> AsVAddr for &mut T {
         VirtualAddr::from(*self as *const T as usize)
     }
 }
+

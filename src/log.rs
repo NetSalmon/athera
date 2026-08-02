@@ -1,3 +1,8 @@
+//! 分级日志。
+//!
+//! 日志级别 [`Level`]（OFF..TRACE），全局级别经原子变量保存，
+//! 由 `trace!` / `debug!` / `info!` / `warn!` / `error!` 宏按
+//! `module_path!()` 输出带颜色的行。
 use core::{
     fmt,
     sync::atomic::{AtomicU8, Ordering},

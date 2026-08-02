@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! virtio 常量：魔数、版本、环大小等。
 use novus_const::const_val;
 
 pub const MAGIC_VALUE: u32 = 0x74726976;
@@ -9,3 +10,4 @@ pub const VIRTIO_VERSION_LEGACY: u32 = 1;
 pub const RING_SIZE: usize = 256;
 
 pub const RING_MAX_SIZE: usize = 32;
+

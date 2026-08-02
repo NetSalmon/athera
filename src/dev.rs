@@ -1,3 +1,9 @@
+//! 设备驱动与设备树（FDT）探测。
+//!
+//! 启动阶段解析设备树并初始化 ns16550a UART、virtio-blk（MMIO）与系统
+//! 内存，提供 `UART` / `VIRTIO_BLK` / `SYSTEM_MEMORY` / `FDT` 等懒加载
+//! 静态。`FDT` 在初始化完成后会把设备树搬进堆中，并把 `FDT_ADDR` 指向
+//! 新副本，同时把原设备树所占物理内存归还给伙伴系统。
 use alloc::{vec, vec::Vec};
 use core::{arch::asm, slice};
 
@@ -8,7 +14,7 @@ use crate::{
     constants::MEMORY_RANGE,
     dev::{memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk},
     error::{Error, Result},
-    locks::SpinLock,
+    locks::spin::SpinLock,
     mem::allocators::FRAME_ALLOCATOR,
     warn,
 };

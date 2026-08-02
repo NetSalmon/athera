@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! ns16550a UART 驱动。
+//!
+//! 通过 `mmio_regs!` 访问 RBR/THR、IER、FCR、LCR、LSR 寄存器，支持
+//! FIFO/行控制初始化、字符收发与设备树探测。
 use fdt::Fdt;
 
 use crate::{
@@ -100,3 +104,4 @@ impl Ns16550a {
         })
     }
 }
+

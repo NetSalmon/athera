@@ -1,3 +1,4 @@
+//! 版本信息（uname）。
 use novus_const::const_val;
 
 #[const_val]

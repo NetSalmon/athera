@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! virtio-mmio 传输层。
+//!
+//! 定义 MMIO 寄存器布局（`VirtqCfg`）、设备状态/类型枚举与虚拟队列
+//! 结构；设备初始化流程见 [`handshake`]，队列实现见 [`queue`]。
 pub mod handshake;
 pub mod queue;
 
@@ -83,3 +87,4 @@ mmio_regs! {
         config_generation: u32 => 0x0FC,
     ]
 }
+

@@ -1,3 +1,8 @@
+//! 用户程序加载执行。
+//!
+//! [`execute_buffer`] 解析 ELF 程序头，为每个 `PT_LOAD` 段分配物理页并
+//! 映射进用户地址空间，最后创建用户栈并通过 [`restore_context`] 切换到
+//! 用户态。
 use alloc::vec;
 use core::ptr;
 
@@ -22,6 +27,11 @@ use crate::{
     trap::{TrapContext, restore_context},
 };
 
+/// 加载并执行一段用户程序 ELF。
+///
+/// 分配 TID、创建用户地址空间，逐个处理 `PT_LOAD` 段（分配物理页、
+/// 清零并拷贝段数据、映射到用户虚拟地址），最后建立用户栈并切换到
+/// 用户态。
 pub fn execute_buffer(buffer: &[u8]) -> Result<()> {
     let elf_header = Elf64Ehdr::from(buffer);
 

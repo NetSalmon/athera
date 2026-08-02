@@ -1,3 +1,9 @@
+//! 内核通用宏。
+//!
+//! - [`bits!`](crate::bits)：位域新类型（getter/setter/builder）；
+//! - [`numeric!`](crate::numeric)：整数新类型枚举；
+//! - [`mmio_regs!`](crate::mmio_regs)：MMIO 寄存器读写方法；
+//! - [`array_struct!`](crate::array_struct)：数组包装结构的字段访问器。
 /// Define a bitfield-typed newtype with getters and setters for individual bit fields.
 ///
 /// This macro generates a `#[repr(transparent)]` wrapper struct around an integer type

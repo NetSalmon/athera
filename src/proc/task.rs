@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! 任务控制块与全局任务表。
+//!
+//! [`Tid`] 是任务 ID；[`TaskControlBlock`] 描述单个任务（父/子关系、
+//! 状态、内存集、陷阱上下文）；[`TASKS`] 是按 TID 索引的全局任务表。
 use alloc::{collections::BTreeMap, rc::Weak, sync::Arc, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
@@ -76,3 +80,4 @@ impl DerefMut for Tasks {
 
 #[lazy(spin)]
 pub static TASKS: Tasks = Tasks::new();
+

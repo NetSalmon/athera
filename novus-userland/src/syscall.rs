@@ -1,3 +1,7 @@
+//! 用户态系统调用封装。
+//!
+//! 定义 `ecall!` 宏与 read / write / exit / reboot 的 RISC-V 调用约定
+//! 封装（系统调用号放 `a7`，返回值经 `a0` 传回）。
 #[allow(unused)]
 const EINVAL: isize = -22;
 #[allow(unused)]

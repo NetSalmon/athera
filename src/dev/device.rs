@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! 设备抽象。
+//!
+//! [`Resource`] 描述一段 MMIO 区间（易失读写），[`Device`] 附加可选
+//! 中断号；`mmio_regs!` 宏根据偏移量为设备生成寄存器读写方法。
 #[derive(Copy, Clone)]
 pub struct Resource {
     pub start: usize,
@@ -10,11 +14,21 @@ impl Resource {
         Self { start, size }
     }
 
+    /// 从 `start + offset` 处读取一个 `T`（易失读）。
+    ///
+    /// # Safety
+    ///
+    /// 要求 `start..start+offset+size_of::<T>()` 落在合法 MMIO 区间内。
     #[inline]
     pub fn read<T>(&self, offset: usize) -> T {
         unsafe { ((self.start as *const u8).add(offset) as *const T).read_volatile() }
     }
 
+    /// 向 `start + offset` 处写入一个 `T`（易失写）。
+    ///
+    /// # Safety
+    ///
+    /// 要求 `start..start+offset+size_of::<T>()` 落在合法 MMIO 区间内。
     #[inline]
     pub fn write<T>(&self, offset: usize, val: T) {
         unsafe { ((self.start as *mut u8).add(offset) as *mut T).write_volatile(val) }
@@ -76,3 +90,4 @@ macro_rules! mmio_regs {
         }
     };
 }
+

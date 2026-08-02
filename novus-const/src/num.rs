@@ -1,3 +1,8 @@
+//! 编译期数字字符串解析。
+//!
+//! [`parse_digit_*`](parse_digit_usize) 系列 `const fn` 把字符串按
+//! 十进制 / 十六进制（`0x`）/ 八进制（`0o`）/ 二进制（`0b`）解析为
+//! 整数，供 `#[const_val]` 宏在编译期求值。
 pub enum NumberBase {
     Decimal,
     Hexadecimal,

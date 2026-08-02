@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! 页表句柄 [`PageTableHandle`]。
+//!
+//! 包装根页表指针与对应的 [`AllocPage`]，保证页表页的生命周期（`Drop`
+//! 时归还物理页），并提供高低半区复制（用于在用户地址空间内继承内核
+//! 映射）。
 use core::{
     marker::PhantomData,
     ops::{Deref, DerefMut},
@@ -31,6 +36,7 @@ impl PageTableHandle {
         }
     }
 
+    /// 从伙伴系统分配一页并初始化为空的根页表。
     pub fn create() -> Result<Self> {
         let page = alloc_frame(None).ok_or(Error::OutOfMemory)?;
 
@@ -45,6 +51,12 @@ impl PageTableHandle {
         })
     }
 
+    /// 从裸地址包装一个已有的页表（用于接管预分配页表）。
+    ///
+    /// # Safety
+    ///
+    /// `addr` 必须指向合法且对齐的页表内存，`size` 与页表的分配大小
+    /// 一致；句柄 `Drop` 时会按 `size` 归还物理页。
     pub unsafe fn from_raw(addr: usize, size: usize) -> Self {
         let page = unsafe { AllocPage::from_raw(addr, size) };
 
@@ -90,3 +102,4 @@ impl DerefMut for PageTableHandle {
 
 unsafe impl Send for PageTableHandle {}
 unsafe impl Sync for PageTableHandle {}
+

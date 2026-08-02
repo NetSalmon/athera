@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! 内存布局常量与懒加载范围。
+//!
+//! 由设备树解析得到 [`MEMORY_RANGE`]；[`AVAIL_RANGE`] 为内核末尾
+//! `_end` 到 `FDT_ADDR` 之间的可用物理内存。另有页大小、伙伴/SLUB
+//! 参数与用户栈布局常量。
 use core::ops::Range;
 
 use fdt::Fdt;
@@ -77,3 +82,4 @@ pub const USER_STACK_TOP: usize = 0x1_0000_0000;
 pub const USER_STACK_LOWER_BOUND: usize = USER_STACK_TOP - USER_STACK_SIZE;
 
 pub const PTE_NUMBER: usize = 512;
+

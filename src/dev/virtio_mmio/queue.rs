@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! virtio 虚拟队列。
+//!
+//! 包含描述符表（`VRingDesc`）、avail/used 环（`VirtqAvail` /
+//! `VirtqUsed`）与对齐到页的 [`Queue`] 布局，以及队列初始化逻辑。
 use core::alloc::Layout;
 
 use crate::{
@@ -106,3 +110,4 @@ impl Virtq {
 }
 
 pub type VirtqRing<T> = [T; RING_SIZE];
+

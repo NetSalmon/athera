@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! SBI 调用封装。
+//!
+//! 定义错误码 [`SbiError`]、调用结果与各扩展的调用入口（legacy、
+//! srst 复位/关机、hsm 停止等）。
 use crate::numeric;
 
 numeric! {
@@ -315,3 +319,4 @@ pub mod dbcn {
         console_write(buf.len() as u64, ptr, 0)
     }
 }
+

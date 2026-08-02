@@ -1,10 +1,15 @@
 #![no_std]
+//! ID 分配器 [`IdAllocator`]。
+//!
+//! 基于 `BTreeMap` 维护空闲区间（区间起点为键、终点为值），提供
+//! 分配、指定分配、释放与重置；内核用它分配 TID。
 
 extern crate alloc;
 
 use alloc::collections::BTreeMap;
 use core::ops::Range;
 
+/// ID 分配错误。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdAllocError {
     OutOfRange,
@@ -12,6 +17,7 @@ pub enum IdAllocError {
 }
 
 #[derive(Debug)]
+/// 基于空闲区间（`BTreeMap<start, end>`）的 ID 分配器。
 pub struct IdAllocator {
     start: usize,
     end: usize,
@@ -26,6 +32,8 @@ impl Default for IdAllocator {
 }
 
 impl IdAllocator {
+    /// 创建空分配器（需先 [`init`](Self::init) 或使用
+    /// [`from_range`](Self::from_range)）。
     pub fn new() -> IdAllocator {
         Self {
             start: 0,
@@ -35,6 +43,7 @@ impl IdAllocator {
         }
     }
 
+    /// 用 `range` 作为整个空闲区间创建分配器。
     pub fn from_range(range: Range<usize>) -> IdAllocator {
         let mut map = BTreeMap::new();
         map.insert(range.start, range.end);
@@ -46,6 +55,7 @@ impl IdAllocator {
         }
     }
 
+    /// 重置并设为给定区间。
     pub fn init(&mut self, range: Range<usize>) {
         self.start = range.start;
         self.end = range.end;
@@ -93,6 +103,7 @@ impl IdAllocator {
         true
     }
 
+    /// 分配一个 ID；区间用尽时返回 `None`。
     pub fn alloc(&mut self) -> Option<usize> {
         if self.is_full() {
             return None;
@@ -109,6 +120,7 @@ impl IdAllocator {
         Some(id)
     }
 
+    /// 尝试分配指定的 ID。
     pub fn alloc_specific(&mut self, id: usize) -> Result<(), IdAllocError> {
         if !self.contains(id) {
             return Err(IdAllocError::OutOfRange);
@@ -155,6 +167,7 @@ impl IdAllocator {
         self.ranges.insert(new_start, new_end);
     }
 
+    /// 释放一个 ID（与相邻空闲区间自动合并）。
     pub fn dealloc(&mut self, id: usize) -> Result<(), IdAllocError> {
         if !self.contains(id) {
             return Err(IdAllocError::OutOfRange);
@@ -170,6 +183,7 @@ impl IdAllocator {
         Ok(())
     }
 
+    /// 释放一段连续 ID。
     pub fn dealloc_range(&mut self, range: Range<usize>) -> Result<(), IdAllocError> {
         if range.start < self.start || range.end > self.end {
             return Err(IdAllocError::OutOfRange);
@@ -189,6 +203,7 @@ impl IdAllocator {
         Ok(())
     }
 
+    /// 释放全部 ID，回到初始状态。
     pub fn reset(&mut self) {
         self.ranges.clear();
         self.ranges.insert(self.start, self.end);
@@ -201,3 +216,4 @@ impl From<Range<usize>> for IdAllocator {
         Self::from_range(range)
     }
 }
+

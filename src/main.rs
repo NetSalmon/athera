@@ -28,6 +28,9 @@ use crate::{
 global_asm!(include_str!("entry.asm"));
 
 #[unsafe(no_mangle)]
+/// 内核入口（由 `entry.asm` 的 `_start` 调用）。
+///
+/// 初始化日志级别、恒等映射页表，然后加载并执行内嵌的用户程序。
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     arch::registers::gpr::Tp::write(hart_id as u64);
 
@@ -69,6 +72,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 }
 
 #[unsafe(no_mangle)]
+/// 停机：输出日志并通过 SBI 复位（关机）。
 fn kernel_halt() -> ! {
     info!("kernel halted");
     system_reset(ResetType::SHUTDOWN, ResetReason::NONE);

@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! 侵入式单链表。
+//!
+//! “下一个节点指针”存放在节点自身的首字处，不额外分配内存，供伙伴
+//! 系统与 SLUB 的空闲链表复用。
 use core::{
     fmt,
     fmt::{Debug, Formatter},
@@ -124,3 +128,4 @@ impl<'a> Iterator for IntrusiveListIterMut<'a> {
         }
     }
 }
+

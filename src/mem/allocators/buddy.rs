@@ -1,3 +1,7 @@
+//! 伙伴系统物理页分配器。
+//!
+//! 以 2 的幂次阶（order）维护空闲链表：分配时从高到低查找并逐级对半
+//! 拆分，释放时尝试与 buddy 合并成大块。
 use core::ops::Range;
 
 use crate::{
@@ -6,6 +10,7 @@ use crate::{
     trace,
 };
 
+/// 伙伴系统分配器：按阶（order）组织空闲页块。
 pub struct BuddyAllocator {
     pub free_list: [IntrusiveList; BUDDY_MAX_ORDER],
 }
@@ -85,12 +90,14 @@ impl BuddyAllocator {
         self.free_list[current_order].push(current_ptr as *mut _);
     }
 
-    pub fn alloc_frame(&mut self, size: usize) -> Option<usize> {
+    /// 按字节大小分配，自动换算为阶。
+pub fn alloc_frame(&mut self, size: usize) -> Option<usize> {
         let order = size_to_order(size);
         self.alloc(order)
     }
 
-    pub fn dealloc_frame(&mut self, start: usize, size: usize) {
+    /// 按字节大小归还，自动换算为阶。
+pub fn dealloc_frame(&mut self, start: usize, size: usize) {
         let order = size_to_order(size);
         self.dealloc(start, order)
     }

@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! 陷阱（异常 / 中断）处理与用户态上下文切换。
+//!
+//! `entry.asm` 的 `trap_entry` 保存现场后调用 [`trap_handler`]；用户态
+//! 进程的上下文由 [`TrapContext`] 描述，经 [`restore_context`] 恢复到
+//! 用户态。
 use core::arch::asm;
 
 use crate::{
@@ -79,6 +84,11 @@ impl From<Trap> for i64 {
     }
 }
 
+/// 陷阱入口 C 侧处理函数，由 `entry.asm` 的 `trap_entry` 调用。
+///
+/// 参数依次为 `scause` / `sepc` / `stval` / `sstatus` / `satp` 与陷阱
+/// 帧栈指针（`sp`）。用户态 `ecall` 在此分派给 [`syscall::handle`]，
+/// 其余异常/中断按类型处理或直接停机。
 #[unsafe(no_mangle)]
 fn trap_handler(
     scause: u64,
@@ -142,6 +152,7 @@ pub fn set_next_timer() {
     arch::registers::csr::Stimecmp::write(t + GAP);
 }
 
+/// 用户态陷阱上下文：32 个通用寄存器 + `satp` / `sepc` / `sstatus`。
 #[derive(Clone, Debug)]
 pub struct TrapContext {
     pub context: [u64; 32],
@@ -164,6 +175,10 @@ impl TrapContext {
     }
 }
 
+/// 恢复用户态上下文并跳转到用户态（`sret`），不会返回。
+///
+/// 依次写入 `sstatus` / `sepc` / `stvec` / `satp` 并刷新 TLB，然后从
+/// 上下文数组装载通用寄存器。
 pub fn restore_context(context: &TrapContext) -> ! {
     let context_addr = context.context.as_ptr() as u64;
     unsafe {
@@ -221,3 +236,4 @@ pub fn restore_context(context: &TrapContext) -> ! {
         )
     }
 }
+

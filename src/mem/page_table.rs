@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! Sv39 页表与地址空间管理。
+//!
+//! [`PageTable`] 是一页 512 项的页表；[`PageTableManager`] 维护内核
+//! 地址空间与按 TID 索引的用户地址空间，提供恒等映射、映射/解映射、
+//! 激活（写 `satp`）与 `sfence.vma` 刷新。
 pub mod handle;
 
 use alloc::collections::BTreeMap;
@@ -413,3 +418,4 @@ impl PageTableManager {
         unsafe { asm!("sfence.vma") }
     }
 }
+

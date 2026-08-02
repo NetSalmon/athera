@@ -1,3 +1,7 @@
+//! SLUB 风格的对象分配器（全局堆）。
+//!
+//! 按对象大小分为多档 [`Cache`]；每档从伙伴系统取页并切成等大对象。
+//! 大对象（超过 `SLUB_MAX_ORDER`）直接走伙伴系统。
 use core::{alloc::Layout, cmp::max, fmt, marker::PhantomData, ptr::null_mut};
 
 use crate::{

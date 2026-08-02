@@ -1,4 +1,9 @@
 #![allow(dead_code)]
+//! 分配器全局实例。
+//!
+//! - [`FRAME_ALLOCATOR`]：伙伴系统物理页分配器（懒加载 + 自旋锁保护）；
+//! - [`CACHES`]：SLUB 全局分配器，经 [`global_allocator`] 注册，使
+//!   `Vec` / `String` / `BTreeMap` 等 `alloc` 结构可用。
 use core::alloc::{GlobalAlloc, Layout};
 
 use novus_const::lazy;
@@ -6,7 +11,7 @@ use novus_const::lazy;
 use crate::{
     constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
     debug,
-    locks::{LazyLock, SpinLock},
+    locks::{lazy::LazyLock, spin::SpinLock},
     mem::{
         alloc_page::AllocPage,
         allocators::{buddy::BuddyAllocator, slub::Caches},
@@ -27,6 +32,7 @@ pub static FRAME_ALLOCATOR: BuddyAllocator = {
     allocator
 };
 
+/// 从伙伴系统分配一个物理页帧；`size` 为 `None` 时使用默认页大小。
 pub fn alloc_frame(size: Option<usize>) -> Option<AllocPage> {
     let size = size.unwrap_or(PHY_PAGE_SIZE);
 
@@ -37,6 +43,7 @@ pub fn alloc_frame(size: Option<usize>) -> Option<AllocPage> {
         .map(|start| AllocPage { start, size })
 }
 
+/// 归还一个物理页帧（解构 `AllocPage` 后直接归还，不触发 `Drop`）。
 pub fn dealloc_frame(AllocPage { start, size }: AllocPage) {
     FRAME_ALLOCATOR.force().lock().dealloc_frame(start, size);
 }
@@ -58,3 +65,4 @@ unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
 pub fn caches_snapshot() {
     debug!("{:#?}", CACHES.force().lock().0);
 }
+

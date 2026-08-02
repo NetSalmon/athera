@@ -1,3 +1,7 @@
+//! 系统调用处理。
+//!
+//! 用户态 `ecall`（`U_MODE_ECALL`）陷入后由 `trap_handler` 分派到这里，
+//! 目前支持 read / write / exit / reboot 等。
 use crate::{
     arch,
     arch::{
@@ -94,6 +98,11 @@ fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
     -1
 }
 
+/// 处理一次系统调用。
+///
+/// `args` 是陷阱帧里 `a0..a7` 的副本，`sepc` 为触发 `ecall` 的地址；
+/// 返回 `(返回值, 下一条指令地址)`，其中返回值写入 `a0`，下一条地址写
+/// 入 `sepc`。
 pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
     match Syscall::from(args[7]) {
         Syscall::READ => {

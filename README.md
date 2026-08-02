@@ -13,7 +13,7 @@
 - ELF 加载器（支持 32/64 位、大小端，用户程序经 `include_bytes!` 内嵌）
 - 用户态进程管理与 ecall 系统调用（read/write/exit/reboot）
 - TID 分配器（`novus-id-alloc`）
-- 同步原语：`SpinLock` / `OnceLock` / `LazyLock`（懒加载静态）
+- 同步原语：`SpinLock`（关中断自旋锁）/ `OnceLock` / `LazyLock`（懒加载静态）/ `PerCpu`（每 hart 存储）
 - 日志宏：`debug!` / `info!` / `error!`
 - 构建时配置（`config.toml`）
 
@@ -26,11 +26,14 @@ novus/                       # 内核（根 crate）
 │   │   ├── registers/      csr / gpr / values（寄存器抽象）
 │   │   └── sbi.rs          SBI 封装（srst、hsm 等）
 │   ├── constants/          常量模块
-│   │   ├── memory.rs       内存常量与懒加载静态（MEMORY_RANGE 等）
+│   │   ├── memory.rs       内存常量与懒加载范围（MEMORY_RANGE 等）
 │   │   ├── symbols.rs      链接器符号（_end / trap_entry / FDT_ADDR）
 │   │   ├── elf.rs          内嵌用户程序 ELF
-│   │   └── uname.rs        版本信息
+│   │   ├── task.rs         任务常量（TID_MAX）
+│   │   ├── uname.rs        版本信息
+│   │   └── virtio.rs       virtio 常量
 │   ├── dev/                设备驱动
+│   │   ├── device.rs       设备抽象（MMIO Resource / Device / mmio_regs!）
 │   │   ├── ns16550a.rs     UART 驱动
 │   │   ├── memory.rs       内存区域探测
 │   │   ├── virtio_blk.rs   virtio-blk 驱动
@@ -38,33 +41,38 @@ novus/                       # 内核（根 crate）
 │   │       ├── handshake.rs  链式握手状态机
 │   │       └── queue.rs      虚拟队列
 │   ├── mem/                内存管理
-│   │   ├── addr.rs         地址抽象（Sv39）
-│   │   ├── alloc_page.rs   页面分配
-│   │   ├── allocators/     伙伴系统、SLUB、侵入式链表
+│   │   ├── addr.rs         地址位域抽象（Sv39）
+│   │   ├── alloc_page.rs   物理页帧句柄（AllocPage）
+│   │   ├── allocators/     伙伴系统、SLUB 全局分配器、侵入式链表
 │   │   └── page_table/     页表（内核/用户地址空间）
 │   │       └── handle.rs   页表句柄
 │   ├── entry.asm           启动汇编
 │   ├── trap.rs             陷阱处理与用户态上下文
 │   ├── syscall.rs          系统调用
-│   ├── usr.rs              用户态常量与状态位
-│   ├── proc.rs             进程控制块与 TID 分配
+│   ├── proc.rs             进程管理
+│   │   ├── task.rs         任务控制块、TID 分配与任务表
+│   │   └── exec.rs         ELF 用户程序加载执行
 │   ├── elf.rs              ELF 结构定义
 │   ├── io.rs               格式化输出（print!/println!）
-│   ├── log.rs              日志宏
-│   ├── locks.rs            同步原语（SpinLock/OnceLock/LazyLock）
-│   ├── macros.rs           宏定义
+│   ├── log.rs              分级日志（debug!/info!/error! 等）
+│   ├── locks.rs            同步原语模块
+│   │   ├── spin.rs         SpinLock（关中断自旋锁）
+│   │   ├── once.rs         OnceLock（一次性初始化）
+│   │   ├── lazy.rs         LazyLock（懒加载静态）
+│   │   └── per_cpu.rs      PerCpu（每 hart 存储）
+│   ├── macros.rs           宏定义（bits!/numeric!/mmio_regs!/array_struct!）
 │   ├── error.rs            错误类型
 │   └── main.rs             内核入口
 ├── novus-userland/         用户程序（子 crate）
 │   ├── src/
-│   │   ├── bin/hello_world.rs
+│   │   ├── bin/            hello_world.rs / add.rs
 │   │   ├── lib.rs          入口 _start
 │   │   ├── syscall.rs      用户态 ecall 封装
 │   │   ├── panic.rs
 │   │   └── linker.ld
 │   └── build.rs
-├── novus-const/            编译期常量与懒加载宏（const_val / lazy）
-├── novus-const-macros/     proc-macro crate（bits / numeric 等）
+├── novus-const/            编译期常量与属性宏（const_val / lazy / spin）
+├── novus-const-macros/     proc-macro crate（const_val / lazy / spin）
 ├── novus-id-alloc/         ID 分配器（用于 TID）
 ├── linker.ld               内核链接脚本
 ├── config.toml             构建时配置

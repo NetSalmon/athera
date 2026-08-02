@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! 内核统一错误类型 [`Error`] 与 `Result` 别名。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Fdt,
@@ -44,3 +45,4 @@ impl core::fmt::Display for Error {
 }
 
 impl core::error::Error for Error {}
+

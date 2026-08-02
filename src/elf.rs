@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! ELF64 结构定义。
+//!
+//! 仅定义加载用户程序所需的最小集合：文件头 [`Elf64Ehdr`]、程序头
+//! `Elf64Phdr` 与类型枚举（`EType` / `EMachine` / `PType` 等）。
 use core::fmt::{Display, Formatter};
 
 use crate::{array_struct, bits, numeric};
@@ -23,6 +27,12 @@ pub struct Elf64Ehdr {
 }
 
 impl<T: AsRef<[u8]>> From<T> for Elf64Ehdr {
+    /// 把 ELF 文件头按字节直读为结构体。
+    ///
+    /// # Safety
+    ///
+    /// 调用方必须保证 `value` 至少包含一个完整的 `Elf64Ehdr`（64 字节），
+    /// 且起始地址按 `align_of::<Elf64Ehdr>()` 对齐。
     fn from(value: T) -> Self {
         let ptr = value.as_ref().as_ptr() as *const Elf64Ehdr;
         unsafe { ptr.read() }
@@ -349,3 +359,4 @@ impl Display for PFlags {
         f.write_str("")
     }
 }
+

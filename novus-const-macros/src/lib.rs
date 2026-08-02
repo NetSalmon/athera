@@ -1,3 +1,9 @@
+//! `novus-const` 的过程宏实现。
+//!
+//! - [`const_val`](macro@const_val)：编译期常量属性宏（支持
+//!   min / max / multiple_of 约束）；
+//! - [`lazy`](macro@lazy)：生成 `LazyLock` 静态（可选 `spin` 内层锁）；
+//! - [`spin`](macro@spin)：生成 `SpinLock` 包装的静态。
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::{
@@ -52,6 +58,11 @@ impl Parse for ConstValAttrs {
     }
 }
 
+/// 编译期常量属性宏。
+///
+/// 用法：`#[const_val]` / `#[const_val(min = N, max = M, multiple_of = K)]`。
+/// 把 `const` 值（支持 `usize`/`u8`/... 整数类型）改写为经字符串解析的
+/// 编译期常量，并在满足约束（`min` / `max` / `multiple_of`）时编译通过。
 #[proc_macro_attribute]
 pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as syn::ItemConst);
@@ -140,6 +151,11 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
+/// 懒加载静态属性宏。
+///
+/// 用法：`#[lazy]` 生成 `LazyLock<T>`，`#[lazy(spin)]` 生成
+/// `LazyLock<SpinLock<T>>`。展开结果引用 `crate::locks::lazy` /
+/// `crate::locks::spin`，因此只适用于本内核 crate。
 #[proc_macro_attribute]
 pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = parse_macro_input!(item as syn::ItemStatic);
@@ -160,8 +176,8 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) => {
                 if path.is_ident("spin") {
                     let out = quote::quote! {
-                        #vis static #k: crate::locks::LazyLock< crate::locks::SpinLock<#t> >
-                        = crate::locks::LazyLock::new(|| crate::locks::SpinLock::new(#v));
+                        #vis static #k: crate::locks::lazy::LazyLock< crate::locks::spin::SpinLock<#t> >
+                        = crate::locks::lazy::LazyLock::new(|| crate::locks::spin::SpinLock::new(#v));
                     };
 
                     return out.into();
@@ -172,12 +188,16 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let out = quote::quote! {
-        #vis static #k: crate::locks::LazyLock< #t > = crate::locks::LazyLock::new(|| #v);
+        #vis static #k: crate::locks::lazy::LazyLock< #t > = crate::locks::lazy::LazyLock::new(|| #v);
     };
 
     out.into()
 }
 
+/// 自旋锁静态属性宏。
+///
+/// 用法：`#[spin] static X: T = value;`，展开为
+/// `static X: crate::locks::spin::SpinLock<T>`。
 #[proc_macro_attribute]
 pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = parse_macro_input!(item as syn::ItemStatic);
@@ -188,7 +208,7 @@ pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let v = tokens.expr;
 
     let out = quote::quote! {
-        #vis static #k: crate::locks::SpinLock< #t > = crate::locks::SpinLock::new(#v);
+        #vis static #k: crate::locks::spin::SpinLock< #t > = crate::locks::spin::SpinLock::new(#v);
     };
 
     out.into()

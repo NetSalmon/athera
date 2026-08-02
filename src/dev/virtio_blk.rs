@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! virtio-blk 块设备驱动。
+//!
+//! 基于 virtio-mmio 传输层（见 [`super::virtio_mmio`]）完成设备探测、
+//! 特征协商与队列配置。
 use alloc::vec::Vec;
 use core::{ptr::addr_of, sync::atomic::Ordering};
 
@@ -297,3 +301,4 @@ struct VirtioBlkReq {
     reserved: u32,
     sector: u64,
 }
+

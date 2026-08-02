@@ -1,28 +1,42 @@
+# 内核启动汇编。
+#
+# 启动流程（见 README「初始化依赖」）：
+# 1. _start 设置内核栈，把 a1（设备树地址）写入 FDT_ADDR 槽位；
+# 2. 设置 stvec = trap_entry、开启 SIE 相应中断位，并置位 SSTATUS
+#    (SIE/SUM) 后调用 Rust 侧 main；
+# 3. trap_entry 保存/恢复全部通用寄存器（256 字节陷阱帧），把
+#    scause/sepc/stval/sstatus/satp 与帧指针作为参数调用 trap_handler。
+
 .section .text.entry
 .global _start
 .balign 4
 _start:
+    # 1. 内核栈 + 保存设备树地址
     la sp, kernel_stack_top
 
     la t0, FDT_ADDR
-    sd a1, 0(t0)
+    sd a1, 0(t0)              # a1 = 设备树物理地址（QEMU 约定）
 
+    # 2. 陷阱向量 + 中断使能
     la t0, trap_entry
     andi t0, t0, ~3
-    csrs stvec, t0
+    csrs stvec, t0           # stvec = trap_entry（低 2 位清 0 = DIRECT）
 
+    # SIE: S-Software(1) | S-Timer(5) | S-External(9)
     li   t0, (1 << 1) | (1 << 5) | (1 << 9)
     csrw sie, t0
 
+    # SSTATUS: SIE(1) 允许 S 模式中断，SUM(18) 允许访问用户页
     li   t0, (1 << 1) | (1 << 18)
     csrs sstatus, t0
 
-    call main
+    call main                # 进入 Rust 内核入口（不返回）
 
 .section .text
 .balign 4
 .global trap_entry
 trap_entry:
+    # 保存 32 个通用寄存器到内核栈（256 字节陷阱帧）
     addi sp, sp, -256
     sd x0, 0(sp)
     sd x1, 8(sp)
@@ -57,6 +71,7 @@ trap_entry:
     sd x30, 240(sp)
     sd x31, 248(sp)
 
+    # 传参给 trap_handler(scause, sepc, stval, sstatus, satp, sp)
     csrr a0, scause
     csrr a1, sepc
     csrr a2, stval
@@ -66,6 +81,7 @@ trap_entry:
 
     call trap_handler
 
+    # 恢复现场
     ld x0, 0(sp)
     ld x1, 8(sp)
     ld x2, 16(sp)
@@ -101,9 +117,11 @@ trap_entry:
 
     addi sp, sp, 256
 
-    sret
+    sret                     # 返回被打断的执行流（sepc 可能已被改写）
 
 .section .data
+# FDT_ADDR：启动时由 _start 写入设备树物理地址，Rust 侧作为
+# extern 符号读取（见 constants/symbols.rs）。
 .global FDT_ADDR
 .align 3
 FDT_ADDR:
@@ -113,6 +131,6 @@ FDT_ADDR:
 .global boot_stack_lower_bound
 .global user_stack_lower_bound
 kernel_stack_lower_bound:
-    .space 4096 * 16
+    .space 4096 * 16         # 内核启动栈 64 KiB
     .global kernel_stack_top
 kernel_stack_top:

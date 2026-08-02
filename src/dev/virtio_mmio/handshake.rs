@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+//! virtio 链式握手状态机。
+//!
+//! 把初始化过程拆成 `HandshakeBegin -> FeaturesNegotiated -> QueuesReady`
+//! 三个阶段，每个阶段的方法名即下一步动作，保证寄存器操作顺序正确。
 use alloc::vec::Vec;
 
 use crate::{
@@ -199,3 +203,4 @@ impl<'a> QueuesReady<'a> {
         self.queues
     }
 }
+
