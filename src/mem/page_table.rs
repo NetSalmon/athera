@@ -418,4 +418,3 @@ impl PageTableManager {
         unsafe { asm!("sfence.vma") }
     }
 }
-

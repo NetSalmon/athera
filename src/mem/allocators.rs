@@ -65,4 +65,3 @@ unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
 pub fn caches_snapshot() {
     debug!("{:#?}", CACHES.force().lock().0);
 }
-

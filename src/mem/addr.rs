@@ -81,4 +81,3 @@ impl<T> AsVAddr for &mut T {
         VirtualAddr::from(*self as *const T as usize)
     }
 }
-

@@ -82,4 +82,3 @@ pub const USER_STACK_TOP: usize = 0x1_0000_0000;
 pub const USER_STACK_LOWER_BOUND: usize = USER_STACK_TOP - USER_STACK_SIZE;
 
 pub const PTE_NUMBER: usize = 512;
-

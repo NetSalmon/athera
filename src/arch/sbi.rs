@@ -319,4 +319,3 @@ pub mod dbcn {
         console_write(buf.len() as u64, ptr, 0)
     }
 }
-

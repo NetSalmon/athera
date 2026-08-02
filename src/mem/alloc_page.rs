@@ -47,4 +47,3 @@ impl Drop for AllocPage {
             .dealloc_frame(self.start, self.size);
     }
 }
-

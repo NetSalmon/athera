@@ -110,4 +110,3 @@ impl Virtq {
 }
 
 pub type VirtqRing<T> = [T; RING_SIZE];
-

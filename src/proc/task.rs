@@ -80,4 +80,3 @@ impl DerefMut for Tasks {
 
 #[lazy(spin)]
 pub static TASKS: Tasks = Tasks::new();
-

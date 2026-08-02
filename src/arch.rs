@@ -14,4 +14,3 @@ pub fn breakpoint() {
         asm!("ebreak");
     }
 }
-

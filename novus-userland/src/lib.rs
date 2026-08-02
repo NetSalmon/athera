@@ -21,4 +21,3 @@ pub fn _start() -> ! {
 
     syscall::exit(0);
 }
-

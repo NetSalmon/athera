@@ -4,60 +4,26 @@
 //! 基于 virtio-mmio 传输层（见 [`super::virtio_mmio`]）完成设备探测、
 //! 特征协商与队列配置。
 use alloc::vec::Vec;
-use core::{ptr::addr_of, sync::atomic::Ordering};
 
 use fdt::Fdt;
 
 use crate::{
     bits,
-    constants::{MAGIC_VALUE, RING_MAX_SIZE, VIRTIO_VERSION_LEGACY},
-    debug,
+    constants::{RING_MAX_SIZE, VIRTIO_VERSION_LEGACY},
     dev::{
         device::{Device, Resource},
         virtio_mmio::{
-            VirtqCfg,
             handshake::QueueConfig,
-            queue::{Flags, VRingDesc, Virtq},
+            queue::Virtq,
+            VirtqCfg,
         },
     },
-    error::{Error, Result},
-    mmio_regs, trace,
+    error::Result,
 };
 
 pub struct VirtioBlk {
     pub device: Device,
     pub queues: Option<Vec<Virtq>>,
-}
-
-mmio_regs! {
-    VirtioBlk: [
-        magic_value: u32 => 0x000,
-        version: u32 => 0x004,
-        device_id: u32 => 0x008,
-        vendor_id: u32 => 0x00C,
-        device_features: u32 => 0x010,
-        device_features_sel: u32 => 0x014,
-        driver_features: u32 => 0x020,
-        driver_features_sel: u32 => 0x024,
-        queue_sel: u32 => 0x030,
-        queue_num_max: u32 => 0x034,
-        queue_num: u32 => 0x038,
-        queue_align: u32 => 0x03C,   // legacy
-        queue_pfn: u32 => 0x040, // legacy
-        queue_ready: u32 => 0x044,
-        queue_notify: u32 => 0x050,
-        guest_page_size: u32 => 0x028,
-        interrupt_status: u32 => 0x060,
-        interrupt_ack: u32 => 0x064,
-        status: u32 => 0x070,
-        queue_desc_low: u32 => 0x080,
-        queue_desc_high: u32 => 0x084,
-        queue_driver_low: u32 => 0x090,
-        queue_driver_high: u32 => 0x094,
-        queue_device_low: u32 => 0x0A0,
-        queue_device_high: u32 => 0x0A4,
-        config_generation: u32 => 0x0FC,
-    ]
 }
 
 bits! {
@@ -157,141 +123,6 @@ impl VirtioBlk {
             queues: None,
         }
     }
-
-    pub fn print_info(&mut self) -> Result<()> {
-        let start = self.device.mmio.start;
-        let size = self.device.mmio.size;
-
-        let magic_value = self.magic_value();
-        let is_virtio_mmio = magic_value == MAGIC_VALUE;
-        let version = self.version();
-        let device_id = self.device_id();
-
-        debug!(
-            "version: {} ({})",
-            version,
-            if version == 1 { "legacy" } else { "modern" }
-        );
-
-        if is_virtio_mmio && device_id == 2 {
-            self.handshake()?;
-            debug!("handshake success");
-        } else {
-            return Err(Error::VirtioNotSupported);
-        }
-
-        debug!(
-            "device: start = {start:#x}, size = {size:#x}, magic = {magic_value:#x}, version = {version}, device_id = {device_id}, virtio_mmio = {is_virtio_mmio}"
-        );
-
-        Ok(())
-    }
-
-    pub unsafe fn test_read(&mut self) -> Result<()> {
-        const VIRTIO_BLK_T_GET_ID: u32 = 8;
-        const NEXT: Flags = Flags::from(1);
-
-        static mut DISK_REQ: VirtioBlkReq = VirtioBlkReq {
-            type_: 0,
-            reserved: 0,
-            sector: 0,
-        };
-
-        let req_addr = core::ptr::addr_of_mut!(DISK_REQ) as u64;
-        static mut DISK_BUF: [u8; 512] = [0u8; 512];
-        let buf_addr = core::ptr::addr_of_mut!(DISK_BUF) as u64;
-        static mut DISK_STATUS: u8 = 0;
-        let status_addr = core::ptr::addr_of_mut!(DISK_STATUS) as u64;
-
-        unsafe {
-            core::ptr::write(
-                core::ptr::addr_of_mut!(DISK_REQ),
-                VirtioBlkReq {
-                    type_: VIRTIO_BLK_T_GET_ID,
-                    reserved: 0,
-                    sector: 0,
-                },
-            );
-        }
-
-        let last_used;
-        let queue_ptr;
-
-        {
-            let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
-            let queue = queues
-                .first_mut()
-                .ok_or(Error::VirtioHandshakeFailed)?
-                .as_mut();
-
-            last_used = queue.used.idx;
-
-            queue.desc[0] = VRingDesc {
-                addr: req_addr,
-                len: size_of::<VirtioBlkReq>() as u32,
-                flags: NEXT,
-                next: 1,
-            };
-
-            queue.desc[1] = VRingDesc {
-                addr: buf_addr,
-                len: 512,
-                flags: 3.into(),
-                next: 2,
-            };
-
-            queue.desc[2] = VRingDesc {
-                addr: status_addr,
-                len: 1,
-                flags: 2.into(),
-                next: 0,
-            };
-
-            queue.avail.ring[0] = 0;
-            queue.avail.idx = 2;
-
-            queue_ptr = queue as *const _ as usize;
-        }
-
-        core::sync::atomic::fence(Ordering::SeqCst);
-
-        trace!("notify: queue @ {queue_ptr:#x}, avail_idx = 2");
-
-        self.write_queue_notify(0);
-        core::sync::atomic::fence(Ordering::SeqCst);
-
-        let mut guard = 0usize;
-        {
-            let queues = self.queues.as_mut().ok_or(Error::VirtioHandshakeFailed)?;
-            let queue = queues
-                .first_mut()
-                .ok_or(Error::VirtioHandshakeFailed)?
-                .as_mut();
-
-            let idx_ptr = &queue.used.idx as *const u16;
-
-            while unsafe { idx_ptr.read_volatile() } == last_used {
-                core::sync::atomic::fence(Ordering::SeqCst);
-                guard += 1;
-                if guard.is_multiple_of(100000000) {
-                    trace!(
-                        "polling used: idx = {}, last = {}, guard = {}",
-                        queue.used.idx, last_used, guard
-                    );
-                }
-            }
-        }
-
-        trace!("polling done, guard = {guard}");
-
-        let buf_slice =
-            unsafe { core::slice::from_raw_parts(addr_of!(DISK_BUF) as *const u8, 512) };
-
-        debug!("read {} bytes from disk", buf_slice.len());
-        trace!("buffer: {buf_slice:?}");
-
-        Ok(())
-    }
 }
 
 #[repr(C)]
@@ -301,4 +132,3 @@ struct VirtioBlkReq {
     reserved: u32,
     sector: u64,
 }
-

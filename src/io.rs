@@ -39,4 +39,3 @@ macro_rules! println {
 pub fn getchar() -> Option<u8> {
     UART.force().as_ref()?.lock().getchar()
 }
-

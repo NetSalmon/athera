@@ -90,4 +90,3 @@ macro_rules! mmio_regs {
         }
     };
 }
-

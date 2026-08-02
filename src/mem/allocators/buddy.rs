@@ -91,13 +91,13 @@ impl BuddyAllocator {
     }
 
     /// 按字节大小分配，自动换算为阶。
-pub fn alloc_frame(&mut self, size: usize) -> Option<usize> {
+    pub fn alloc_frame(&mut self, size: usize) -> Option<usize> {
         let order = size_to_order(size);
         self.alloc(order)
     }
 
     /// 按字节大小归还，自动换算为阶。
-pub fn dealloc_frame(&mut self, start: usize, size: usize) {
+    pub fn dealloc_frame(&mut self, start: usize, size: usize) {
         let order = size_to_order(size);
         self.dealloc(start, order)
     }

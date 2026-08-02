@@ -87,4 +87,3 @@ mmio_regs! {
         config_generation: u32 => 0x0FC,
     ]
 }
-

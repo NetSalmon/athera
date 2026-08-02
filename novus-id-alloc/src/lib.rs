@@ -216,4 +216,3 @@ impl From<Range<usize>> for IdAllocator {
         Self::from_range(range)
     }
 }
-

@@ -236,4 +236,3 @@ pub fn restore_context(context: &TrapContext) -> ! {
         )
     }
 }
-

@@ -128,4 +128,3 @@ impl<'a> Iterator for IntrusiveListIterMut<'a> {
         }
     }
 }
-

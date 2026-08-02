@@ -10,4 +10,3 @@ pub const VIRTIO_VERSION_LEGACY: u32 = 1;
 pub const RING_SIZE: usize = 256;
 
 pub const RING_MAX_SIZE: usize = 32;
-
