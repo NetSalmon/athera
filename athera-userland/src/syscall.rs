@@ -2,6 +2,9 @@
 //!
 //! 定义 `ecall!` 宏与 read / write / exit / reboot 的 RISC-V 调用约定
 //! 封装（系统调用号放 `a7`，返回值经 `a0` 传回）。
+
+use core::arch::asm;
+
 #[allow(unused)]
 const EINVAL: isize = -22;
 #[allow(unused)]
@@ -12,10 +15,11 @@ const READ: u64 = 63;
 const WRITE: u64 = 64;
 const EXIT: u64 = 93;
 const REBOOT: u64 = 142;
+const FORK: u64 = 220;
 
 #[macro_export]
 macro_rules! ecall {
-    ($syscall:expr => $($register:tt = $value:expr),*$(,)?) => {
+    ($syscall:expr $(=> $($register:tt = $value:expr),*$(,)?)?) => {
         {
             let ret: isize;
             #[allow(clippy::macro_metavars_in_unsafe)]
@@ -23,8 +27,10 @@ macro_rules! ecall {
                 core::arch::asm! (
                     "ecall",
                     $(
+                    $(
                     in($register) $value,
                     )*
+                    )?
                     in("a7") $syscall,
                     lateout("a0") ret
                 )
@@ -53,6 +59,10 @@ pub fn write(fd: u64, buf: &[u8]) -> isize {
 
 pub fn reboot(cmd: RebootCmd) -> isize {
     ecall!(REBOOT => "a0" = 0xfee1deadu64, "a1" = 0x28121969, "a2" = cmd.0)
+}
+
+pub fn fork() -> isize {
+    ecall!(FORK)
 }
 
 pub fn exit(code: u64) -> ! {

@@ -81,3 +81,9 @@ impl<T> AsVAddr for &mut T {
         VirtualAddr::from(*self as *const T as usize)
     }
 }
+
+impl From<PhysicalAddr> for u64 {
+    fn from(paddr: PhysicalAddr) -> u64 {
+        paddr.0 as u64
+    }
+}

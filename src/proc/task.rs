@@ -47,8 +47,8 @@ pub struct MemorySet {
 
 #[derive(Debug)]
 pub struct TaskControlBlock {
-    pub parent: Option<Weak<TaskControlBlock>>,
-    pub children: Vec<Arc<TaskControlBlock>>,
+    pub parent: Option<Tid>,
+    pub children: Vec<Tid>,
     pub status: TaskStatus,
     pub memory_set: MemorySet,
     pub trap_context: TrapContext,

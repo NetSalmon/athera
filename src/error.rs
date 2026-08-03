@@ -18,6 +18,7 @@ pub enum Error {
     NoUart,
     NoTidAvailable,
     AddressSpaceNotFound,
+    NotUserAddressSpace,
     PageTableMissing,
     NullPointer,
 }
@@ -44,6 +45,7 @@ impl core::fmt::Display for Error {
             Error::AddressSpaceNotFound => "user address space not found",
             Error::PageTableMissing => "page table not found",
             Error::NullPointer => "null pointer",
+            Error::NotUserAddressSpace => "not an user address space",
             Error::NoVirtioBlock => "no Virtio Block device found",
         };
         f.write_str(message)

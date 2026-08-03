@@ -23,6 +23,10 @@ fn main() {
             b'\n',
         ],
     );
+
+    athera_userland::syscall::write(0, b"fork start\n");
+    athera_userland::syscall::fork();
+    athera_userland::syscall::write(0, b"forked\n");
 }
 
 fn add(a: i32, b: i32) -> i32 {

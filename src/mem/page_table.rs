@@ -296,6 +296,68 @@ impl AddressSpace {
         let pte0 = &mut pt0.entries[vpn0];
         *pte0 = PageTableEntry::new();
     }
+
+    /// 深拷贝本地址空间。
+    ///
+    /// 新建根页表与全部中间页表并把页表内容复制过去，同时把上级页表里
+    /// 指向中间页表的 PPN 改写为新副本，得到**完全独立**的新地址空间；
+    /// 叶映射指向的物理帧与源地址空间共享（如需 COW 应在更上层处理）。
+    ///
+    /// 分配失败时返回 [`Error::OutOfMemory`]；需要无条件克隆时可用
+    /// [`Clone`] trait（分配失败会 panic）。
+    pub fn try_clone(&self) -> Result<Self> {
+        let mut root = PageTableHandle::create()?;
+        self.root.copy_from(&mut root);
+
+        // 为每个中间页表（level-1 / level-0）创建副本，并记录
+        // 旧物理地址 -> 新物理地址 的对应关系，用于改写上级页表项。
+        let mut tables = BTreeMap::new();
+        let mut remap: BTreeMap<PhysicalAddr, PhysicalAddr> = BTreeMap::new();
+        for handle in self.tables.values() {
+            let mut copy = PageTableHandle::create()?;
+            handle.copy_from(&mut copy);
+            let old_addr = handle.as_phys_addr();
+            let new_addr = copy.as_phys_addr();
+            remap.insert(old_addr, new_addr);
+            tables.insert(new_addr, copy);
+        }
+
+        // 根页表项（指向 level-1）改指到新副本；若指向的是数据帧
+        // （超页等，不在 remap 中）则保持共享。
+        for (index, pte) in self.root.entries.iter().enumerate() {
+            if let Some(new_addr) = remap.get(&Self::entry_phys_addr(pte)) {
+                root.entries[index].set_ppn(new_addr.ppn() as u64);
+            }
+        }
+
+        // level-1 页表项（指向 level-0）改指到新副本；level-0 的叶项
+        // 指向数据帧，不在 remap 中，保持共享。
+        for (old_addr, handle) in &self.tables {
+            let new_addr = remap.get(old_addr).ok_or(Error::PageTableMissing)?;
+            let new_handle = tables.get_mut(new_addr).ok_or(Error::PageTableMissing)?;
+            for (index, pte) in handle.entries.iter().enumerate() {
+                if let Some(target) = remap.get(&Self::entry_phys_addr(pte)) {
+                    new_handle.entries[index].set_ppn(target.ppn() as u64);
+                }
+            }
+        }
+
+        Ok(Self { root, tables })
+    }
+
+    /// 从页表项提取其指向的物理地址（只取 PPN，页内偏移为 0）。
+    fn entry_phys_addr(pte: &PageTableEntry) -> PhysicalAddr {
+        let mut addr = PhysicalAddr::new();
+        addr.set_ppn(pte.ppn() as usize);
+        addr
+    }
+}
+
+impl Clone for AddressSpace {
+    /// 深拷贝地址空间（见 [`Self::try_clone`]）；页表分配失败时 panic。
+    fn clone(&self) -> Self {
+        self.try_clone().expect("address space clone failed")
+    }
 }
 
 impl PageTableManager {
@@ -428,12 +490,27 @@ impl PageTableManager {
                 .root
                 .as_phys_addr(),
         };
+
         let ppn = root.ppn() as u64;
         let mut value = SatpValue::new();
         value.set_ppn(ppn);
         value.set_mode(SatpMode::SV39.into());
         Satp::write(value.into());
         Self::flush();
+        Ok(())
+    }
+
+    /// 克隆 `id` 指定的地址空间（深拷贝），并把副本登记到 `new_tid` 名下。
+    pub fn clone(&mut self, id: AddressSpaceId, new_tid: Tid) -> Result<()> {
+        let space = match id {
+            AddressSpaceId::Kernel => self.kernel.try_clone()?,
+            AddressSpaceId::User(tid) => self
+                .user
+                .get(&tid)
+                .ok_or(Error::AddressSpaceNotFound)?
+                .try_clone()?,
+        };
+        self.user.insert(new_tid, space);
         Ok(())
     }
 

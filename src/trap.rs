@@ -4,13 +4,11 @@
 //! `entry.asm` 的 `trap_entry` 保存现场后调用 [`trap_handler`]；用户态
 //! 进程的上下文由 [`TrapContext`] 描述，经 [`restore_context`] 恢复到
 //! 用户态。
+use crate::arch::registers::gpr::Sp;
 use core::arch::asm;
 
-use crate::{
-    arch,
-    arch::sbi::srst::{ResetReason, ResetType, system_reset},
-    debug, error, numeric, syscall, trace, trap_entry,
-};
+use crate::{arch, arch::sbi::srst::{ResetReason, ResetType, system_reset}, debug, error, info, numeric, syscall, user_trap_entry};
+use crate::arch::registers::csr::Sscratch;
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -105,11 +103,9 @@ fn trap_handler(
             set_next_timer();
         }
         Trap::Exception(Exception::U_MODE_ECALL) => {
-            let args = unsafe { &*((trap_frame_sp + 80) as *const [u64; 8]) };
+            let trap_context = unsafe { &*((trap_frame_sp) as *const [u64; 32]) };
 
-            trace!("syscall args: {:?}", args);
-
-            let (ret, next) = syscall::handle(args, sepc);
+            let (ret, next) = syscall::handle(sepc, trap_context);
 
             unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
 
@@ -137,7 +133,7 @@ fn trap_handler(
             system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         other => {
-            error!("unhandled trap: {other:?}, sepc = {sepc:#x}, halting");
+            error!("unhandled trap: {other:?}, halting, sepc={sepc:#x}, stval={_stval:#x}, sstatus={_sstatus:#x}, satp={_satp:#x}, frame={trap_frame_sp:#x}");
             loop {
                 core::hint::spin_loop();
             }
@@ -161,32 +157,23 @@ pub struct TrapContext {
     pub sstatus: u64,
 }
 
-impl TrapContext {
-    pub fn user(sepc: u64, sp: u64, satp: u64, sstatus: u64) -> TrapContext {
-        let mut context = [0; 32];
-        context[2] = sp;
-
-        TrapContext {
-            context,
-            satp,
-            sepc,
-            sstatus,
-        }
-    }
-}
-
 /// 恢复用户态上下文并跳转到用户态（`sret`），不会返回。
 ///
 /// 依次写入 `sstatus` / `sepc` / `stvec` / `satp` 并刷新 TLB，然后从
 /// 上下文数组装载通用寄存器。
 pub fn restore_context(context: &TrapContext) -> ! {
     let context_addr = context.context.as_ptr() as u64;
+
+    info!("sscratch: {:#x}", Sscratch::read());
+    info!("sp: {:#x}", Sp::read());
+
     unsafe {
         asm!(
             r#"
+            csrrw sp, sscratch, sp
+            csrw stvec, {stvec}
             csrw sstatus, {sstatus}
             csrw sepc, {sepc}
-            csrw stvec, {stvec}
             csrw satp, {satp}
             sfence.vma
 
@@ -227,8 +214,8 @@ pub fn restore_context(context: &TrapContext) -> ! {
             sret
             "#,
             sstatus = in(reg) context.sstatus,
+            stvec = in(reg) user_trap_entry as *const u8,
             sepc = in(reg) context.sepc,
-            stvec = in(reg) trap_entry as *const () as u64,
             satp = in(reg) context.satp,
 
             in("t0") context_addr,
