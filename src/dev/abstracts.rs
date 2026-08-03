@@ -1,3 +1,4 @@
+#[allow(unused)]
 pub trait CharDevice {
     type Error;
 

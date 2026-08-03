@@ -69,27 +69,31 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
-    if let Some(ref mut blk) = *VIRTIO_BLK.force().lock() {
-        let mut buf = vec![0u8; 9520];
+    let mut buf = vec![0u8; 9520];
+    info!("buf size: {}", buf.len());
 
-        info!("buf size: {}", buf.len());
+    // 每次块设备操作单独持锁，锁外中断恢复使能，定时器可以及时触发；
+    // ELF 加载等耗时逻辑全部放在锁外。
+    if let Some(blk) = VIRTIO_BLK.force().lock().as_mut()
+        && let Err(err) = blk.write_at(&ELF.0, 9520)
+    {
+        error!("{}", err);
+    }
 
-        if let Err(err) = blk.write_at(&ELF.0, 9520) {
-            error!("{}", err);
-        }
-
+    if let Some(blk) = VIRTIO_BLK.force().lock().as_mut() {
         match blk.read_at(&mut buf, 0) {
             Ok(size) => {
                 info!("read {size} bytes");
-                if let Err(err) = proc::exec::execute_buffer(&buf, None) {
-                    error!("{}", err);
-                };
             }
             Err(err) => {
                 error!("failed to read bytes: {err}");
             }
         }
     }
+
+    if let Err(err) = proc::exec::execute_buffer(&buf, None) {
+        error!("{}", err);
+    };
 
     if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
         error!("failed to execute user program: {err}");

@@ -2,6 +2,8 @@
 //!
 //! 用户态 `ecall`（`U_MODE_ECALL`）陷入后由 `trap_handler` 分派到这里，
 //! 目前支持 read / write / exit / reboot 等。
+use alloc::vec::Vec;
+
 use crate::{
     arch,
     arch::{
@@ -11,8 +13,8 @@ use crate::{
     },
     debug,
     dev::UART,
-    error, info, kernel_halt, numeric, print,
-    proc::{CURRENT_TASK, task::TASKS},
+    error, info, kernel_halt, numeric,
+    proc::{CURRENT_TASK, task::{TASKS, Tid}},
 };
 
 numeric! {
@@ -65,8 +67,12 @@ fn read(_fd: u64, buf: &mut [u8]) -> u64 {
 }
 
 fn write(_fd: u64, buf: &[u8]) -> u64 {
-    for i in buf.iter() {
-        print!("{}", *i as char);
+    // 一次持锁写完整个缓冲区，避免逐字节加锁/关中断。
+    if let Some(uart) = UART.force().as_ref() {
+        let guard = uart.lock();
+        for &c in buf {
+            guard.putchar(c);
+        }
     }
     buf.len() as u64
 }
@@ -127,8 +133,15 @@ pub fn handle(args: &[u64; 8], sepc: u64) -> (u64, u64) {
             match *CURRENT_TASK.current() {
                 Some(tid) => {
                     info!("task {} exited with code {code}", tid.0);
-                    TASKS.force().lock().remove(&tid);
-                    debug!("current tasks: {:#?}", *TASKS.force().lock());
+
+                    // 删除任务和收集快照都是短操作；完整任务表在锁外
+                    // 打印，避免长时间关闭中断影响定时器。
+                    let snapshot: Vec<Tid> = {
+                        let mut tasks = TASKS.force().lock();
+                        tasks.remove(&tid);
+                        tasks.keys().copied().collect()
+                    };
+                    debug!("current tasks: {snapshot:?}");
                 }
                 None => {
                     error!("exit syscall with no current task (code {code})");

@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 pub enum ScheduleRule {
     Batch,
     TimeSharing,

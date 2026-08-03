@@ -110,24 +110,38 @@ impl PageTable {
 #[lazy(spin)]
 pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();
 
+/// 单次持锁映射的块大小。`SpinLock` 持锁期间会关闭中断，把整段物理
+/// 内存一次性映射完会让定时器中断（s_timer）长时间得不到响应；分块
+/// 映射、块间释放锁并恢复中断，保证长启动映射期间定时器仍能按时触发。
+const IDENTITY_MAP_CHUNK: usize = 8 * 1024 * 1024; // 8 MiB
+
 pub fn identity_map() -> Result<()> {
     debug!("start identity mapping memory");
 
-    let mut mgr = PAGE_TABLE_MANAGER.lock();
-    let root_addr = mgr.kernel_root_addr();
+    // 先在各自锁内短暂取出设备 MMIO 区间，避免把设备锁嵌套在页表锁里。
+    let uart_start = UART.as_ref().map(|uart| uart.lock().device.mmio.start);
+    let blk_range = VIRTIO_BLK.lock().as_ref().map(|blk| {
+        blk.device.mmio.start..blk.device.mmio.start + blk.device.mmio.size
+    });
 
-    let start = SYSTEM_MEMORY.device.mmio.start;
-    let end = start + SYSTEM_MEMORY.device.mmio.size;
-    mgr.identity_map(start, end)?;
+    let mem_start = SYSTEM_MEMORY.device.mmio.start;
+    let mem_end = mem_start + SYSTEM_MEMORY.device.mmio.size;
+
+    // 物理内存分块映射：每映射一块就释放页表锁，块间中断恢复使能。
+    let mut cursor = mem_start;
+    while cursor < mem_end {
+        let chunk_end = (cursor + IDENTITY_MAP_CHUNK).min(mem_end);
+        PAGE_TABLE_MANAGER.lock().identity_map(cursor, chunk_end)?;
+        cursor = chunk_end;
+    }
 
     let mut flags = PageTableEntryFlags::new();
     flags.set_r(true);
     flags.set_w(true);
     flags.set_x(true);
 
-    if let Some(ref uart) = *UART {
-        let start = uart.lock().device.mmio.start;
-        mgr.map(
+    if let Some(start) = uart_start {
+        PAGE_TABLE_MANAGER.lock().map(
             AddressSpaceId::Kernel,
             VirtualAddr::from(start),
             PhysicalAddr::from(start),
@@ -136,16 +150,19 @@ pub fn identity_map() -> Result<()> {
         )?;
     }
 
-    if let Some(ref blk) = *VIRTIO_BLK.lock() {
-        let start = blk.device.mmio.start;
-        let end = start + blk.device.mmio.size;
-        mgr.identity_map(start, end)?;
+    if let Some(range) = blk_range {
+        PAGE_TABLE_MANAGER.lock().identity_map(range.start, range.end)?;
     }
+
+    let root_addr = {
+        let mgr = PAGE_TABLE_MANAGER.lock();
+        let root = mgr.kernel_root_addr();
+        mgr.activate(AddressSpaceId::Kernel)?;
+        root
+    };
 
     debug!("map ok");
     debug!("root pt addr at: {:?}", root_addr);
-
-    mgr.activate(AddressSpaceId::Kernel)?;
 
     debug!("identity mapping memory end");
     Ok(())
