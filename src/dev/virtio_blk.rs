@@ -3,25 +3,21 @@
 //!
 //! 基于 virtio-mmio 传输层（见 [`super::virtio_mmio`]）完成设备探测、
 //! 特征协商与队列配置，并通过 [`BlockDevice`] trait 提供按字节偏移的
-//! 扇区读写。
+//! 扇区读写。探测、握手与队列收发原语复用 [`super::virtio_mmio::VirtioDevice`]
+//! 通用抽象，本文件只描述 blk 特有的请求格式。
 use alloc::vec::Vec;
 use core::{
     mem::size_of,
     ptr::{addr_of, addr_of_mut},
-    sync::atomic::{Ordering, fence},
 };
-
-use fdt::Fdt;
 
 use crate::{
     bits,
-    constants::{RING_SIZE, VIRTIO_VERSION_LEGACY},
     dev::{
         abstracts::BlockDevice,
-        device::{Device, Resource},
+        device::Device,
         virtio_mmio::{
-            DeviceType, VirtqCfg,
-            handshake::QueueConfig,
+            DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},
         },
     },
@@ -36,8 +32,6 @@ const VIRTIO_BLK_T_OUT: u32 = 1;
 const VIRTIO_BLK_S_OK: u8 = 0;
 /// 设备扇区大小（字节）。
 const SECTOR_SIZE: usize = 512;
-/// `queue_notify` 寄存器偏移（见 [`VirtqCfg`]）。
-const QUEUE_NOTIFY_OFFSET: usize = 0x050;
 
 pub struct VirtioBlk {
     pub device: Device,
@@ -83,78 +77,37 @@ bits! {
     }
 }
 
-impl VirtioBlk {
-    /// 遍历设备树中所有 virtio,mmio 节点，逐个读取其 MMIO 寄存器中的
-    /// `device_id`，返回第一个 virtio-blk 设备；空槽位或其它 virtio 设备
-    /// （如 rng）会被跳过，而不是默认取第一个 virtio,mmio 节点。
-    pub fn probe(fdt: &Fdt) -> Option<Self> {
-        fdt.all_nodes().find_map(|node| {
-            let is_mmio = node
-                .compatible()
-                .map(|c| c.all().any(|c| c == "virtio,mmio"))
-                .unwrap_or(false);
-            if !is_mmio {
-                return None;
-            }
+impl VirtioDevice for VirtioBlk {
+    const DEVICE_TYPE: DeviceType = DeviceType::BLOCK;
 
-            let reg = node.reg()?.next()?;
-            let start = reg.starting_address as usize;
-            let size = reg.size.unwrap_or(0);
-            let interrupts = node.interrupts()?.next()?;
-
-            let device = Device {
-                mmio: Resource::new(start, size),
-                irq: Some(interrupts),
-            };
-
-            // 空槽位返回 0，rng 等其它设备返回各自的 device_id，均跳过。
-            let cfg = VirtqCfg { device };
-            if cfg.device_id() != DeviceType::BLOCK.0 {
-                return None;
-            }
-
-            Some(VirtioBlk {
-                device,
-                queues: None,
-            })
-        })
+    fn device(&self) -> Device {
+        self.device
     }
 
-    pub fn handshake(&mut self) -> Result<()> {
-        let mut cfg = VirtqCfg {
-            device: self.device,
-        };
-        let is_modern = cfg.version() != VIRTIO_VERSION_LEGACY;
+    fn queues_mut(&mut self) -> &mut Option<Vec<Virtq>> {
+        &mut self.queues
+    }
 
-        let queues = if is_modern {
-            cfg.handshake()
-                .modern(|_low, high| if high & 1 != 0 { (0, 1) } else { (0, 0) })?
-                .setup_queue(QueueConfig {
-                    index: 0,
-                    size: RING_SIZE as u32,
-                })?
-                .finish()
+    /// modern 特性协商：接受 `VIRTIO_F_VERSION_1`（high 位 0）。
+    fn negotiate(&self, _features_low: u32, features_high: u32) -> (u32, u32) {
+        if features_high & 1 != 0 {
+            (0, 1)
         } else {
-            cfg.handshake()
-                .legacy(|_f| 0u32)?
-                .setup_queue(QueueConfig {
-                    index: 0,
-                    size: RING_SIZE as u32,
-                })?
-                .finish()
-        };
-
-        self.queues = Some(queues);
-        Ok(())
+            (0, 0)
+        }
     }
+}
 
-    pub fn from(dev: Device) -> VirtioBlk {
+impl From<Device> for VirtioBlk {
+    fn from(dev: Device) -> Self {
         VirtioBlk {
             device: dev,
             queues: None,
         }
     }
+}
 
+impl VirtioBlk {
     /// 通过 virtqueue 0 提交一次 virtio-blk 请求并等待完成。
     ///
     /// `data` 为数据缓冲区；`data_write` 为真表示设备向 `data` 写入
@@ -162,11 +115,6 @@ impl VirtioBlk {
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
     fn submit(&mut self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> Result<()> {
-        // 探测成功后队列尚未配置，先补一次握手，保证 BlockDevice 可直接使用。
-        if self.queues.is_none() {
-            self.handshake()?;
-        }
-
         let req = VirtioBlkReq {
             r#type: req_type,
             reserved: 0,
@@ -174,79 +122,50 @@ impl VirtioBlk {
         };
         let mut status: u8 = !VIRTIO_BLK_S_OK;
 
-        // 组装描述符链并把头描述符追加到 avail 环，记录设备当前 used 位置。
+        // 组装描述符链并追加到 avail 环，记录设备当前 used 位置。
         let last_used = {
-            let queue = self
-                .queues
-                .as_mut()
-                .and_then(|queues| queues.first_mut())
-                .ok_or(Error::VirtioHandshakeFailed)?
-                .as_mut();
+            let queue = self.queue()?;
+            {
+                let q = queue.as_mut();
 
-            let last_used = queue.used.idx;
+                let mut flags = Flags::new();
+                flags.set_next(true);
+                q.desc[0] = VRingDesc {
+                    addr: addr_of!(req) as u64,
+                    len: size_of::<VirtioBlkReq>() as u32,
+                    flags,
+                    next: 1,
+                };
 
-            let mut flags = Flags::new();
-            flags.set_next(true);
-            queue.desc[0] = VRingDesc {
-                addr: addr_of!(req) as u64,
-                len: size_of::<VirtioBlkReq>() as u32,
-                flags,
-                next: 1,
-            };
+                let mut flags = Flags::new();
+                flags.set_next(true);
+                flags.set_write(data_write);
+                q.desc[1] = VRingDesc {
+                    addr: data.as_ptr() as u64,
+                    len: data.len() as u32,
+                    flags,
+                    next: 2,
+                };
 
-            let mut flags = Flags::new();
-            flags.set_next(true);
-            flags.set_write(data_write);
-            queue.desc[1] = VRingDesc {
-                addr: data.as_ptr() as u64,
-                len: data.len() as u32,
-                flags,
-                next: 2,
-            };
-
-            let mut flags = Flags::new();
-            flags.set_write(true);
-            queue.desc[2] = VRingDesc {
-                addr: addr_of_mut!(status) as u64,
-                len: size_of::<u8>() as u32,
-                flags,
-                next: 0,
-            };
-
-            // 环索引按队列大小（RING_SIZE）取模，与设备视角一致。
-            let slot = queue.avail.idx as usize % RING_SIZE;
-            queue.avail.ring[slot] = 0;
-            queue.avail.idx = queue.avail.idx.wrapping_add(1);
-
-            // 保证描述符表与 avail 环的写入先于 notify 被设备看到。
-            fence(Ordering::SeqCst);
-            last_used
+                let mut flags = Flags::new();
+                flags.set_write(true);
+                q.desc[2] = VRingDesc {
+                    addr: addr_of_mut!(status) as u64,
+                    len: size_of::<u8>() as u32,
+                    flags,
+                    next: 0,
+                };
+            }
+            queue.post_avail(0)
         };
 
         // 通知设备处理队列 0。
-        self.device.mmio.write::<u32>(QUEUE_NOTIFY_OFFSET, 0);
-        fence(Ordering::SeqCst);
+        self.notify();
 
         // 等待设备产生 used 元素，并校验被消费的描述符链头。
-        loop {
-            let queue = self
-                .queues
-                .as_mut()
-                .and_then(|queues| queues.first_mut())
-                .ok_or(Error::VirtioHandshakeFailed)?
-                .as_mut();
-
-            let used_idx = unsafe { addr_of!(queue.used.idx).read_volatile() };
-            if used_idx != last_used {
-                let slot = used_idx.wrapping_sub(1) as usize % RING_SIZE;
-                let elem = unsafe { addr_of!(queue.used.ring[slot]).read_volatile() };
-                if elem.id != 0 {
-                    return Err(Error::VirtioBlockFailed);
-                }
-                break;
-            }
-            fence(Ordering::SeqCst);
-            core::hint::spin_loop();
+        let elem = self.queue()?.wait_used(last_used)?;
+        if elem.id != 0 {
+            return Err(Error::VirtioBlockFailed);
         }
 
         if unsafe { addr_of!(status).read_volatile() } != VIRTIO_BLK_S_OK {

@@ -6,7 +6,21 @@
 pub mod handshake;
 pub mod queue;
 
-use crate::{bits, dev::device::Device, mmio_regs, numeric};
+use alloc::vec::Vec;
+use core::sync::atomic::{Ordering, fence};
+
+use fdt::Fdt;
+
+use crate::{
+    bits,
+    constants::{RING_SIZE, VIRTIO_VERSION_LEGACY},
+    dev::device::{Device, Resource},
+    error::{Error, Result},
+    mmio_regs,
+    numeric,
+};
+
+use self::{handshake::QueueConfig, queue::Virtq};
 
 pub struct VirtqCfg {
     pub device: Device,
@@ -86,4 +100,121 @@ mmio_regs! {
         queue_device_high: u32 => 0x0A4,
         config_generation: u32 => 0x0FC,
     ]
+}
+
+/// virtio-mmio 设备抽象。
+///
+/// 提供与具体设备类型无关的探测（[`Self::probe`]）、特征协商与队列
+/// 配置握手（[`Self::handshake`]）以及队列 0 的收发原语（[`Self::queue`] /
+/// [`Self::notify`]，配合 [`queue::Virtq`] 的 `post_avail` / `wait_used`）。
+///
+/// 新设备驱动只需实现 [`Self::DEVICE_TYPE`] 与 `device` / `queues_mut`
+/// 两个访问器，并按需覆写 [`Self::negotiate`] / [`Self::negotiate_legacy`]，
+/// 即可获得完整的初始化与提交流程（见 `virtio_blk` / `virtio_rng`）。
+pub trait VirtioDevice: Sized {
+    /// 设备类型（virtio 规范编号），探测时按此匹配 `device_id` 寄存器。
+    const DEVICE_TYPE: DeviceType;
+
+    /// 返回设备的 MMIO 描述。
+    fn device(&self) -> Device;
+
+    /// 已配置虚拟队列的可变访问（未握手时为 `None`）。
+    fn queues_mut(&mut self) -> &mut Option<Vec<Virtq>>;
+
+    /// modern 特性协商：输入设备特性（低 / 高 32 位），返回驱动协商值。
+    ///
+    /// 默认不协商任何特性（`(0, 0)`）。
+    fn negotiate(&self, _features_low: u32, _features_high: u32) -> (u32, u32) {
+        (0, 0)
+    }
+
+    /// legacy 特性协商：输入设备特性，返回驱动协商值。默认 `0`。
+    fn negotiate_legacy(&self, _features: u32) -> u32 {
+        0
+    }
+
+    /// 遍历设备树中所有 virtio,mmio 节点，逐个读取其 MMIO 寄存器中的
+    /// `device_id`，返回第一个匹配 [`Self::DEVICE_TYPE`] 的设备；空槽位
+    /// 或其它 virtio 设备会被跳过。
+    fn probe(fdt: &Fdt) -> Option<Self>
+    where
+        Self: From<Device>,
+    {
+        fdt.all_nodes().find_map(|node| {
+            let is_mmio = node
+                .compatible()
+                .map(|c| c.all().any(|c| c == "virtio,mmio"))
+                .unwrap_or(false);
+            if !is_mmio {
+                return None;
+            }
+
+            let reg = node.reg()?.next()?;
+            let start = reg.starting_address as usize;
+            let size = reg.size.unwrap_or(0);
+            let interrupts = node.interrupts()?.next()?;
+
+            let device = Device {
+                mmio: Resource::new(start, size),
+                irq: Some(interrupts),
+            };
+
+            // 空槽位返回 0，其它类型设备返回各自的 device_id，均跳过。
+            let cfg = VirtqCfg { device };
+            if cfg.device_id() != Self::DEVICE_TYPE.0 {
+                return None;
+            }
+
+            Some(Self::from(device))
+        })
+    }
+
+    /// 完成 ACK / DRIVER 状态、特性协商与队列 0 配置的完整握手。
+    ///
+    /// 队列尚未配置时，[`Self::queue`] 与提交流程会自动补一次握手。
+    fn handshake(&mut self) -> Result<()> {
+        let mut cfg = VirtqCfg {
+            device: self.device(),
+        };
+        let is_modern = cfg.version() != VIRTIO_VERSION_LEGACY;
+
+        let queues = if is_modern {
+            cfg.handshake()
+                .modern(|low, high| self.negotiate(low, high))?
+                .setup_queue(QueueConfig {
+                    index: 0,
+                    size: RING_SIZE as u32,
+                })?
+                .finish()
+        } else {
+            cfg.handshake()
+                .legacy(|f| self.negotiate_legacy(f))?
+                .setup_queue(QueueConfig {
+                    index: 0,
+                    size: RING_SIZE as u32,
+                })?
+                .finish()
+        };
+
+        *self.queues_mut() = Some(queues);
+        Ok(())
+    }
+
+    /// 队列 0 的可变引用；未配置时先补一次握手。
+    fn queue(&mut self) -> Result<&mut Virtq> {
+        if self.queues_mut().is_none() {
+            self.handshake()?;
+        }
+        self.queues_mut()
+            .as_mut()
+            .and_then(|queues| queues.first_mut())
+            .ok_or(Error::VirtioHandshakeFailed)
+    }
+
+    /// 通知设备处理队列 0。
+    fn notify(&self) {
+        // `QUEUE_NOTIFY_OFFSET` 由 `mmio_regs!` 根据 queue_notify 寄存器生成。
+        self.device().mmio.write::<u32>(QUEUE_NOTIFY_OFFSET, 0);
+        fence(Ordering::SeqCst);
+    }
 }

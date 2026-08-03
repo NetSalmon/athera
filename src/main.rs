@@ -76,12 +76,6 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     let mut buf = vec![0u8; 9520];
     info!("buf size: {}", buf.len());
 
-    let mut rand = athera_rand::XoShiro256StarStar::from([91, 78, 13, 67]);
-
-    for _ in 0..100 {
-        info!("{}", rand.next().unwrap());
-    }
-
     // 每次块设备操作单独持锁，锁外中断恢复使能，定时器可以及时触发；
     // ELF 加载等耗时逻辑全部放在锁外。
     if let Some(blk) = VIRTIO_BLK.force().lock().as_mut()
