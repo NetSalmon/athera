@@ -1,7 +1,8 @@
 //! 设备驱动与设备树（FDT）探测。
 //!
-//! 启动阶段解析设备树并初始化 ns16550a UART、virtio-blk（MMIO）与系统
-//! 内存，提供 `UART` / `VIRTIO_BLK` / `SYSTEM_MEMORY` / `FDT` 等懒加载
+//! 启动阶段解析设备树并初始化 ns16550a UART、virtio-blk / virtio-rng（MMIO）
+//! 与系统内存，提供 `UART` / `VIRTIO_BLK` / `VIRTIO_RNG` / `SYSTEM_MEMORY` /
+//! `FDT` 等懒加载
 //! 静态。`FDT` 在初始化完成后会把设备树搬进堆中，并把 `FDT_ADDR` 指向
 //! 新副本，同时把原设备树所占物理内存归还给伙伴系统。
 use alloc::{vec, vec::Vec};
@@ -12,7 +13,7 @@ use athera_const::lazy;
 use crate::{
     FDT_ADDR,
     constants::MEMORY_RANGE,
-    dev::{memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk},
+    dev::{memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk, virtio_rng::VirtioRng},
     error::{Error, Result},
     locks::spin::SpinLock,
     mem::allocators::FRAME_ALLOCATOR,
@@ -25,6 +26,7 @@ pub mod memory;
 pub mod ns16550a;
 pub mod virtio_blk;
 pub mod virtio_mmio;
+pub mod virtio_rng;
 
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
     unsafe { fdt::Fdt::from_ptr(FDT_ADDR) }.map_err(|_| Error::Fdt)
@@ -54,6 +56,17 @@ pub static VIRTIO_BLK: Option<VirtioBlk> = {
         Ok(fdt) => VirtioBlk::probe(&fdt),
         Err(err) => {
             warn!("failed to init virtio-blk: {err}");
+            None
+        }
+    }
+};
+
+#[lazy(spin)]
+pub static VIRTIO_RNG: Option<VirtioRng> = {
+    match parse_fdt() {
+        Ok(fdt) => VirtioRng::probe(&fdt),
+        Err(err) => {
+            warn!("failed to init virtio-rng: {err}");
             None
         }
     }

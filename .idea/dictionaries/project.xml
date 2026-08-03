@@ -24,6 +24,7 @@
       <w>shnum</w>
       <w>shoff</w>
       <w>shstrndx</w>
+      <w>splitmix</w>
       <w>stvec</w>
       <w>writeonly</w>
     </words>

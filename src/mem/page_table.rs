@@ -19,7 +19,7 @@ use crate::{
     bits,
     constants::{PAGE_SIZE, PTE_NUMBER},
     debug,
-    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK},
+    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
     error::{Error, Result},
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
@@ -123,6 +123,9 @@ pub fn identity_map() -> Result<()> {
     let blk_range = VIRTIO_BLK.lock().as_ref().map(|blk| {
         blk.device.mmio.start..blk.device.mmio.start + blk.device.mmio.size
     });
+    let rng_range = VIRTIO_RNG.lock().as_ref().map(|rng| {
+        rng.device.mmio.start..rng.device.mmio.start + rng.device.mmio.size
+    });
 
     let mem_start = SYSTEM_MEMORY.device.mmio.start;
     let mem_end = mem_start + SYSTEM_MEMORY.device.mmio.size;
@@ -151,6 +154,10 @@ pub fn identity_map() -> Result<()> {
     }
 
     if let Some(range) = blk_range {
+        PAGE_TABLE_MANAGER.lock().identity_map(range.start, range.end)?;
+    }
+
+    if let Some(range) = rng_range {
         PAGE_TABLE_MANAGER.lock().identity_map(range.start, range.end)?;
     }
 

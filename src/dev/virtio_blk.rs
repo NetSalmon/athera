@@ -20,7 +20,7 @@ use crate::{
         abstracts::BlockDevice,
         device::{Device, Resource},
         virtio_mmio::{
-            VirtqCfg,
+            DeviceType, VirtqCfg,
             handshake::QueueConfig,
             queue::{Flags, VRingDesc, Virtq},
         },
@@ -84,26 +84,39 @@ bits! {
 }
 
 impl VirtioBlk {
+    /// 遍历设备树中所有 virtio,mmio 节点，逐个读取其 MMIO 寄存器中的
+    /// `device_id`，返回第一个 virtio-blk 设备；空槽位或其它 virtio 设备
+    /// （如 rng）会被跳过，而不是默认取第一个 virtio,mmio 节点。
     pub fn probe(fdt: &Fdt) -> Option<Self> {
-        let virtio = fdt.all_nodes().find(|node| {
-            node.compatible()
+        fdt.all_nodes().find_map(|node| {
+            let is_mmio = node
+                .compatible()
                 .map(|c| c.all().any(|c| c == "virtio,mmio"))
-                .unwrap_or(false)
-        })?;
+                .unwrap_or(false);
+            if !is_mmio {
+                return None;
+            }
 
-        let reg = virtio.reg()?;
-        let i = reg.into_iter().next()?;
-        let start = i.starting_address as usize;
-        let size = i.size.unwrap_or(0);
-        let interrupts = virtio.interrupts()?;
-        let irq = interrupts.into_iter().next()?;
+            let reg = node.reg()?.next()?;
+            let start = reg.starting_address as usize;
+            let size = reg.size.unwrap_or(0);
+            let interrupts = node.interrupts()?.next()?;
 
-        Some(VirtioBlk {
-            device: Device {
+            let device = Device {
                 mmio: Resource::new(start, size),
-                irq: Some(irq),
-            },
-            queues: None,
+                irq: Some(interrupts),
+            };
+
+            // 空槽位返回 0，rng 等其它设备返回各自的 device_id，均跳过。
+            let cfg = VirtqCfg { device };
+            if cfg.device_id() != DeviceType::BLOCK.0 {
+                return None;
+            }
+
+            Some(VirtioBlk {
+                device,
+                queues: None,
+            })
         })
     }
 

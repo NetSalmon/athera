@@ -14,7 +14,7 @@ QEMU_OPTS=()
 LOG_FLAGS=()
 DISPLAY_OPTS="-nographic"
 
-while getopts "misdpb" opt; do
+while getopts "misdpbr" opt; do
   case $opt in
     m)
       LOG_FLAGS+=("mmu")
@@ -36,6 +36,11 @@ d)
         -drive "file=./resources/disk.qcow2,format=qcow2,id=hd0,if=none"
         -device "virtio-blk-device,drive=hd0"
       )
+      ;;
+r)
+      # virtio-rng（MMIO 传输）。建议配合 -d/-p 使用并放在其后，
+      # 保证 blk 仍是第一个 virtio,mmio 节点（内核只探测第一个）。
+      QEMU_OPTS+=("-device" "virtio-rng-device")
       ;;
 b)
       DISPLAY_OPTS="-display gtk"

@@ -20,6 +20,7 @@ paste = "1.0.15"
 fdt = "0.1.5"
 athera-const = { path = "athera-const" }
 athera-id-alloc = { path = "athera-id-alloc" }
+athera-rand = { path = "athera-rand" }
 
 [build-dependencies]
 toml = "1.1.2"
@@ -30,7 +31,8 @@ members = [
     "athera-const",
     "athera-const-macros",
     "athera-userland",
-    "athera-id-alloc"
+    "athera-id-alloc",
+    "athera-rand"
 ]
 
 [features]
