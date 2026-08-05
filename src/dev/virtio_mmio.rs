@@ -11,16 +11,14 @@ use core::sync::atomic::{Ordering, fence};
 
 use fdt::Fdt;
 
+use self::{handshake::QueueConfig, queue::Virtq};
 use crate::{
     bits,
     constants::{RING_SIZE, VIRTIO_VERSION_LEGACY},
     dev::device::{Device, Resource},
     error::{Error, Result},
-    mmio_regs,
-    numeric,
+    mmio_regs, numeric,
 };
-
-use self::{handshake::QueueConfig, queue::Virtq};
 
 pub struct VirtqCfg {
     pub device: Device,

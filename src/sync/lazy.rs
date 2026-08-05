@@ -7,7 +7,7 @@
 
 use core::{cell::Cell, ops::Deref};
 
-use crate::locks::once::OnceLock;
+use crate::sync::once::OnceLock;
 
 /// 延迟到首次访问时才执行初始化闭包的静态值。
 ///

@@ -11,11 +11,11 @@ use athera_const::lazy;
 use crate::{
     constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
     debug,
-    locks::{lazy::LazyLock, spin::SpinLock},
     mem::{
         alloc_page::AllocPage,
         allocators::{buddy::BuddyAllocator, slub::Caches},
     },
+    sync::{lazy::LazyLock, spin::SpinLock},
 };
 
 pub mod buddy;

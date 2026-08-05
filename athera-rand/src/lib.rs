@@ -13,9 +13,7 @@
 //! [`TryRng`](rand_core::TryRng) 的 blanket impl），可以通用传参；
 //! 其中 [`SecureRng`] 额外实现了 `CryptoRng` 标记。
 
-pub use rand_chacha;
-pub use rand_chacha::rand_core;
-
+pub use rand_chacha::{self, rand_core};
 use rand_core::{Rng as _, SeedableRng};
 
 // ---------------------------------------------------------------------------

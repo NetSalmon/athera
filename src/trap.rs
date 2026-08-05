@@ -4,11 +4,16 @@
 //! `entry.asm` 的 `trap_entry` 保存现场后调用 [`trap_handler`]；用户态
 //! 进程的上下文由 [`TrapContext`] 描述，经 [`restore_context`] 恢复到
 //! 用户态。
-use crate::arch::registers::gpr::Sp;
 use core::arch::asm;
 
-use crate::{arch, arch::sbi::srst::{ResetReason, ResetType, system_reset}, debug, error, info, numeric, syscall, user_trap_entry};
-use crate::arch::registers::csr::Sscratch;
+use crate::{
+    arch,
+    arch::{
+        registers::{csr::Sscratch, gpr::Sp},
+        sbi::srst::{ResetReason, ResetType, system_reset},
+    },
+    debug, error, info, numeric, syscall, user_trap_entry,
+};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -133,7 +138,9 @@ fn trap_handler(
             system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         other => {
-            error!("unhandled trap: {other:?}, halting, sepc={sepc:#x}, stval={_stval:#x}, sstatus={_sstatus:#x}, satp={_satp:#x}, frame={trap_frame_sp:#x}");
+            error!(
+                "unhandled trap: {other:?}, halting, sepc={sepc:#x}, stval={_stval:#x}, sstatus={_sstatus:#x}, satp={_satp:#x}, frame={trap_frame_sp:#x}"
+            );
             loop {
                 core::hint::spin_loop();
             }

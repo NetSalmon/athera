@@ -13,10 +13,13 @@ use athera_const::lazy;
 use crate::{
     FDT_ADDR,
     constants::MEMORY_RANGE,
-    dev::{memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk, virtio_mmio::VirtioDevice, virtio_rng::VirtioRng},
+    dev::{
+        memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk, virtio_mmio::VirtioDevice,
+        virtio_rng::VirtioRng,
+    },
     error::{Error, Result},
-    locks::spin::SpinLock,
     mem::allocators::FRAME_ALLOCATOR,
+    sync::spin::SpinLock,
     warn,
 };
 

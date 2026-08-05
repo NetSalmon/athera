@@ -5,14 +5,14 @@ mod constants;
 mod dev;
 mod elf;
 mod error;
+pub mod fs;
 mod io;
-mod locks;
 mod log;
 mod macros;
 mod mem;
 mod proc;
 mod rand;
-mod schedule;
+mod sync;
 mod syscall;
 mod trap;
 
@@ -20,7 +20,7 @@ extern crate alloc;
 
 use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
-
+use core::ops::Deref;
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
@@ -29,6 +29,7 @@ use crate::{
     mem::page_table::identity_map,
     trap::set_next_timer,
 };
+use crate::fs::Index;
 
 global_asm!(include_str!("entry.asm"));
 
@@ -71,8 +72,20 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
-    // 主动触发一次全局随机源种子化（virtio-rng 熵源 + ChaCha20 CSPRNG）。
-    info!("global rng seeded, first value: {}", rand::random_u64());
+    let mut first_index: [u8; 512] = [0u8; 512];
+
+    if let Some(ref mut guard) = *VIRTIO_BLK
+        .force()
+        .lock()
+    {
+        guard.read_at(&mut first_index, 0).unwrap();
+    }
+
+    let first_index = Index::from_slice(&first_index);
+
+    for i in first_index.files.iter() {
+        info!("file start at block id: {}, size: {} byte", i.start, i.size);
+    }
 
     if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
         error!("failed to execute user program: {err}");

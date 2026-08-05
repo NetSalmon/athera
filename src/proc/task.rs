@@ -3,7 +3,7 @@
 //!
 //! [`Tid`] 是任务 ID；[`TaskControlBlock`] 描述单个任务（父/子关系、
 //! 状态、内存集、陷阱上下文）；[`TASKS`] 是按 TID 索引的全局任务表。
-use alloc::{collections::BTreeMap, rc::Weak, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
 use athera_const::lazy;
@@ -11,8 +11,9 @@ use athera_id_alloc::IdAllocator;
 
 use crate::{
     constants::TID_MAX,
+    error, info,
     mem::{addr::PhysicalAddr, alloc_page::AllocPage},
-    trap::TrapContext,
+    trap::{TrapContext, restore_context},
 };
 
 #[lazy(spin)]
@@ -56,12 +57,37 @@ pub struct TaskControlBlock {
     pub priority: i8,
 }
 
+impl TaskControlBlock {
+    pub fn run(&mut self) -> ! {
+        self.status = TaskStatus::Running;
+        restore_context(&self.trap_context);
+    }
+}
+
 #[derive(Debug)]
 pub struct Tasks(pub BTreeMap<Tid, TaskControlBlock>);
 
 impl Tasks {
     pub const fn new() -> Self {
         Self(BTreeMap::new())
+    }
+
+    pub fn run(&mut self, tid: Tid) -> ! {
+        self.0.get_mut(&tid).unwrap().run()
+    }
+
+    pub fn add(&mut self, tid: Tid, parent: Tid, tcb: TaskControlBlock) {
+        if let Some(parent_tcb) = self.0.get_mut(&parent) {
+            parent_tcb.children.push(tid);
+        } else {
+            error!("parent: {parent:?} not exsist");
+        }
+
+        self.0.insert(tid, tcb);
+    }
+
+    pub fn snapshot(&self) {
+        info!("Snapshot {:#?}", self);
     }
 }
 

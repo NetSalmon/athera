@@ -120,12 +120,14 @@ pub fn identity_map() -> Result<()> {
 
     // 先在各自锁内短暂取出设备 MMIO 区间，避免把设备锁嵌套在页表锁里。
     let uart_start = UART.as_ref().map(|uart| uart.lock().device.mmio.start);
-    let blk_range = VIRTIO_BLK.lock().as_ref().map(|blk| {
-        blk.device.mmio.start..blk.device.mmio.start + blk.device.mmio.size
-    });
-    let rng_range = VIRTIO_RNG.lock().as_ref().map(|rng| {
-        rng.device.mmio.start..rng.device.mmio.start + rng.device.mmio.size
-    });
+    let blk_range = VIRTIO_BLK
+        .lock()
+        .as_ref()
+        .map(|blk| blk.device.mmio.start..blk.device.mmio.start + blk.device.mmio.size);
+    let rng_range = VIRTIO_RNG
+        .lock()
+        .as_ref()
+        .map(|rng| rng.device.mmio.start..rng.device.mmio.start + rng.device.mmio.size);
 
     let mem_start = SYSTEM_MEMORY.device.mmio.start;
     let mem_end = mem_start + SYSTEM_MEMORY.device.mmio.size;
@@ -154,11 +156,15 @@ pub fn identity_map() -> Result<()> {
     }
 
     if let Some(range) = blk_range {
-        PAGE_TABLE_MANAGER.lock().identity_map(range.start, range.end)?;
+        PAGE_TABLE_MANAGER
+            .lock()
+            .identity_map(range.start, range.end)?;
     }
 
     if let Some(range) = rng_range {
-        PAGE_TABLE_MANAGER.lock().identity_map(range.start, range.end)?;
+        PAGE_TABLE_MANAGER
+            .lock()
+            .identity_map(range.start, range.end)?;
     }
 
     let root_addr = {

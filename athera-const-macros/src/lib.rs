@@ -154,8 +154,8 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 懒加载静态属性宏。
 ///
 /// 用法：`#[lazy]` 生成 `LazyLock<T>`，`#[lazy(spin)]` 生成
-/// `LazyLock<SpinLock<T>>`。展开结果引用 `crate::locks::lazy` /
-/// `crate::locks::spin`，因此只适用于本内核 crate。
+/// `LazyLock<SpinLock<T>>`。展开结果引用 `crate::sync::lazy` /
+/// `crate::sync::spin`，因此只适用于本内核 crate。
 #[proc_macro_attribute]
 pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = parse_macro_input!(item as syn::ItemStatic);
@@ -176,8 +176,8 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) => {
                 if path.is_ident("spin") {
                     let out = quote::quote! {
-                        #vis static #k: crate::locks::lazy::LazyLock< crate::locks::spin::SpinLock<#t> >
-                        = crate::locks::lazy::LazyLock::new(|| crate::locks::spin::SpinLock::new(#v));
+                        #vis static #k: crate::sync::lazy::LazyLock< crate::sync::spin::SpinLock<#t> >
+                        = crate::sync::lazy::LazyLock::new(|| crate::sync::spin::SpinLock::new(#v));
                     };
 
                     return out.into();
@@ -188,7 +188,7 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 
     let out = quote::quote! {
-        #vis static #k: crate::locks::lazy::LazyLock< #t > = crate::locks::lazy::LazyLock::new(|| #v);
+        #vis static #k: crate::sync::lazy::LazyLock< #t > = crate::sync::lazy::LazyLock::new(|| #v);
     };
 
     out.into()
@@ -197,7 +197,7 @@ pub fn lazy(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 自旋锁静态属性宏。
 ///
 /// 用法：`#[spin] static X: T = value;`，展开为
-/// `static X: crate::locks::spin::SpinLock<T>`。
+/// `static X: crate::sync::spin::SpinLock<T>`。
 #[proc_macro_attribute]
 pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tokens = parse_macro_input!(item as syn::ItemStatic);
@@ -208,7 +208,7 @@ pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let v = tokens.expr;
 
     let out = quote::quote! {
-        #vis static #k: crate::locks::spin::SpinLock< #t > = crate::locks::spin::SpinLock::new(#v);
+        #vis static #k: crate::sync::spin::SpinLock< #t > = crate::sync::spin::SpinLock::new(#v);
     };
 
     out.into()

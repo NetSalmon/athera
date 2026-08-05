@@ -8,21 +8,24 @@ use alloc::vec::Vec;
 use crate::{
     arch,
     arch::{
-        registers::values::SStatusBits,
+        registers::values::{SStatusBits, SatpMode, SatpValue},
         sbi,
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
     debug,
     dev::UART,
-    error, info, kernel_halt, numeric,
-    proc::{CURRENT_TASK, task::{TASKS, Tid}},
+    error, info, kernel_halt,
+    mem::{
+        allocators::alloc_frame,
+        page_table::{AddressSpaceId, PAGE_TABLE_MANAGER},
+    },
+    numeric,
+    proc::{
+        CURRENT_TASK,
+        task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
+    },
+    trap::restore_context,
 };
-use crate::arch::registers::values::{SatpMode, SatpValue};
-use crate::constants::USER_STACK_SIZE;
-use crate::mem::allocators::alloc_frame;
-use crate::mem::page_table::{AddressSpaceId, PAGE_TABLE_MANAGER};
-use crate::proc::task::{MemorySet, TaskControlBlock, TaskStatus, TID_ALLOCATOR};
-use crate::trap::{restore_context, TrapContext};
 
 numeric! {
     pub enum ErrorCode : isize {
@@ -122,13 +125,15 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
     match Syscall::from(trap_context[ARGS_START + 7]) {
         Syscall::READ => {
             let ptr = trap_context[ARGS_START + 1] as *mut u8;
-            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
+            let buf =
+                core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
             let ret = read(trap_context[ARGS_START], unsafe { &mut *buf });
             (ret, sepc + 4)
         }
         Syscall::WRITE => {
             let ptr = trap_context[ARGS_START + 1] as *mut u8;
-            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
+            let buf =
+                core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
             let buf = unsafe { &*buf };
             let ret = write(trap_context[ARGS_START], buf);
             (ret, sepc + 4)
@@ -150,6 +155,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
                         tasks.remove(&tid);
                         tasks.keys().copied().collect()
                     };
+
                     debug!("current tasks: {snapshot:?}");
                 }
                 None => {
@@ -160,7 +166,11 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
             (trap_context[ARGS_START], kernel_halt as *const () as u64)
         }
         Syscall::REBOOT => {
-            let ret = reboot(trap_context[ARGS_START + 0], trap_context[ARGS_START + 1], trap_context[ARGS_START + 2]);
+            let ret = reboot(
+                trap_context[ARGS_START],
+                trap_context[ARGS_START + 1],
+                trap_context[ARGS_START + 2],
+            );
 
             (ret as u64, sepc + 4)
         }
@@ -196,13 +206,9 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
                 .user_root_addr(new_tid)
                 .unwrap();
 
-            let mut guard = TASKS
-                .force()
-                .lock();
+            let mut guard = TASKS.force().lock();
 
-            let current_tcb = guard
-                .get_mut(&current_tid)
-                .unwrap();
+            let current_tcb = guard.get_mut(&current_tid).unwrap();
 
             current_tcb.children.push(new_tid);
 
@@ -235,6 +241,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
             new_context.context = *trap_context;
             new_context.satp = satp.into();
             new_context.sepc = sepc + 4;
+            new_context.context[ARGS_START] = 0;
 
             let new_memory_set = MemorySet {
                 used_page: pages,
@@ -259,7 +266,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
 
             restore_context(&new_context);
 
-            (0, sepc + 4)
+            (new_tid.0 as u64, sepc + 4)
         }
         _ => (ErrorCode::ENOSYS.0 as u64, sepc + 4),
     }

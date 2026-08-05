@@ -5,8 +5,8 @@
 use athera_const::lazy;
 
 use crate::{
-    locks::per_cpu::{MAX_CPU, PerCpu},
     proc::task::Tid,
+    sync::per_cpu::{MAX_CPU, PerCpu},
 };
 
 pub mod exec;
