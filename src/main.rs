@@ -20,16 +20,16 @@ extern crate alloc;
 
 use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
-use core::ops::Deref;
+
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
     dev::{VIRTIO_BLK, abstracts::BlockDevice},
+    fs::Index,
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,
 };
-use crate::fs::Index;
 
 global_asm!(include_str!("entry.asm"));
 
@@ -74,17 +74,27 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     let mut first_index: [u8; 512] = [0u8; 512];
 
-    if let Some(ref mut guard) = *VIRTIO_BLK
-        .force()
-        .lock()
-    {
+    let mut avail_files = vec![];
+
+    if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
         guard.read_at(&mut first_index, 0).unwrap();
     }
 
     let first_index = Index::from_slice(&first_index);
 
     for i in first_index.files.iter() {
-        info!("file start at block id: {}, size: {} byte", i.start, i.size);
+        if !i.is_empty() {
+            avail_files.push(i.clone());
+        }
+    }
+
+    for i in avail_files {
+        info!(
+            "name: {}, start as block id = {}, size: {}",
+            i.file_name.as_str(),
+            i.start,
+            i.size
+        );
     }
 
     if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
