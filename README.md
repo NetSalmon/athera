@@ -5,12 +5,13 @@
 ## 特性
 
 - 目标平台：`riscv64gc-unknown-none-elf`，QEMU `virt` 机型（当前单核，`config.toml` 中 `smp = "UP"`）
-- 通过 SBI 与底层交互（srst 系统复位/重启、hsm 停止 hart）
+- 通过 SBI 与底层交互（srst 系统复位/重启、hsm 停止 hart、legacy 控制台、DBCN 调试控制台等）
 - UART 驱动：ns16550a，基于设备树自动探测
 - 块设备驱动：virtio-blk（MMIO 模式，含 virtio-mmio 传输层、链式握手状态机与通用 `VirtioDevice` 抽象）
 - 熵源驱动：virtio-rng（MMIO 模式，为随机数提供真随机种子）
 - 随机数：`athera-rand` 提供 ChaCha20 CSPRNG，内核全局 `RNG` 经 virtio-rng 种子化（无设备时回退固定种子并告警）
-- 磁盘索引：启动时读取块设备首块（512 字节索引块），打印文件名/起始块/大小（`fs/record.rs`）
+- MINIX 文件系统：启动时读取 virtio-blk 上的 MINIX V1 文件系统（超级块、inode、目录项），按文件名查找（`fs/minix_fs.rs`）
+- 磁盘索引：自定义 512 字节索引块格式，`mkdisk.py` 可读写（`fs/record.rs`）
 - 内存管理：等值映射页表、内核/用户地址空间分离（Sv39）、伙伴系统物理页帧分配器、SLUB 全局分配器
 - 陷阱处理与用户态上下文恢复（`TrapContext` / `restore_context`），S 模式定时器中断（10 Hz）
 - ELF 加载器：解析 ELF64 程序头，逐段拷贝 `PT_LOAD` 并建立用户映射与栈（用户程序经 `include_bytes!` 内嵌）
@@ -27,10 +28,10 @@ athera/                       # 内核（根 crate）
 ├── src/
 │   ├── arch/               RISC-V 相关
 │   │   ├── registers/      csr / gpr / values（寄存器抽象）
-│   │   └── sbi.rs          SBI 封装（srst、hsm 等）
+│   │   └── sbi.rs          SBI 封装（base / time / ipi / rfence / hsm / srst / legacy / dbcn）
 │   ├── constants/          常量模块
 │   │   ├── memory.rs       内存常量与懒加载范围（MEMORY_RANGE 等）
-│   │   ├── symbols.rs      链接器符号（_end / trap_entry / FDT_ADDR）
+│   │   ├── symbols.rs      链接器符号（_end / trap_entry / user_trap_entry / FDT_ADDR）
 │   │   ├── elf.rs          内嵌用户程序 ELF（add）
 │   │   ├── task.rs         任务常量（TID_MAX）
 │   │   ├── uname.rs        版本信息
@@ -42,7 +43,8 @@ athera/                       # 内核（根 crate）
 │   │   ├── memory.rs       内存区域探测
 │   │   ├── virtio_blk.rs   virtio-blk 驱动
 │   │   ├── virtio_rng.rs   virtio-rng 熵源驱动
-│   │   └── virtio_mmio/    virtio-mmio 传输层
+│   │   ├── virtio_mmio.rs  virtio-mmio 传输层（VirtioDevice trait / VirtqCfg）
+│   │   └── virtio_mmio/    virtio-mmio 子模块
 │   │       ├── handshake.rs  链式握手状态机
 │   │       └── queue.rs      虚拟队列
 │   ├── mem/                内存管理
@@ -53,8 +55,8 @@ athera/                       # 内核（根 crate）
 │   │       └── handle.rs   页表句柄
 │   ├── entry.asm           启动汇编（_start / 内核栈 / FDT_ADDR 声明）
 │   ├── fs/                文件系统
-│   │   ├── record.rs      磁盘索引块（RecordString / File / Index）
-│   │   └── vfs.rs         VFS 抽象（开发中）
+│   │   ├── minix_fs.rs    MINIX V1 文件系统（SuperBlock / DINode / DirEntry / Mode）
+│   │   └── record.rs      磁盘索引块（RecordString / File / Index）
 │   ├── rand.rs             全局随机源（ChaCha20 CSPRNG）
 │   ├── sync/               同步原语
 │   │   ├── spin.rs         SpinLock（关中断自旋锁）
@@ -126,7 +128,7 @@ cargo build --release --features halt_directly
 | `-i` | 输出中断日志 |
 | `-m` | 输出 MMU 日志 |
 | `-p` | 挂载 virtio-blk PCI 磁盘（`resources/disk.qcow2`）|
-| `-d` | 挂载 virtio-blk MMIO 磁盘 |
+| `-d` | 挂载 virtio-blk MMIO 磁盘（`resources/minix.qcow2`）|
 | `-r` | 添加 virtio-rng（MMIO 熵源）设备，建议放在 `-d` / `-p` 之后 |
 | `-b` | 使用 GTK 显示（`-display gtk` + ramfb）|
 
@@ -140,15 +142,19 @@ cargo build --release --features halt_directly
 ./start.sh -b -d -r    # GTK 图形界面 + MMIO 磁盘 + virtio-rng
 ```
 
+## MINIX 文件系统
+
+内核启动时从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix_fs.rs`），解析超级块（`SuperBlock`）、根 inode（`DINode`）与目录项（`DirEntryV1_14` / `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），按文件名查找目标 inode。`-d` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
+
+目前查找到的目标文件（`hello_world`）仅读取其 inode 信息，实际执行的用户程序仍是内嵌的 `add`。
+
 ## 磁盘索引格式
 
-块设备首块（块号 0）是一个 512 字节的索引块（`src/fs/record.rs`）：
+块设备首块（块号 0）是一个 512 字节的索引块（`src/fs/record.rs`），是内核自带的另一种简单磁盘格式，由 `mkdisk.py` 工具读写：
 
 - `Index`：21 个 `File` 条目 + 末尾 8 字节 `next_index`（预留的下一个索引块号）
 - `File`（24 字节）：`start`（起始块号，u32）+ `size`（文件字节数，u32）+ `file_name`（定长 16 字节文件名 `RecordString`，遇 NUL 截断）
 - 空条目（`start == 0 && size == 0`）表示未使用
-
-内核启动时会从 virtio-blk 读取索引块并打印所有非空文件的名称/起始块/大小；目前只列出文件，实际执行的用户程序仍是内嵌的 `add`。磁盘镜像为 `resources/disk.qcow2`。
 
 `mkdisk.py` 可以把宿主机文件按上述格式写入虚拟磁盘镜像（默认读写 **qcow2**，即 `start.sh` 使用的格式；对已有镜像自动识别格式，也可用 `--format raw` 改用原始镜像）。写入时自动按 512 字节块对齐、分配连续块；文件数超过 21 时自动链式追加索引块：
 
@@ -172,11 +178,11 @@ qcow2 由脚本内置的纯 Python 读写器生成/解析（v3、64K 簇、16 �
 | 142  | reboot   | 重启/关机/停机 |
 | 220  | fork     | 创建子进程（克隆地址空间与陷阱上下文）|
 | 221  | exec     | 执行新程序（未实现）|
-| 222  | mmap     | 映射内存（占位）|
-| 223  | munmap   | 解除映射（占位）|
-| 224  | mremap   | 重映射（占位）|
+| 222  | mmap     | 映射内存（`todo!()`，尚未实现）|
+| 223  | munmap   | 解除映射（`todo!()`，尚未实现）|
+| 224  | mremap   | 重映射（`todo!()`，尚未实现）|
 
-> `fork` 目前为最小实现：分配新 TID、克隆页表与物理页，子进程返回 `a0 = 0` 并从 `sepc + 4` 继续执行，随后直接切换到子进程。
+> `fork` 目前为最小实现：分配新 TID、克隆页表（`PageTableManager::clone`）与全部物理页（逐页 `copy`），子进程 `a0 = 0` 并从 `sepc + 4` 继续执行，随后直接切换到子进程。`waitpid` / `exec` 未显式处理，返回 `ENOSYS`。
 
 ## 初始化依赖
 
@@ -206,8 +212,10 @@ graph TD
         dev --> rng["RNG<br/>ChaCha20 CSPRNG (rand.rs)"]
         page_table_mgr --> identity_map["identity_map()"]
         dev --> identity_map
+        identity_map --> minix_fs["读取 MINIX 文件系统<br/>(main.rs → VIRTIO_BLK)"]
         page_table_mgr --> map["map / unmap / clone"]
         caches --> exec["proc::execute_buffer<br/>（用户程序加载）"]
+        minix_fs --> exec
         device --> syscall["read / write 系统调用"]
     end
 ```
@@ -218,6 +226,7 @@ graph TD
 - `PAGE_TABLE_MANAGER` 与 `CACHES`（SLUB 全局分配器）均需先分配物理页帧，故依赖 `FRAME_ALLOCATOR`。
 - 一旦 `CACHES` 就绪，`Vec` / `String` / `BTreeMap` 等 `alloc` 结构以及基于它们的 `TASKS` 进程表、`TID_ALLOCATOR` 方可使用。
 - `RNG`（`rand.rs`）首次访问时用 `VIRTIO_RNG` 提供的真随机字节种子化 ChaCha20 CSPRNG；若没有 virtio-rng 设备则回退固定种子并打印警告。
+- MINIX 文件系统：`identity_map()` 完成后，`main` 通过 `VIRTIO_BLK` 读取 MINIX 超级块（偏移 1024）、根 inode 与目录项，按文件名查找目标 inode。
 - 定时器：`main` 启动时以及每次 S 模式定时器中断都会调用 `set_next_timer()` 重设 `stimecmp`（10 Hz），实现周期性的定时器中断。
 
 ## 许可证

@@ -18,8 +18,7 @@ mod trap;
 
 extern crate alloc;
 
-use alloc::string::ToString;
-use alloc::vec;
+use alloc::{string::ToString, vec};
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
@@ -27,13 +26,13 @@ use crate::{
     constants::*,
     dev::{VIRTIO_BLK, abstracts::BlockDevice},
     fs::{
+        minix_fs::{DINode, DirEntry, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, SuperBlock},
         record::Index,
     },
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,
 };
-use crate::fs::minix_fs::{DINode, DirEntry, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, SuperBlock};
 
 global_asm!(include_str!("entry.asm"));
 
@@ -81,7 +80,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         guard.read_at(&mut buffer, 1024).unwrap();
     }
 
-    let super_block =  unsafe { &*(buffer.as_ptr() as *const SuperBlock) };
+    let super_block = unsafe { &*(buffer.as_ptr() as *const SuperBlock) };
     info!("{:#?}", super_block);
 
     let magic = super_block.magic;
@@ -98,7 +97,9 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     info!("{:#?}", root_inode);
 
     if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
-        guard.read_at(&mut buffer, zone_size * root_inode.zone[0] as usize).unwrap();
+        guard
+            .read_at(&mut buffer, zone_size * root_inode.zone[0] as usize)
+            .unwrap();
     }
 
     let ptr = buffer.as_ptr();
@@ -108,9 +109,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     if magic == MinixFsMagic::MAGIC_2 {
         for offset in (0..(root_inode.size as usize)).step_by(size_of::<DirEntryV1_30>()) {
-            let entry = unsafe {
-                &*(ptr.add(offset) as *const DirEntryV1_30)
-            };
+            let entry = unsafe { &*(ptr.add(offset) as *const DirEntryV1_30) };
 
             info!("{:#?}", entry.name.to_string());
 
@@ -122,9 +121,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         }
     } else {
         for offset in (0..root_inode.size as usize).step_by(size_of::<DirEntryV1_14>()) {
-            let entry = unsafe {
-                &*(ptr.add(offset) as *const DirEntryV1_14)
-            };
+            let entry = unsafe { &*(ptr.add(offset) as *const DirEntryV1_14) };
 
             if entry.name.to_string().as_str() == dist_file {
                 inode_num = Some(entry.ino);
@@ -138,7 +135,12 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     let inode_num = inode_num.unwrap();
 
     if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
-        guard.read_at(&mut buffer, root_inode_offset + size_of::<DINode>() * (inode_num as usize - 1)).unwrap();
+        guard
+            .read_at(
+                &mut buffer,
+                root_inode_offset + size_of::<DINode>() * (inode_num as usize - 1),
+            )
+            .unwrap();
     }
 
     let hello_world = unsafe { &*(buffer.as_ptr() as *const DINode) };

@@ -1,17 +1,18 @@
 use core::fmt::{Debug, Display, Formatter, Write};
+
 use crate::{bits, numeric};
 // struct d_inode{
 //     uint16_t mode;  // 文件类型和 RWX 访问控制位
-//     uint16_t uid;   // 文件属主的用户 ID            (unused)
+//     uint16_t uid;   // 文件属主的用户 ID
 //     uint32_t size;  // 文件大小, 以 byte 计数
 //     uint32_t mtime; // 自从 1970.1.1 以来的秒数     (unused)
-//     uint8_t gid;    // 文件属主 所属的组            (unused)
+//     uint8_t gid;    // 文件属主 所属的组
 //     uint8_t nlinks; // 该节点被多少个目录所链接
 //
 //     /*
 //      * zone[0] - zone[6] 分别指向 7 个直接块
 //      * zone[7] 指向间接块
-//      * zone[8] 指向双重间接块                       (unused)
+//      * zone[8] 指向双重间接块
 //      */
 //     uint16_t zone[9];
 // };
@@ -27,9 +28,8 @@ impl<const T: usize> Debug for MinixString<T> {
             match i {
                 0 => break,
                 i if i.is_ascii() => f.write_char(i as char)?,
-                _ => continue
+                _ => continue,
             }
-
         }
         f.write_char('"')
     }
@@ -41,7 +41,7 @@ impl<const T: usize> Display for MinixString<T> {
             match i {
                 0 => break,
                 i if i.is_ascii() => f.write_char(i as char)?,
-                _ => continue
+                _ => continue,
             }
         }
         Ok(())
@@ -51,13 +51,19 @@ impl<const T: usize> Display for MinixString<T> {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct DINode {
-    pub mode: Mode,
-    pub uid: u16,
-    pub size: u32,
-    pub mtime: u32,
-    pub gid: u8,
-    pub nlinks: u8,
-    pub zone: [u16; 9]
+    pub mode: Mode, // 文件类型和 RWX 访问控制位
+    pub uid: u16,   // 文件属主的用户 ID
+    pub size: u32,  // 文件大小, 以 byte 计数
+    pub mtime: u32, // 自从 1970.1.1 以来的秒数
+    pub gid: u8,    // 文件属主 所属的组
+    pub nlinks: u8, // 该节点被多少个目录所链接
+
+    /*
+     * zone[0] - zone[6] 分别指向 7 个直接块
+     * zone[7] 指向间接块
+     * zone[8] 指向双重间接块
+     */
+    pub zone: [u16; 9],
 }
 
 #[repr(C)]
@@ -70,32 +76,18 @@ pub struct DirEntry<const T: usize> {
 pub type DirEntryV1_14 = DirEntry<14>;
 pub type DirEntryV1_30 = DirEntry<30>;
 
-// // OS67/inc/minix.h
-// struct super_block{
-//     uint16_t ninodes;       // number of inodes
-//     uint16_t nzones;        // number of zones
-//     uint16_t imap_blk;      // i 节点位图 占用块的数目
-//     uint16_t zmap_blk;      // 数据块位图 占用的块的数目
-//     uint16_t fst_data_zone; // 第一个 数据块 的块号
-//     uint16_t log_zone_size; // 一个虚拟块的大小 = 1024 << log_zone_size
-//
-//     uint32_t max_size;      // 能存放的最大文件大小(以 byte 计数)
-//     uint16_t magic;         // magic number
-//     uint16_t state;         //
-// };
-
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct SuperBlock {
-    pub ninodes: u16,
-    pub nzones: u16,
-    pub imap_blk: u16,
-    pub zmap_blk: u16,
-    pub fst_data_zone: u16,
-    pub log_zone_size: u16,
+    pub ninodes: u16,       // number of inodes
+    pub nzones: u16,        // number of zones
+    pub imap_blk: u16,      // i 节点位图 占用块的数目
+    pub zmap_blk: u16,      // 数据块位图 占用的块的数目
+    pub fst_data_zone: u16, // 第一个 数据块 的块号
+    pub log_zone_size: u16, // 一个虚拟块的大小 = 1024 << log_zone_size
 
-    pub max_size: u32,
-    pub magic: MinixFsMagic,
+    pub max_size: u32,       // 能存放的最大文件大小(以 byte 计数)
+    pub magic: MinixFsMagic, // magic number
     pub state: u16,
 }
 
@@ -114,22 +106,19 @@ impl SuperBlock {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct INode {
-    pub dev: u16,   // i 节点所在的磁盘, OS67 只支持单个磁盘, 所以始终为 0
+    pub dev: u16,   // i 节点所在的磁盘
     pub ino: u16,   // i 节点号码
-    pub r#ref: u16,   // 内存引用计数
-    pub flags: u16, // flag 就是 flag
-    pub atime: u16, // (unused)
-    pub ctime: u16, // (unused)
-// #[repr(C)]
-// pub struct DINode {
-
+    pub r#ref: u16, // 内存引用计数
+    pub flags: u16,
+    pub atime: u16,
+    pub ctime: u16,
     pub mode: Mode,
     pub uid: u16,
     pub size: u32,
     pub mtime: u32,
     pub gid: u8,
     pub nlinks: u8,
-    pub zone: [u16; 9]
+    pub zone: [u16; 9],
 }
 
 // 文件 mode 位，布局与 Unix `st_mode` 一致：
@@ -187,7 +176,7 @@ numeric! {
 
 numeric! {
     pub enum MinixFsMagic : u16 {
-        MAGIC = 0x137F, // MINIX_SUPER_MAGIC, NAME_LEN 14
-        MAGIC_2 = 0x138F, // MINIX_SUPER_MAGIC2, NAME_LEN 30
+        MAGIC = 0x137F,     // MINIX_SUPER_MAGIC, NAME_LEN 14
+        MAGIC_2 = 0x138F,   // MINIX_SUPER_MAGIC2, NAME_LEN 30
     }
 }
