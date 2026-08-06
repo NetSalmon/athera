@@ -18,6 +18,7 @@ mod trap;
 
 extern crate alloc;
 
+use alloc::string::ToString;
 use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
 
@@ -25,11 +26,14 @@ use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
     dev::{VIRTIO_BLK, abstracts::BlockDevice},
-    fs::record::Index,
+    fs::{
+        record::Index,
+    },
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,
 };
+use crate::fs::minix_fs::{DINode, DirEntry, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, SuperBlock};
 
 global_asm!(include_str!("entry.asm"));
 
@@ -72,30 +76,74 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
-    let mut first_index: [u8; 512] = [0u8; 512];
-
-    let mut avail_files = vec![];
-
+    let mut buffer = vec![0u8; 1024];
     if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
-        guard.read_at(&mut first_index, 0).unwrap();
+        guard.read_at(&mut buffer, 1024).unwrap();
     }
 
-    let first_index = Index::from_slice(&first_index);
+    let super_block =  unsafe { &*(buffer.as_ptr() as *const SuperBlock) };
+    info!("{:#?}", super_block);
 
-    for i in first_index.files.iter() {
-        if !i.is_empty() {
-            avail_files.push(i.clone());
+    let magic = super_block.magic;
+    let zone_size = super_block.block_size();
+
+    let root_inode_offset = super_block.d_inode_start();
+
+    if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
+        guard.read_at(&mut buffer, root_inode_offset).unwrap();
+    }
+
+    let root_inode = unsafe { &*(buffer.as_ptr() as *const DINode) }.clone();
+
+    info!("{:#?}", root_inode);
+
+    if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
+        guard.read_at(&mut buffer, zone_size * root_inode.zone[0] as usize).unwrap();
+    }
+
+    let ptr = buffer.as_ptr();
+
+    let dist_file = "hello_world";
+    let mut inode_num = None;
+
+    if magic == MinixFsMagic::MAGIC_2 {
+        for offset in (0..(root_inode.size as usize)).step_by(size_of::<DirEntryV1_30>()) {
+            let entry = unsafe {
+                &*(ptr.add(offset) as *const DirEntryV1_30)
+            };
+
+            info!("{:#?}", entry.name.to_string());
+
+            if entry.name.to_string().as_str() == dist_file {
+                inode_num = Some(entry.ino);
+            }
+
+            info!("{:?}", entry);
+        }
+    } else {
+        for offset in (0..root_inode.size as usize).step_by(size_of::<DirEntryV1_14>()) {
+            let entry = unsafe {
+                &*(ptr.add(offset) as *const DirEntryV1_14)
+            };
+
+            if entry.name.to_string().as_str() == dist_file {
+                inode_num = Some(entry.ino);
+            }
+
+            info!("{:?}", entry);
         }
     }
 
-    for i in avail_files {
-        info!(
-            "name: {}, start as block id = {}, size: {}",
-            i.file_name.as_str(),
-            i.start,
-            i.size
-        );
+    info!("{} at: {:?}", dist_file, inode_num);
+    let inode_num = inode_num.unwrap();
+
+    if let Some(ref mut guard) = *VIRTIO_BLK.force().lock() {
+        guard.read_at(&mut buffer, root_inode_offset + size_of::<DINode>() * (inode_num as usize - 1)).unwrap();
     }
+
+    let hello_world = unsafe { &*(buffer.as_ptr() as *const DINode) };
+
+    info!("{:#?}", hello_world);
 
     if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
         error!("failed to execute user program: {err}");

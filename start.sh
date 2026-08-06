@@ -31,18 +31,18 @@ while getopts "misdpbr" opt; do
         -device "virtio-blk-pci,drive=hd0,disable-legacy=on"
       )
       ;;
-d)
+    d)
       QEMU_OPTS+=(
-        -drive "file=./resources/disk.qcow2,format=qcow2,id=hd0,if=none"
+        -drive "file=./resources/minix.qcow2,format=qcow2,id=hd0,if=none"
         -device "virtio-blk-device,drive=hd0"
       )
       ;;
-r)
+    r)
       # virtio-rng（MMIO 传输）。建议配合 -d/-p 使用并放在其后，
       # 保证 blk 仍是第一个 virtio,mmio 节点（内核只探测第一个）。
       QEMU_OPTS+=("-device" "virtio-rng-device")
       ;;
-b)
+    b)
       DISPLAY_OPTS="-display gtk"
       QEMU_OPTS+=("-device" "ramfb")
       ;;
