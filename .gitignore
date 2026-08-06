@@ -1,7 +1,5 @@
 /target
 /.claude
 /resources
-/applications/target
-/const-num/target
-/const-val/target
+/__pycache__
 /.version
