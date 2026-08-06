@@ -25,7 +25,7 @@ use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
     dev::{VIRTIO_BLK, abstracts::BlockDevice},
-    fs::Index,
+    fs::record::Index,
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,
