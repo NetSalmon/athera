@@ -10,9 +10,13 @@ use alloc::collections::BTreeMap;
 use core::ops::Range;
 
 /// ID 分配错误。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum IdAllocError {
+    /// ID 超出分配器管理范围。
+    #[error("id out of range")]
     OutOfRange,
+    /// 操作的目标 ID 已处于目标状态（已分配或已释放）。
+    #[error("id is already free")]
     AlreadyFree,
 }
 

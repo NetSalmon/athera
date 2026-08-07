@@ -7,3 +7,6 @@ edition = "2024"
 test = false
 bench = false
 doctest = false
+
+[dependencies]
+thiserror = { version = "2.0.19", default-features = false }

@@ -8,9 +8,12 @@ use alloc::vec::Vec;
 use crate::{
     constants::VIRTIO_VERSION_LEGACY,
     dev::virtio_mmio::{DeviceStatus, VirtqCfg, queue::Virtq},
-    error::{Error, Result},
+    error::DevError,
     mem::addr::PhysicalAddr,
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, DevError>;
 
 pub struct QueueConfig {
     pub index: u32,
@@ -91,7 +94,7 @@ impl<'a> HandshakeBegin<'a> {
         if !got_status.features_ok() {
             got_status.set_failed(true);
             cfg.write_status(got_status.into());
-            return Err(Error::VirtioFeaturesNotOk);
+            return Err(DevError::VirtioFeaturesNotOk);
         }
 
         Ok(FeaturesNegotiated { cfg })
@@ -112,7 +115,7 @@ impl<'a> FeaturesNegotiated<'a> {
 
             let num_max = self.cfg.queue_num_max();
             if qcfg.size > num_max {
-                return Err(Error::VirtioHandshakeFailed);
+                return Err(DevError::VirtioHandshakeFailed);
             }
             self.cfg.write_queue_num(qcfg.size);
 
@@ -168,7 +171,7 @@ impl<'a> QueuesReady<'a> {
 
             let num_max = self.cfg.queue_num_max();
             if qcfg.size > num_max {
-                return Err(Error::VirtioHandshakeFailed);
+                return Err(DevError::VirtioHandshakeFailed);
             }
             self.cfg.write_queue_num(qcfg.size);
 

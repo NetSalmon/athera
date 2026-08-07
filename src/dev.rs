@@ -17,7 +17,7 @@ use crate::{
         memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk, virtio_mmio::VirtioDevice,
         virtio_rng::VirtioRng,
     },
-    error::{Error, Result},
+    error::{DevError, Error, Result},
     mem::allocators::FRAME_ALLOCATOR,
     sync::spin::SpinLock,
     warn,
@@ -32,7 +32,7 @@ pub mod virtio_mmio;
 pub mod virtio_rng;
 
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
-    unsafe { fdt::Fdt::from_ptr(FDT_ADDR) }.map_err(|_| Error::Fdt)
+    Ok(unsafe { fdt::Fdt::from_ptr(FDT_ADDR)? })
 }
 
 fn boot_fail(err: Error) -> ! {
@@ -83,7 +83,7 @@ pub static SYSTEM_MEMORY: Memory = {
     };
     match Memory::probe(&fdt) {
         Some(memory) => memory,
-        None => boot_fail(Error::MemoryProbeFailed),
+        None => boot_fail(DevError::MemoryProbeFailed.into()),
     }
 };
 

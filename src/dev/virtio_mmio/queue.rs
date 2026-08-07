@@ -12,9 +12,12 @@ use core::{
 use crate::{
     bits,
     constants::RING_SIZE,
-    error::{Error, Result},
+    error::{DevError, MemError},
     mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, DevError>;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -83,7 +86,7 @@ impl Virtq {
             .force()
             .lock()
             .alloc_frame(layout.size())
-            .ok_or(Error::OutOfMemory)?;
+            .ok_or(MemError::OutOfMemory)?;
         unsafe {
             core::ptr::write_bytes(start as *mut u8, 0, layout.size());
         }

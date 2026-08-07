@@ -12,13 +12,16 @@ use core::{
 
 use crate::{
     constants::PTE_NUMBER,
-    error::{Error, Result},
+    error::MemError,
     mem::{
         alloc_page::AllocPage,
         allocators::alloc_frame,
         page_table::{PageTable, PageTableEntry},
     },
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, MemError>;
 
 #[derive(Debug)]
 pub struct PageTableHandle {
@@ -38,7 +41,7 @@ impl PageTableHandle {
 
     /// 从伙伴系统分配一页并初始化为空的根页表。
     pub fn create() -> Result<Self> {
-        let page = alloc_frame(None).ok_or(Error::OutOfMemory)?;
+        let page = alloc_frame(None).ok_or(MemError::OutOfMemory)?;
 
         let page_table = unsafe { &mut *(page.start as *mut PageTable) };
 

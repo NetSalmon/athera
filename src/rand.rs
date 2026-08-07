@@ -21,7 +21,7 @@ pub static RNG: SecureRng = {
     if let Some(source) = VIRTIO_RNG.lock().as_mut() {
         match SecureRng::from_entropy(source) {
             Ok(r) => rng = r,
-            Err(err) => warn!("failed to seed global RNG from virtio-rng: {err:?}"),
+            Err(err) => warn!("failed to seed global RNG from virtio-rng: {err}"),
         }
     } else {
         warn!("no virtio-rng found, global RNG uses a fixed seed (not crypto-secure)");

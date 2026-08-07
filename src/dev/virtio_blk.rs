@@ -21,8 +21,11 @@ use crate::{
             queue::{Flags, VRingDesc, Virtq},
         },
     },
-    error::{Error, Result},
+    error::DevError,
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, DevError>;
 
 /// virtio-blk 请求类型：读（设备写入数据缓冲区）。
 const VIRTIO_BLK_T_IN: u32 = 0;
@@ -165,11 +168,11 @@ impl VirtioBlk {
         // 等待设备产生 used 元素，并校验被消费的描述符链头。
         let elem = self.queue()?.wait_used(last_used)?;
         if elem.id != 0 {
-            return Err(Error::VirtioBlockFailed);
+            return Err(DevError::VirtioBlockFailed);
         }
 
         if unsafe { addr_of!(status).read_volatile() } != VIRTIO_BLK_S_OK {
-            return Err(Error::VirtioBlockFailed);
+            return Err(DevError::VirtioBlockFailed);
         }
 
         Ok(())
@@ -177,7 +180,7 @@ impl VirtioBlk {
 }
 
 impl BlockDevice for VirtioBlk {
-    type Error = Error;
+    type Error = DevError;
 
     fn read_at(
         &mut self,

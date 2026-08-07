@@ -21,8 +21,11 @@ use crate::{
             queue::{Flags, VRingDesc, Virtq},
         },
     },
-    error::{Error, Result},
+    error::DevError,
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioRng {
     pub device: Device,
@@ -80,7 +83,7 @@ impl VirtioRng {
         // 等待设备产生 used 元素，校验被消费的描述符链头并返回写入长度。
         let elem = self.queue()?.wait_used(last_used)?;
         if elem.id != 0 {
-            return Err(Error::VirtioRngFailed);
+            return Err(DevError::VirtioRngFailed);
         }
         Ok(elem.len as usize)
     }

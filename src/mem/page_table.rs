@@ -20,13 +20,16 @@ use crate::{
     constants::{PAGE_SIZE, PTE_NUMBER},
     debug,
     dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
-    error::{Error, Result},
+    error::MemError,
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
     },
     proc::task::Tid,
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, MemError>;
 
 bits! {
     pub type PageTableEntry: u64 {
@@ -223,7 +226,10 @@ impl AddressSpace {
 
         let pt0_addr = {
             let need_create = {
-                let pt1 = self.tables.get(&pt1_addr).ok_or(Error::PageTableMissing)?;
+                let pt1 = self
+                    .tables
+                    .get(&pt1_addr)
+                    .ok_or(MemError::PageTableMissing)?;
                 !pt1.entries[vpn1].v()
             };
             if need_create {
@@ -233,14 +239,17 @@ impl AddressSpace {
                     let pt1 = self
                         .tables
                         .get_mut(&pt1_addr)
-                        .ok_or(Error::PageTableMissing)?;
+                        .ok_or(MemError::PageTableMissing)?;
                     let pte1 = &mut pt1.entries[vpn1];
                     pte1.set_ppn(addr.ppn() as u64);
                     pte1.set_v(true);
                 }
                 self.tables.insert(addr, new_pt);
             }
-            let pt1 = self.tables.get(&pt1_addr).ok_or(Error::PageTableMissing)?;
+            let pt1 = self
+                .tables
+                .get(&pt1_addr)
+                .ok_or(MemError::PageTableMissing)?;
             let mut addr = PhysicalAddr::new();
             addr.set_ppn(pt1.entries[vpn1].ppn() as usize);
             addr
@@ -249,7 +258,7 @@ impl AddressSpace {
         let pt0 = self
             .tables
             .get_mut(&pt0_addr)
-            .ok_or(Error::PageTableMissing)?;
+            .ok_or(MemError::PageTableMissing)?;
 
         let pte0 = &mut pt0.entries[vpn0];
         pte0.set_ppn(pa.ppn() as u64);
@@ -309,7 +318,7 @@ impl AddressSpace {
     /// 指向中间页表的 PPN 改写为新副本，得到**完全独立**的新地址空间；
     /// 叶映射指向的物理帧与源地址空间共享（如需 COW 应在更上层处理）。
     ///
-    /// 分配失败时返回 [`Error::OutOfMemory`]；需要无条件克隆时可用
+    /// 分配失败时返回 [`MemError::OutOfMemory`]；需要无条件克隆时可用
     /// [`Clone`] trait（分配失败会 panic）。
     pub fn try_clone(&self) -> Result<Self> {
         let mut root = PageTableHandle::create()?;
@@ -339,8 +348,8 @@ impl AddressSpace {
         // level-1 页表项（指向 level-0）改指到新副本；level-0 的叶项
         // 指向数据帧，不在 remap 中，保持共享。
         for (old_addr, handle) in &self.tables {
-            let new_addr = remap.get(old_addr).ok_or(Error::PageTableMissing)?;
-            let new_handle = tables.get_mut(new_addr).ok_or(Error::PageTableMissing)?;
+            let new_addr = remap.get(old_addr).ok_or(MemError::PageTableMissing)?;
+            let new_handle = tables.get_mut(new_addr).ok_or(MemError::PageTableMissing)?;
             for (index, pte) in handle.entries.iter().enumerate() {
                 if let Some(target) = remap.get(&Self::entry_phys_addr(pte)) {
                     new_handle.entries[index].set_ppn(target.ppn() as u64);
@@ -399,7 +408,7 @@ impl PageTableManager {
         self.user
             .get(&tid)
             .map(|space| space.root.as_phys_addr())
-            .ok_or(Error::AddressSpaceNotFound)
+            .ok_or(MemError::AddressSpaceNotFound)
     }
 
     pub fn map(
@@ -455,7 +464,7 @@ impl PageTableManager {
     ) -> Result<()> {
         self.user
             .get_mut(&tid)
-            .ok_or(Error::AddressSpaceNotFound)?
+            .ok_or(MemError::AddressSpaceNotFound)?
             .map(va, pa, flags)?;
         if flush {
             Self::flush();
@@ -466,7 +475,7 @@ impl PageTableManager {
     pub fn user_unmap(&mut self, tid: Tid, va: VirtualAddr, flush: bool) -> Result<()> {
         self.user
             .get_mut(&tid)
-            .ok_or(Error::AddressSpaceNotFound)?
+            .ok_or(MemError::AddressSpaceNotFound)?
             .unmap(va);
         if flush {
             Self::flush();
@@ -492,7 +501,7 @@ impl PageTableManager {
             AddressSpaceId::User(tid) => self
                 .user
                 .get(&tid)
-                .ok_or(Error::AddressSpaceNotFound)?
+                .ok_or(MemError::AddressSpaceNotFound)?
                 .root
                 .as_phys_addr(),
         };
@@ -513,7 +522,7 @@ impl PageTableManager {
             AddressSpaceId::User(tid) => self
                 .user
                 .get(&tid)
-                .ok_or(Error::AddressSpaceNotFound)?
+                .ok_or(MemError::AddressSpaceNotFound)?
                 .try_clone()?,
         };
         self.user.insert(new_tid, space);

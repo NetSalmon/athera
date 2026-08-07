@@ -11,3 +11,4 @@ doctest = false
 [dependencies]
 rand_chacha = { version = "0.10.0", default-features = false }
 rand_core = { version = "0.10", default-features = false }
+thiserror = { version = "2.0.19", default-features = false }

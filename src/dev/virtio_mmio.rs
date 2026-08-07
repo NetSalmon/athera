@@ -16,9 +16,12 @@ use crate::{
     bits,
     constants::{RING_SIZE, VIRTIO_VERSION_LEGACY},
     dev::device::{Device, Resource},
-    error::{Error, Result},
+    error::DevError,
     mmio_regs, numeric,
 };
+
+/// 本模块统一结果类型。
+pub type Result<T> = core::result::Result<T, DevError>;
 
 pub struct VirtqCfg {
     pub device: Device,
@@ -206,7 +209,7 @@ pub trait VirtioDevice: Sized {
         self.queues_mut()
             .as_mut()
             .and_then(|queues| queues.first_mut())
-            .ok_or(Error::VirtioHandshakeFailed)
+            .ok_or(DevError::VirtioHandshakeFailed)
     }
 
     /// 通知设备处理队列 0。

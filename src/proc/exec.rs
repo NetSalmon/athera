@@ -13,7 +13,7 @@ use crate::{
     },
     constants::{PHY_PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
     elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
-    error::{Error, Result},
+    error::{ElfError, Error, MemError, Result},
     info,
     mem::{
         allocators::alloc_frame,
@@ -36,15 +36,15 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
     let elf_header = Elf64Ehdr::from(buffer);
 
     if !elf_header.e_ident.is_elf() {
-        return Err(Error::NotElf);
+        return Err(ElfError::NotElf.into());
     }
 
     if elf_header.e_ident.data() != Endianness::LSB {
-        return Err(Error::NotLsb);
+        return Err(ElfError::NotLsb.into());
     }
 
     if elf_header.e_ident.class() != Class::CLASS64 {
-        return Err(Error::Not64Bit);
+        return Err(ElfError::Not64Bit.into());
     }
 
     let entry = elf_header.e_entry as usize;
@@ -96,7 +96,7 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
             continue;
         }
 
-        let alloc_page = alloc_frame(Some(memsz)).ok_or(Error::OutOfMemory)?;
+        let alloc_page = alloc_frame(Some(memsz)).ok_or(MemError::OutOfMemory)?;
 
         let mapping_flags = PageTableEntryFlags::builder()
             .set_u(true)
@@ -140,7 +140,7 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         }
     }
 
-    let user_stack = alloc_frame(Some(USER_STACK_SIZE)).ok_or(Error::OutOfMemory)?;
+    let user_stack = alloc_frame(Some(USER_STACK_SIZE)).ok_or(MemError::OutOfMemory)?;
 
     let stack_flags = PageTableEntryFlags::builder()
         .set_r(true)

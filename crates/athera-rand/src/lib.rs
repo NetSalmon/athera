@@ -32,7 +32,8 @@ pub trait EntropySource {
 }
 
 /// 熵源读取失败。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("entropy source read failed")]
 pub struct EntropyError;
 
 // ---------------------------------------------------------------------------
