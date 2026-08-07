@@ -151,13 +151,6 @@ cargo build --release --features halt_directly
 
 启动时会依次加载并执行磁盘上的 `/bin/hello_world` 与 `/bin/sort`，最后执行编译期内嵌的 `add`。`-d` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
 
-`minix_put.py` 可以把宿主机文件写入 MINIX V1 镜像（复用 `mkdisk.py` 的 qcow2 读写），支持 7 个直接 zone + 1 个一级间接 zone（约 530 KiB 以下的文件）：
-
-```bash
-python3 minix_put.py resources/minix.qcow2 target/riscv64gc-unknown-none-elf/release/sort /bin/sort  # 写入文件
-python3 minix_put.py --list resources/minix.qcow2                                                    # 查看镜像内容
-```
-
 ## 磁盘索引格式
 
 块设备首块（块号 0）是一个 512 字节的索引块（`src/fs/record.rs`），是内核自带的另一种简单磁盘格式，由 `mkdisk.py` 工具读写：

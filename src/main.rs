@@ -76,11 +76,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
     spawn_from_disk("/bin/hello_world");
     spawn_from_disk("/bin/sort");
-
-    // 最后执行编译期内嵌的用户程序（add）。
-    if let Err(err) = proc::exec::spawn_buffer(&EMBEDDED_ELF.0, None) {
-        error!("failed to execute user program: {err}");
-    }
+    spawn_from_disk("/bin/add");
 
     proc::sched::switch();
 }
