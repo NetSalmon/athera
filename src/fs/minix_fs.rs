@@ -4,27 +4,7 @@ use core::{
     slice,
 };
 
-use crate::{
-    bits,
-    dev::{VIRTIO_BLK, abstracts::BlockDevice, device::Device},
-    numeric, vec,
-    vec::Vec,
-};
-// struct d_inode{
-//     uint16_t mode;  // 文件类型和 RWX 访问控制位
-//     uint16_t uid;   // 文件属主的用户 ID
-//     uint32_t size;  // 文件大小, 以 byte 计数
-//     uint32_t mtime; // 自从 1970.1.1 以来的秒数     (unused)
-//     uint8_t gid;    // 文件属主 所属的组
-//     uint8_t nlinks; // 该节点被多少个目录所链接
-//
-//     /*
-//      * zone[0] - zone[6] 分别指向 7 个直接块
-//      * zone[7] 指向间接块
-//      * zone[8] 指向双重间接块
-//      */
-//     uint16_t zone[9];
-// };
+use crate::{bits, dev::abstracts::BlockDevice, numeric, vec, vec::Vec};
 
 #[repr(transparent)]
 #[derive(Clone)]

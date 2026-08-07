@@ -3,3 +3,4 @@
 /resources
 /__pycache__
 /.version
+.rules

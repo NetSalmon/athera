@@ -5,7 +5,7 @@ mod constants;
 mod dev;
 mod elf;
 mod error;
-pub mod fs;
+mod fs;
 mod io;
 mod log;
 mod macros;
@@ -18,19 +18,14 @@ mod trap;
 
 extern crate alloc;
 
-use alloc::{string::ToString, vec};
+use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
-    dev::{VIRTIO_BLK, abstracts::BlockDevice},
-    fs::{
-        minix_fs::{
-            DINode, DirEntry, DirEntryV1_14, DirEntryV1_30, MinixFs, MinixFsMagic, Path, SuperBlock,
-        },
-        record::Index,
-    },
+    dev::VIRTIO_BLK,
+    fs::minix_fs::{MinixFs, Path},
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,

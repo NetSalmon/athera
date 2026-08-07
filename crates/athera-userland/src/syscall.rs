@@ -2,9 +2,6 @@
 //!
 //! 定义 `ecall!` 宏与 read / write / exit / reboot 的 RISC-V 调用约定
 //! 封装（系统调用号放 `a7`，返回值经 `a0` 传回）。
-
-use core::arch::asm;
-
 #[allow(unused)]
 const EINVAL: isize = -22;
 #[allow(unused)]
