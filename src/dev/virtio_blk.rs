@@ -14,8 +14,8 @@ use core::{
 use crate::{
     bits,
     dev::{
-        abstracts::BlockDevice,
         device::Device,
+        traits::BlockDevice,
         virtio_mmio::{
             DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},

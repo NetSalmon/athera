@@ -1,6 +1,6 @@
 //! 用户程序加载执行。
 //!
-//! [`execute_buffer`] 解析 ELF 程序头，为每个 `PT_LOAD` 段分配物理页并
+//! [`spawn_buffer`] 解析 ELF 程序头，为每个 `PT_LOAD` 段分配物理页并
 //! 映射进用户地址空间，最后创建用户栈并通过 [`restore_context`] 切换到
 //! 用户态。
 use alloc::vec;
@@ -11,20 +11,17 @@ use crate::{
         csr::Sstatus,
         values::{SStatusBits, SatpMode, SatpValue},
     },
-    constants::{PHY_PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
-    elf::{Class, Elf64Ehdr, Elf64Phdr, Endianness, PType},
-    error::{ElfError, Error, MemError, Result},
+    constants::{PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
+    elf::{Elf64Ehdr, Elf64Phdr, PType},
+    error::{Error, MemError, Result},
     info,
     mem::{
         allocators::alloc_frame,
         page_table::{PAGE_TABLE_MANAGER, PageTableEntryFlags},
     },
-    proc::{
-        CURRENT_TASK,
-        task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
-    },
+    proc::task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
     trace,
-    trap::{TrapContext, restore_context},
+    trap::TrapContext,
 };
 
 /// 加载并执行一段用户程序 ELF。
@@ -32,20 +29,10 @@ use crate::{
 /// 分配 TID、创建用户地址空间，逐个处理 `PT_LOAD` 段（分配物理页、
 /// 清零并拷贝段数据、映射到用户虚拟地址），最后建立用户栈并切换到
 /// 用户态。
-pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
+pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
     let elf_header = Elf64Ehdr::from(buffer);
 
-    if !elf_header.e_ident.is_elf() {
-        return Err(ElfError::NotElf.into());
-    }
-
-    if elf_header.e_ident.data() != Endianness::LSB {
-        return Err(ElfError::NotLsb.into());
-    }
-
-    if elf_header.e_ident.class() != Class::CLASS64 {
-        return Err(ElfError::Not64Bit.into());
-    }
+    elf_header.avail()?;
 
     let entry = elf_header.e_entry as usize;
 
@@ -107,7 +94,7 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
             .set_d(true)
             .build();
 
-        for step in (0..alloc_page.size).step_by(PHY_PAGE_SIZE) {
+        for step in (0..alloc_page.size).step_by(PAGE_SIZE) {
             let va = vaddr as usize + step;
             let pa = alloc_page.start + step;
 
@@ -150,7 +137,7 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         .set_d(true)
         .build();
 
-    for i in (0..user_stack.size).step_by(PHY_PAGE_SIZE) {
+    for i in (0..user_stack.size).step_by(PAGE_SIZE) {
         PAGE_TABLE_MANAGER.force().lock().user_map(
             tid,
             (USER_STACK_LOWER_BOUND + i).into(),
@@ -193,9 +180,7 @@ pub fn execute_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         priority: priority.unwrap_or_default(),
     };
 
-    TASKS.force().lock().insert(tid, tcb);
+    TASKS.force().lock().add(tid, None, tcb);
 
-    *CURRENT_TASK.current() = Some(tid);
-
-    restore_context(&context);
+    Ok(())
 }

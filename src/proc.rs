@@ -10,7 +10,14 @@ use crate::{
 };
 
 pub mod exec;
+pub mod sched;
 pub mod task;
 
+#[derive(Debug, Clone, Copy)]
+pub struct CurrentTask {
+    pub tid: Tid,
+    pub exit_code: Option<i32>,
+}
+
 #[lazy]
-pub static CURRENT_TASK: PerCpu<Option<Tid>, MAX_CPU> = PerCpu::new([None; MAX_CPU]);
+pub static CURRENT_TASK: PerCpu<Option<CurrentTask>, MAX_CPU> = PerCpu::new([None; MAX_CPU]);

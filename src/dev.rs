@@ -23,10 +23,10 @@ use crate::{
     warn,
 };
 
-pub mod abstracts;
 pub mod device;
 pub mod memory;
 pub mod ns16550a;
+pub mod traits;
 pub mod virtio_blk;
 pub mod virtio_mmio;
 pub mod virtio_rng;

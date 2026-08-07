@@ -24,3 +24,10 @@ path = "src/bin/add.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "sort"
+path = "src/bin/sort.rs"
+test = false
+doctest = false
+bench = false

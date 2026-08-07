@@ -9,6 +9,12 @@ use alloc::{format, string::String};
 use athera_rand::EntropyError;
 use fdt::FdtError;
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ProcError {
+    #[error("no other task")]
+    NoOtherTask,
+}
+
 /// ELF 加载错误。
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ElfError {
@@ -84,8 +90,8 @@ pub enum Error {
     /// 设备树无效。
     #[error("fdt error: {0}")]
     Fdt(String),
-    /// 没有可用的线程 ID。
-    #[error("no thread id available")]
+    /// 没有可用的任务 ID。
+    #[error("no task id available")]
     NoTidAvailable,
     /// ELF 加载错误。
     #[error(transparent)]
@@ -96,6 +102,8 @@ pub enum Error {
     /// 设备子系统错误。
     #[error(transparent)]
     Dev(#[from] DevError),
+    #[error(transparent)]
+    Proc(#[from] ProcError),
 }
 
 impl From<FdtError> for Error {

@@ -36,7 +36,8 @@ global_asm!(include_str!("entry.asm"));
 #[unsafe(no_mangle)]
 /// 内核入口（由 `entry.asm` 的 `_start` 调用）。
 ///
-/// 初始化日志级别、恒等映射页表，然后加载并执行内嵌的用户程序。
+/// 初始化日志级别、恒等映射页表，然后从 MINIX 文件系统加载并执行
+/// `/bin/hello_world`、`/bin/sort`，最后执行内嵌的用户程序 `add`。
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     arch::registers::gpr::Tp::write(hart_id as u64);
 
@@ -46,7 +47,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     set_next_timer();
 
-    // checking
+    // 校验 entry.asm 写入的 FDT_ADDR 与 Rust 侧入口参数一致。
     unsafe {
         if dev_tree_address != FDT_ADDR as usize {
             core::hint::spin_loop();
@@ -72,28 +73,53 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
-    let path = Path::from_str("/bin/hello_world");
-    if let Some(ref mut blk) = *VIRTIO_BLK.force().lock() {
-        let fs = MinixFs::from_device(blk).unwrap().unwrap();
-        let mut f = fs.open(&path, blk).unwrap().unwrap();
+    // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
+    spawn_from_disk("/bin/hello_world");
+    spawn_from_disk("/bin/sort");
 
-        let mut buf = vec![0u8; f.size() as usize];
-        info!("{:#?}", f);
-
-        f.read(&mut buf, blk).unwrap();
-
-        if let Err(err) = proc::exec::execute_buffer(&buf, None) {
-            error!("failed to execute user program: {err}");
-            kernel_halt()
-        }
-    }
-
-    if let Err(err) = proc::exec::execute_buffer(&ELF.0, None) {
+    // 最后执行编译期内嵌的用户程序（add）。
+    if let Err(err) = proc::exec::spawn_buffer(&EMBEDDED_ELF.0, None) {
         error!("failed to execute user program: {err}");
-        kernel_halt()
     }
 
-    kernel_halt()
+    proc::sched::switch();
+}
+
+/// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
+fn spawn_from_disk(path: &str) {
+    let Some(ref mut blk) = *VIRTIO_BLK.force().lock() else {
+        error!("no virtio-blk device, skip {path}");
+        return;
+    };
+
+    let fs = match MinixFs::from_device(blk) {
+        Ok(Some(fs)) => fs,
+        Ok(None) => {
+            error!("not a MINIX filesystem, skip {path}");
+            return;
+        }
+        Err(_) => {
+            error!("failed to read MINIX superblock, skip {path}");
+            return;
+        }
+    };
+
+    let Some(mut f) = fs.open(&Path::from_str(path), blk).unwrap() else {
+        error!("{path} not found on disk");
+        return;
+    };
+
+    let mut buf = vec![0u8; f.size() as usize];
+    info!("{:#?}", f);
+
+    if f.read(&mut buf, blk).unwrap() != buf.len() {
+        error!("short read, skip {path}");
+        return;
+    }
+
+    if let Err(err) = proc::exec::spawn_buffer(&buf, None) {
+        error!("failed to execute user program: {err}");
+    }
 }
 
 #[unsafe(no_mangle)]

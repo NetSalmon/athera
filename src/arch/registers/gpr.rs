@@ -21,18 +21,20 @@
 // | f28–31  | ft8–11   | FP temporaries                   | rw     | Caller |
 
 macro_rules! gpr {
+    // 生成读取寄存器的方法（`@read` 与生成 `read()` 对应）。
     (@read $name:ident) => {
-        #[inline]
-        pub fn write(value: u64) {
-            unsafe { core::arch::asm!( concat!("mv ", stringify!($name), ", {}"), in(reg) value); }
-        }
-    };
-    (@write $name:ident) => {
         #[inline]
         pub fn read() -> u64 {
             let value: u64;
             unsafe { core::arch::asm!( concat!("mv {}, ", stringify!($name)), out(reg) value); }
             value
+        }
+    };
+    // 生成写入寄存器的方法（`@write` 与生成 `write()` 对应）。
+    (@write $name:ident) => {
+        #[inline]
+        pub fn write(value: u64) {
+            unsafe { core::arch::asm!( concat!("mv ", stringify!($name), ", {}"), in(reg) value); }
         }
     };
     ($name:ident $(-)? $($alias:ident),* => r) => {

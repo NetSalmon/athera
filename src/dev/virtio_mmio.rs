@@ -58,7 +58,7 @@ bits! {
 numeric! {
     pub enum VirtqVersion : u32 {
         LEGACY = 1,
-        MORDEN = 2,
+        MODERN = 2,
     }
 }
 

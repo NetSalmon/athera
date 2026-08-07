@@ -5,3 +5,6 @@ use athera_const::const_val;
 
 #[const_val]
 pub const TID_MAX: usize = 1024;
+
+#[const_val]
+pub const SUPPORT_32BIT: bool = false;

@@ -6,25 +6,25 @@
 use alloc::vec::Vec;
 
 use crate::{
-    arch,
     arch::{
-        registers::values::{SStatusBits, SatpMode, SatpValue},
-        sbi,
-        sbi::srst::{ResetReason, ResetType, system_reset},
+        registers::values::{SatpMode, SatpValue},
+        sbi::{
+            self,
+            srst::{ResetReason, ResetType, system_reset},
+        },
     },
     debug,
     dev::UART,
-    error, info, kernel_halt,
+    info,
     mem::{
         allocators::alloc_frame,
         page_table::{AddressSpaceId, PAGE_TABLE_MANAGER},
     },
     numeric,
     proc::{
-        CURRENT_TASK,
+        CURRENT_TASK, CurrentTask,
         task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
     },
-    trap::restore_context,
 };
 
 numeric! {
@@ -114,65 +114,55 @@ fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
     -1
 }
 
-const ARGS_START: usize = 10;
+/// 陷阱帧（32 个通用寄存器数组）中 `a0` 的下标（x10），
+/// 系统调用参数依次存放于 `a0..a7`。
+const A0_INDEX: usize = 10;
+
+/// 系统调用处理结果。
+pub enum SyscallResult {
+    /// 恢复用户态继续执行：`(返回值, 下一条指令地址)` 会分别写入 `a0`
+    /// 与 `sepc`，随后照常 `sret` 回用户态。
+    Return(u64, u64),
+    /// 当前任务退出：不再 `sret` 回用户态，由陷阱处理侧直接在内核态
+    /// 切换到下一个任务（退出码已记录到 `CURRENT_TASK`）。
+    Exit,
+}
 
 /// 处理一次系统调用。
 ///
-/// `args` 是陷阱帧里 `a0..a7` 的副本，`sepc` 为触发 `ecall` 的地址；
-/// 返回 `(返回值, 下一条指令地址)`，其中返回值写入 `a0`，下一条地址写
-/// 入 `sepc`。
-pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
-    match Syscall::from(trap_context[ARGS_START + 7]) {
+/// `args` 是陷阱帧里 `a0..a7` 的副本，`sepc` 为触发 `ecall` 的地址。
+pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
+    match Syscall::from(trap_context[A0_INDEX + 7]) {
         Syscall::READ => {
-            let ptr = trap_context[ARGS_START + 1] as *mut u8;
-            let buf =
-                core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
-            let ret = read(trap_context[ARGS_START], unsafe { &mut *buf });
-            (ret, sepc + 4)
+            let ptr = trap_context[A0_INDEX + 1] as *mut u8;
+            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
+            let ret = read(trap_context[A0_INDEX], unsafe { &mut *buf });
+            SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::WRITE => {
-            let ptr = trap_context[ARGS_START + 1] as *mut u8;
-            let buf =
-                core::ptr::slice_from_raw_parts_mut(ptr, trap_context[ARGS_START + 2] as usize);
+            let ptr = trap_context[A0_INDEX + 1] as *mut u8;
+            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
             let buf = unsafe { &*buf };
-            let ret = write(trap_context[ARGS_START], buf);
-            (ret, sepc + 4)
+            let ret = write(trap_context[A0_INDEX], buf);
+            SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::EXIT => {
-            let code = trap_context[ARGS_START] as i32;
-            let mut s: SStatusBits = arch::registers::csr::Sstatus::read().into();
-            s.set_spp(true);
-            arch::registers::csr::Sstatus::write(s.into());
+            let code = trap_context[A0_INDEX] as i32;
 
-            match *CURRENT_TASK.current() {
-                Some(tid) => {
-                    info!("task {} exited with code {code}", tid.0);
-
-                    // 删除任务和收集快照都是短操作；完整任务表在锁外
-                    // 打印，避免长时间关闭中断影响定时器。
-                    let snapshot: Vec<Tid> = {
-                        let mut tasks = TASKS.force().lock();
-                        tasks.remove(&tid);
-                        tasks.keys().copied().collect()
-                    };
-
-                    debug!("current tasks: {snapshot:?}");
-                }
-                None => {
-                    error!("exit syscall with no current task (code {code})");
-                }
+            if let Some(ref mut current) = *CURRENT_TASK.current() {
+                current.exit_code = Some(code)
             }
 
-            (trap_context[ARGS_START], kernel_halt as *const () as u64)
+            SyscallResult::Exit
         }
         Syscall::REBOOT => {
             let ret = reboot(
-                trap_context[ARGS_START],
-                trap_context[ARGS_START + 1],
-                trap_context[ARGS_START + 2],
+                trap_context[A0_INDEX],
+                trap_context[A0_INDEX + 1],
+                trap_context[A0_INDEX + 2],
             );
 
-            (ret as u64, sepc + 4)
+            SyscallResult::Return(ret as u64, sepc + 4)
         }
         Syscall::MMAP => {
             todo!()
@@ -186,14 +176,15 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
         Syscall::FORK => {
             info!("receive fork req");
 
-            let current_tid = CURRENT_TASK.current().unwrap();
+            let CurrentTask { tid, .. } = CURRENT_TASK.current().unwrap();
+            let current_tid = tid;
 
             let new_tid = TID_ALLOCATOR.force().lock().alloc().unwrap();
             let new_tid = Tid(new_tid);
 
             info!("new tid: {:?}", new_tid);
 
-            // TODO(fork): 分配新 tid、克隆地址空间并创建子任务，目前仅占位。
+            // 克隆当前任务的地址空间（页表深拷贝），并登记到新 TID 名下。
             PAGE_TABLE_MANAGER
                 .force()
                 .lock()
@@ -241,7 +232,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
             new_context.context = *trap_context;
             new_context.satp = satp.into();
             new_context.sepc = sepc + 4;
-            new_context.context[ARGS_START] = 0;
+            new_context.context[A0_INDEX] = 0;
 
             let new_memory_set = MemorySet {
                 used_page: pages,
@@ -258,16 +249,13 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> (u64, u64) {
                 priority: 0,
             };
 
-            TASKS.force().lock().insert(new_tid, new_tcb);
+            TASKS
+                .force()
+                .lock()
+                .add(new_tid, Some(current_tid), new_tcb);
 
-            *CURRENT_TASK.current() = Some(new_tid);
-
-            info!("restore");
-
-            restore_context(&new_context);
-
-            (new_tid.0 as u64, sepc + 4)
+            SyscallResult::Return(new_tid.0 as u64, sepc + 4)
         }
-        _ => (ErrorCode::ENOSYS.0 as u64, sepc + 4),
+        _ => SyscallResult::Return(ErrorCode::ENOSYS.0 as u64, sepc + 4),
     }
 }

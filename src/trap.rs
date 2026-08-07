@@ -12,7 +12,10 @@ use crate::{
         registers::{csr::Sscratch, gpr::Sp},
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
-    debug, error, info, numeric, syscall, user_trap_entry,
+    debug, error, info, numeric,
+    proc::sched,
+    syscall::{self, SyscallResult},
+    user_trap_entry,
 };
 
 const INTERRUPT_MASK: i64 = 1 << 63;
@@ -110,11 +113,17 @@ fn trap_handler(
         Trap::Exception(Exception::U_MODE_ECALL) => {
             let trap_context = unsafe { &*((trap_frame_sp) as *const [u64; 32]) };
 
-            let (ret, next) = syscall::handle(sepc, trap_context);
-
-            unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
-
-            arch::registers::csr::Sepc::write(next);
+            match syscall::handle(sepc, trap_context) {
+                SyscallResult::Return(ret, next) => {
+                    unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
+                    arch::registers::csr::Sepc::write(next);
+                }
+                SyscallResult::Exit => {
+                    // 当前任务已退出：不 sret 回用户态，直接在内核态
+                    // 切换到下一个任务（switch 不会返回）。
+                    sched::switch();
+                }
+            }
         }
         Trap::Exception(Exception::BREAKPOINT) => {
             debug!("breakpoint");
@@ -168,11 +177,11 @@ pub struct TrapContext {
 ///
 /// 依次写入 `sstatus` / `sepc` / `stvec` / `satp` 并刷新 TLB，然后从
 /// 上下文数组装载通用寄存器。
-pub fn restore_context(context: &TrapContext) -> ! {
+pub fn restore_context(context: &TrapContext) {
     let context_addr = context.context.as_ptr() as u64;
 
-    info!("sscratch: {:#x}", Sscratch::read());
-    info!("sp: {:#x}", Sp::read());
+    info!("sscratch: {:#p}", Sscratch::read() as *const u8);
+    info!("sp: {:#p}", Sp::read() as *const u8);
 
     unsafe {
         asm!(

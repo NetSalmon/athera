@@ -9,7 +9,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use athera_const::lazy;
 
 use crate::{
-    constants::{AVAIL_RANGE, PHY_PAGE_SIZE},
+    constants::{AVAIL_RANGE, PAGE_SIZE},
     debug,
     mem::{
         alloc_page::AllocPage,
@@ -34,7 +34,7 @@ pub static FRAME_ALLOCATOR: BuddyAllocator = {
 
 /// 从伙伴系统分配一个物理页帧；`size` 为 `None` 时使用默认页大小。
 pub fn alloc_frame(size: Option<usize>) -> Option<AllocPage> {
-    let size = size.unwrap_or(PHY_PAGE_SIZE);
+    let size = size.unwrap_or(PAGE_SIZE);
 
     FRAME_ALLOCATOR
         .force()

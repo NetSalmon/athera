@@ -1,3 +1,4 @@
+#![allow(unused)]
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct RecordString(pub [u8; 16]);
@@ -32,16 +33,17 @@ impl From<&str> for RecordString {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct File {
-    // block id
-    pub start: u32,
-    // bytes
-    pub size: u32,
-    pub file_name: RecordString,
+    /// 文件数据起始块号（512 字节块）。
+    pub start_block: u32,
+    /// 文件字节数。
+    pub size_bytes: u32,
+    /// 文件名（定长 16 字节，未写满处以 NUL 填充）。
+    pub name: RecordString,
 }
 
 impl File {
     pub fn is_empty(&self) -> bool {
-        self.start == 0 && self.size == 0
+        self.start_block == 0 && self.size_bytes == 0
     }
 }
 

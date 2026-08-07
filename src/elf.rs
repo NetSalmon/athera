@@ -5,7 +5,7 @@
 //! `Elf64Phdr` 与类型枚举（`EType` / `EMachine` / `PType` 等）。
 use core::fmt::{Display, Formatter};
 
-use crate::{array_struct, bits, numeric};
+use crate::{array_struct, bits, error::ElfError, numeric};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -24,6 +24,24 @@ pub struct Elf64Ehdr {
     pub e_shentsize: u16,
     pub e_shnum: u16,
     pub e_shstrndx: u16,
+}
+
+impl Elf64Ehdr {
+    pub fn avail(&self) -> Result<(), ElfError> {
+        if !self.e_ident.is_elf() {
+            return Err(ElfError::NotElf);
+        }
+
+        if self.e_ident.data() != Endianness::LSB {
+            return Err(ElfError::NotLsb);
+        }
+
+        if self.e_ident.class() != Class::CLASS64 {
+            return Err(ElfError::Not64Bit);
+        }
+
+        Ok(())
+    }
 }
 
 impl<T: AsRef<[u8]>> From<T> for Elf64Ehdr {

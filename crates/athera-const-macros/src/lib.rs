@@ -1,7 +1,7 @@
 //! `athera-const` 的过程宏实现。
 //!
 //! - [`const_val`](macro@const_val)：编译期常量属性宏（支持
-//!   min / max / multiple_of 约束）；
+//!   min / max / multiple_of 约束，类型支持整数 / `&str` / `bool`）；
 //! - [`lazy`](macro@lazy)：生成 `LazyLock` 静态（可选 `spin` 内层锁）；
 //! - [`spin`](macro@spin)：生成 `SpinLock` 包装的静态。
 use proc_macro::TokenStream;
@@ -61,8 +61,9 @@ impl Parse for ConstValAttrs {
 /// 编译期常量属性宏。
 ///
 /// 用法：`#[const_val]` / `#[const_val(min = N, max = M, multiple_of = K)]`。
-/// 把 `const` 值（支持 `usize`/`u8`/... 整数类型）改写为经字符串解析的
-/// 编译期常量，并在满足约束（`min` / `max` / `multiple_of`）时编译通过。
+/// 把 `const` 值（支持 `usize`/`u8`/... 整数、`&str`、`bool` 类型）改写为
+/// 经字符串解析的编译期常量：整数可带约束（`min` / `max` / `multiple_of`），
+/// 环境变量（与常量同名）可覆盖取值，解析失败时回退到字面量。
 #[proc_macro_attribute]
 pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as syn::ItemConst);
@@ -113,6 +114,20 @@ pub fn const_val(attr: TokenStream, item: TokenStream) -> TokenStream {
                             #checks
                             match option_env!( #name_str ) {
                                 Some(v) => athera_const::num::#function(v, #value),
+                                None => #value,
+                            }
+                        };
+                    };
+
+                    ret.into()
+                }
+                "bool" => {
+                    let name_str = name.to_string();
+
+                    let ret = quote::quote! {
+                        #vis const #name: #ty = {
+                            match option_env!( #name_str ) {
+                                Some(v) => athera_const::num::parse_bool(v, #value),
                                 None => #value,
                             }
                         };

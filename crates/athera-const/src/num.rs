@@ -1,8 +1,8 @@
-//! 编译期数字字符串解析。
+//! 编译期常量字符串解析。
 //!
 //! [`parse_digit_*`](parse_digit_usize) 系列 `const fn` 把字符串按
 //! 十进制 / 十六进制（`0x`）/ 八进制（`0o`）/ 二进制（`0b`）解析为
-//! 整数，供 `#[const_val]` 宏在编译期求值。
+//! 整数；[`parse_bool`] 解析布尔值。均供 `#[const_val]` 宏在编译期求值。
 pub enum NumberBase {
     Decimal,
     Hexadecimal,
@@ -203,3 +203,18 @@ parse_digit!(signed i32);
 parse_digit!(signed i64);
 parse_digit!(signed i128);
 parse_digit!(signed isize);
+
+/// 把字符串解析为布尔值，供 `#[const_val]` 在编译期求值。
+///
+/// 接受大小写不敏感的 `true` / `false` 与 `1` / `0`；无法识别时返回
+/// `default`（与数字解析失败时回退默认值的行为一致）。
+pub const fn parse_bool(source: &str, default: bool) -> bool {
+    let bytes = source.as_bytes();
+    if source.eq_ignore_ascii_case("true") || (bytes.len() == 1 && bytes[0] == b'1') {
+        true
+    } else if source.eq_ignore_ascii_case("false") || (bytes.len() == 1 && bytes[0] == b'0') {
+        false
+    } else {
+        default
+    }
+}

@@ -7,6 +7,7 @@
 //! 调用封装与 panic 处理。
 
 pub mod panic;
+pub mod stdio;
 pub mod syscall;
 
 unsafe extern "Rust" {

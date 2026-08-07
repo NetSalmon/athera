@@ -45,8 +45,6 @@ pub static AVAIL_RANGE: Range<usize> =
 #[const_val]
 pub const PAGE_SIZE: usize = 4096;
 
-pub const PHY_PAGE_SIZE: usize = 4096;
-
 #[inline]
 pub const fn ilog2_ceil(size: usize) -> usize {
     if size == 1 {
@@ -74,9 +72,9 @@ pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
 
 pub const USERLAND_OFFSET: usize = 0xffff_ffc0_0000_0000;
 
-#[const_val(multiple_of = PHY_PAGE_SIZE)]
-pub const USER_STACK_SIZE: usize = PHY_PAGE_SIZE * 8;
-#[const_val(multiple_of = PHY_PAGE_SIZE)]
+#[const_val(multiple_of = PAGE_SIZE)]
+pub const USER_STACK_SIZE: usize = PAGE_SIZE * 8;
+#[const_val(multiple_of = PAGE_SIZE)]
 pub const USER_STACK_TOP: usize = 0x1_0000_0000;
 
 pub const USER_STACK_LOWER_BOUND: usize = USER_STACK_TOP - USER_STACK_SIZE;

@@ -11,9 +11,12 @@ use athera_id_alloc::IdAllocator;
 
 use crate::{
     constants::TID_MAX,
-    error, info,
+    error,
+    error::{Error, ProcError},
+    info,
     mem::{addr::PhysicalAddr, alloc_page::AllocPage},
-    trap::{TrapContext, restore_context},
+    proc::{CURRENT_TASK, CurrentTask},
+    trap::TrapContext,
 };
 
 #[lazy(spin)]
@@ -58,9 +61,12 @@ pub struct TaskControlBlock {
 }
 
 impl TaskControlBlock {
-    pub fn run(&mut self) -> ! {
+    pub fn run(&mut self) {
         self.status = TaskStatus::Running;
-        restore_context(&self.trap_context);
+    }
+
+    pub fn set_exit_code(&mut self, code: i32) {
+        self.exit_code = code;
     }
 }
 
@@ -72,15 +78,27 @@ impl Tasks {
         Self(BTreeMap::new())
     }
 
-    pub fn run(&mut self, tid: Tid) -> ! {
-        self.0.get_mut(&tid).unwrap().run()
+    pub fn run_first(&mut self) -> Result<TrapContext, Error> {
+        if let Some((tid, tcb)) = self.0.iter_mut().next() {
+            *CURRENT_TASK.current() = Some(CurrentTask {
+                tid: tid.clone(),
+                exit_code: None,
+            });
+
+            tcb.run();
+
+            Ok(tcb.trap_context.clone())
+        } else {
+            error!("tasks is empty");
+            Err(ProcError::NoOtherTask.into())
+        }
     }
 
-    pub fn add(&mut self, tid: Tid, parent: Tid, tcb: TaskControlBlock) {
-        if let Some(parent_tcb) = self.0.get_mut(&parent) {
+    pub fn add(&mut self, tid: Tid, parent: Option<Tid>, tcb: TaskControlBlock) {
+        if let Some(parent_tcb) = self.0.get_mut(&parent.unwrap_or(Tid(1))) {
             parent_tcb.children.push(tid);
         } else {
-            error!("parent: {parent:?} not exsist");
+            error!("parent: {parent:?} not exist");
         }
 
         self.0.insert(tid, tcb);

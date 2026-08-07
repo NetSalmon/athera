@@ -8,31 +8,9 @@ fn main() {
 
     let c = add(a, b);
 
-    athera_userland::syscall::write(
-        0,
-        &[
-            num_to_char(a),
-            b' ',
-            b'+',
-            b' ',
-            num_to_char(b),
-            b' ',
-            b'=',
-            b' ',
-            num_to_char(c),
-            b'\n',
-        ],
-    );
+    athera_userland::println!("{a} + {b} = {c}");
 }
 
 fn add(a: i32, b: i32) -> i32 {
     a + b
-}
-
-fn num_to_char(num: i32) -> u8 {
-    if !(0..10).contains(&num) {
-        panic!("num out of range");
-    }
-
-    num as u8 + b'0'
 }

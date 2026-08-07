@@ -1,10 +1,20 @@
+#![allow(unused)]
+//! MINIX V1 文件系统驱动。
+//!
+//! 从 virtio-blk 块设备读取 MINIX V1 超级块（[`SuperBlock`]）、磁盘
+//! inode（[`DINode`]）与目录项（[`DirEntryRaw`]），支持按路径查找
+//! 与顺序读取文件；目录按需读取见 [`DirEntries`]。
+//!
+//! 磁盘布局与 Linux `minix` 文件系统 v1 一致：超级块位于偏移 1024，
+//! 文件名长度由魔数 `0x137F`（14 字节）/ `0x138F`（30 字节）决定。
+
 use alloc::string::{String, ToString};
 use core::{
     fmt::{Debug, Display, Formatter, Write},
     slice,
 };
 
-use crate::{bits, dev::abstracts::BlockDevice, numeric, vec, vec::Vec};
+use crate::{bits, dev::traits::BlockDevice, numeric, vec, vec::Vec};
 
 #[repr(transparent)]
 #[derive(Clone)]
@@ -68,12 +78,12 @@ pub type DirEntryV1_30 = DirEntryRaw<30>;
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct SuperBlock {
-    pub ninodes: u16,       // number of inodes
-    pub nzones: u16,        // number of zones
-    pub imap_blk: u16,      // i 节点位图 占用块的数目
-    pub zmap_blk: u16,      // 数据块位图 占用的块的数目
-    pub fst_data_zone: u16, // 第一个 数据块 的块号
-    pub log_zone_size: u16, // 一个虚拟块的大小 = 1024 << log_zone_size
+    pub ninodes: u16,         // number of inodes
+    pub nzones: u16,          // number of zones
+    pub imap_blocks: u16,     // i 节点位图 占用块的数目
+    pub zmap_blocks: u16,     // 数据块位图 占用的块的数目
+    pub first_data_zone: u16, // 第一个 数据块 的块号
+    pub log_zone_size: u16,   // 一个虚拟块的大小 = 1024 << log_zone_size
 
     pub max_size: u32,       // 能存放的最大文件大小(以 byte 计数)
     pub magic: MinixFsMagic, // magic number
@@ -88,7 +98,7 @@ impl SuperBlock {
 
     #[inline]
     pub fn d_inode_start(&self) -> usize {
-        (2 + self.imap_blk + self.zmap_blk) as usize * self.zone_size()
+        (2 + self.imap_blocks + self.zmap_blocks) as usize * self.zone_size()
     }
 }
 
@@ -263,7 +273,8 @@ impl File {
 #[derive(Debug)]
 pub struct Path(pub String);
 
-pub const SPILIT: &str = "/";
+/// 路径分隔符。
+pub const PATH_SEPARATOR: &str = "/";
 
 impl Path {
     pub fn new() -> Self {
@@ -275,10 +286,13 @@ impl Path {
     }
 
     pub fn push(&mut self, s: &str) {
-        match (self.0.ends_with(SPILIT), s.starts_with(SPILIT)) {
-            (true, true) => self.0.push_str(s.strip_prefix(SPILIT).unwrap()),
+        match (
+            self.0.ends_with(PATH_SEPARATOR),
+            s.starts_with(PATH_SEPARATOR),
+        ) {
+            (true, true) => self.0.push_str(s.strip_prefix(PATH_SEPARATOR).unwrap()),
             (false, false) => {
-                self.0.push_str(SPILIT);
+                self.0.push_str(PATH_SEPARATOR);
                 self.0.push_str(s);
             }
             _ => self.0.push_str(s),
@@ -587,7 +601,7 @@ impl MinixFs {
         let mut ino: u16 = 1; // MINIX v1 的根目录固定为 inode 1
         let mut inode = self.d_inode(ino, device)?;
 
-        for name in path.0.split(SPILIT) {
+        for name in path.0.split(PATH_SEPARATOR) {
             if name.is_empty() {
                 continue; // 跳过空段（前导 / 连续 / 末尾斜杠）
             }
