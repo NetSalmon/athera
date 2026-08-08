@@ -32,11 +32,9 @@ pub(crate) use types::{
     DINode, DirEntryRaw, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, MinixString, SuperBlock,
 };
 
+use crate::constants::SUPERBLOCK_OFFSET;
 use crate::dev::traits::BlockDevice;
 use crate::sync::spin::{SpinLock, SpinLockGuard};
-
-/// MINIX v1 的超级块位于磁盘第 1 块（偏移 1024 字节）。
-pub(crate) const SUPERBLOCK_OFFSET: usize = 1024;
 
 /// MINIX V1 文件系统：超级块元数据 + 底层块设备的共享句柄。
 ///

@@ -17,7 +17,7 @@ use crate::{
         values::{SatpMode, SatpValue},
     },
     bits,
-    constants::{PAGE_SIZE, PTE_NUMBER},
+    constants::{IDENTITY_MAP_CHUNK, PAGE_SIZE, PTE_NUMBER},
     debug,
     dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
     error::MemError,
@@ -112,11 +112,6 @@ impl PageTable {
 
 #[lazy(spin)]
 pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();
-
-/// 单次持锁映射的块大小。`SpinLock` 持锁期间会关闭中断，把整段物理
-/// 内存一次性映射完会让定时器中断（s_timer）长时间得不到响应；分块
-/// 映射、块间释放锁并恢复中断，保证长启动映射期间定时器仍能按时触发。
-const IDENTITY_MAP_CHUNK: usize = 8 * 1024 * 1024; // 8 MiB
 
 pub fn identity_map() -> Result<()> {
     debug!("start identity mapping memory");

@@ -5,15 +5,60 @@
 use core::{alloc::Layout, cmp::max, fmt, marker::PhantomData, ptr::null_mut};
 
 use crate::{
-    constants::{CACHES_MAX, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MIN_ORDER, align},
-    mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList},
-    trace,
+    constants::{CACHES_MAX, MAX_CPU, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MAX_PAGE_SIZE, SLUB_MIN_OBJECTS, SLUB_MIN_ORDER, align}, mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList}, sync::{
+        per_cpu::{
+            PerCpu
+        }, spin::SpinLock
+    }, debug, trace,
 };
 
 #[derive(Debug)]
-pub struct Caches(pub(crate) [Cache; CACHES_MAX]);
+pub struct CpuCache(pub PerCpu<SlowCaches, MAX_CPU>);
+
+#[derive(Debug)]
+pub struct SlowCaches(pub(crate) [Cache; CACHES_MAX]);
+
+pub struct Caches {
+    cpu_caches: CpuCache,
+    slow_caches: SpinLock<SlowCaches>
+}
 
 impl Caches {
+    pub fn new() -> Self {
+        Self {
+            cpu_caches: CpuCache(PerCpu::new(core::array::from_fn(|_| SlowCaches::new()))),
+            slow_caches: SpinLock::new(SlowCaches::new()),
+        }
+    }
+
+    pub fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = self.cpu_caches.0.current().alloc(layout);
+
+        if !ptr.is_null() {
+            return ptr;
+        }
+
+        self.slow_caches.lock().alloc(layout)
+    }
+
+    pub fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if !self.cpu_caches.0.current().dealloc(ptr, layout) {
+            self.slow_caches.lock().dealloc(ptr, layout);
+        }
+    }
+
+    pub fn snapshot(&self) {
+        debug!("{:#?}", self.slow_caches.lock().0);
+    }
+}
+
+// SAFETY: `slow_caches` 由自旋锁串行化对 `SlowCaches` 的访问，
+// `cpu_caches` 通过 `PerCpu` 让各 hart 只访问自己的槽位，互不相交，
+// 因此 `Caches` 可安全地在执行流之间共享或转移。
+unsafe impl Send for Caches {}
+unsafe impl Sync for Caches {}
+
+impl SlowCaches {
     pub fn new() -> Self {
         Self(core::array::from_fn(|i| {
             Cache::new(2usize.pow((i + SLUB_MIN_ORDER) as u32))
@@ -21,8 +66,8 @@ impl Caches {
     }
 }
 
-impl Caches {
-    pub(crate) fn alloc(&mut self, layout: Layout) -> *mut u8 {
+impl SlowCaches {
+    pub fn alloc(&mut self, layout: Layout) -> *mut u8 {
         let order = layout_order(&layout);
 
         if order >= SLUB_MAX_ORDER {
@@ -49,19 +94,20 @@ impl Caches {
         ptr
     }
 
-    pub(crate) fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+    pub fn dealloc(&mut self, ptr: *mut u8, layout: Layout) -> bool {
         let order = layout_order(&layout);
 
-        if order > SLUB_MAX_ORDER {
-            return FRAME_ALLOCATOR
+        let found = if order >= SLUB_MAX_ORDER {
+            FRAME_ALLOCATOR
                 .force()
                 .lock()
                 .dealloc_frame(ptr as usize, 1 << order);
-        }
+            true
+        } else {
+            let index = order - SLUB_MIN_ORDER;
 
-        let index = order - SLUB_MIN_ORDER;
-
-        self.0[index].dealloc(ptr as usize);
+            self.0[index].dealloc(ptr as usize)
+        };
 
         trace!(
             "dealloc size: {}, order: {}, ptr: {:#x}",
@@ -69,6 +115,8 @@ impl Caches {
             order,
             ptr as usize
         );
+
+        found
     }
 }
 
@@ -234,7 +282,7 @@ impl SlubPage {
         }
 
         let desired_objects = page_size / object_size;
-        if desired_objects < 4 && page_size < (1 << 20) {
+        if desired_objects < SLUB_MIN_OBJECTS && page_size < SLUB_MAX_PAGE_SIZE {
             let new_page_size = page_size * 2;
             if new_page_size / object_size >= 2 {
                 page_size = new_page_size;
@@ -296,6 +344,10 @@ impl Cache {
         }
     }
 
+    pub fn is_full(&self) -> bool {
+        self.partial_slubs.is_empty()
+    }
+
     pub fn alloc(&mut self) -> Option<usize> {
         if !self.partial_slubs.is_empty() {
             let page = self.partial_slubs.iter_mut().next()?;
@@ -318,24 +370,23 @@ impl Cache {
         Some(ptr)
     }
 
-    pub fn dealloc(&mut self, ptr: usize) {
-        let mut found_page: Option<&mut SlubPage> = None;
+    pub fn dealloc(&mut self, ptr: usize) -> bool {
+        let mut found_page: Option<*mut SlubPage> = None;
         for i in self.full_slubs.iter_mut() {
             let page_start = i.page_start as usize;
             if ptr >= page_start && ptr < page_start + i.page_size {
                 i.dealloc_obj(ptr);
 
-                found_page = Some(i);
+                found_page = Some(i as *mut SlubPage);
                 break;
             }
         }
 
-        if let Some(page) = found_page {
-            let page_ptr = page as *mut SlubPage;
+        if let Some(page_ptr) = found_page {
             self.full_slubs.remove(page_ptr);
             self.partial_slubs.push(page_ptr);
 
-            return;
+            return true;
         }
 
         let mut found_page = None;
@@ -349,7 +400,7 @@ impl Cache {
                     break;
                 }
 
-                return;
+                return true;
             }
         }
 
@@ -360,6 +411,10 @@ impl Cache {
                 .force()
                 .lock()
                 .dealloc_frame(page_ptr as usize, page_size);
+
+            return true;
         }
+
+        false
     }
 }

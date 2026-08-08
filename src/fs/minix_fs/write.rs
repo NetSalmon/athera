@@ -7,8 +7,9 @@ use super::{
     DINode, File, FileType, MinixFs, Mode,
     types::{DirEntryRaw, MinixFsMagic},
 };
+use crate::constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR};
 use crate::dev::traits::BlockDevice;
-use crate::fs::path::{PATH_SEPARATOR, PathBuf};
+use crate::fs::path::PathBuf;
 
 impl<T> MinixFs<T> {
     /// 把展开后的数据块号列表 `zones` 写回 inode 的 zone 数组与间接块表。
@@ -27,45 +28,44 @@ impl<T> MinixFs<T> {
     where
         T: BlockDevice<Error = E>,
     {
-        const DIRECT: usize = 7;
         let zone_size = self.superblock.zone_size();
         let per = zone_size / size_of::<u16>(); // 每个间接块可容纳的块号数
 
         // 直接块：zone[0..7]。
-        for (i, slot) in d_inode.zone[..DIRECT].iter_mut().enumerate() {
+        for (i, slot) in d_inode.zone[..MINIX_DIRECT_ZONES].iter_mut().enumerate() {
             *slot = zones.get(i).copied().unwrap_or(0);
         }
 
         // 一级间接：zone[7]。
-        let single_start = DIRECT;
-        let single_end = DIRECT + per;
+        let single_start = MINIX_DIRECT_ZONES;
+        let single_end = MINIX_DIRECT_ZONES + per;
         if zones.len() <= single_start {
-            d_inode.zone[DIRECT] = 0;
+            d_inode.zone[MINIX_DIRECT_ZONES] = 0;
         } else {
             let mut table = zones[single_start..zones.len().min(single_end)].to_vec();
             table.resize(per, 0);
-            if d_inode.zone[DIRECT] == 0 {
+            if d_inode.zone[MINIX_DIRECT_ZONES] == 0 {
                 let Some(ind) = self.alloc_zone(device)? else {
                     return Ok(()); // 磁盘已满，无法建立间接块
                 };
-                d_inode.zone[DIRECT] = ind;
+                d_inode.zone[MINIX_DIRECT_ZONES] = ind;
             }
-            self.write_zone_table(device, d_inode.zone[DIRECT], &table)?;
+            self.write_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES], &table)?;
         }
 
         // 二级间接：zone[8]。
         let double_start = single_end;
         if zones.len() <= double_start {
-            d_inode.zone[DIRECT + 1] = 0;
+            d_inode.zone[MINIX_DIRECT_ZONES + 1] = 0;
         } else {
-            if d_inode.zone[DIRECT + 1] == 0 {
+            if d_inode.zone[MINIX_DIRECT_ZONES + 1] == 0 {
                 let Some(ind) = self.alloc_zone(device)? else {
                     return Ok(());
                 };
-                d_inode.zone[DIRECT + 1] = ind;
+                d_inode.zone[MINIX_DIRECT_ZONES + 1] = ind;
                 self.write_zone_table(device, ind, &vec![0u16; per])?;
             }
-            let mut dbl = self.read_zone_table(device, d_inode.zone[DIRECT + 1])?;
+            let mut dbl = self.read_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES + 1])?;
             for (i, group) in zones[double_start..].chunks(per).enumerate() {
                 if i >= per {
                     break; // 超出二级间接容量
@@ -83,7 +83,7 @@ impl<T> MinixFs<T> {
                 table.resize(per, 0);
                 self.write_zone_table(device, ind, &table)?;
             }
-            self.write_zone_table(device, d_inode.zone[DIRECT + 1], &dbl)?;
+            self.write_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES + 1], &dbl)?;
         }
 
         Ok(())

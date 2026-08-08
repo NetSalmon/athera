@@ -6,6 +6,8 @@
 
 use crate::{bits, numeric};
 
+pub use crate::constants::S_IFMT;
+
 // 文件 mode 位，布局与 Unix `st_mode` 一致：
 //
 // ```text
@@ -43,10 +45,7 @@ bits! {
     }
 }
 
-/// 文件类型掩码：mode 高 4 位（bits 15..12），对应 POSIX `S_IFMT`。
-pub const S_IFMT: u16 = 0o170000;
-
-// 文件类型（mode 高 4 位，bits 15..12 的取值），与 POSIX `S_IF*` 一致。
+/// 文件类型（mode 高 4 位，bits 15..12 的取值），与 POSIX `S_IF*` 一致。
 numeric! {
     pub enum FileType : u16 {
         FIFO = 0o1,   // 命名管道  S_IFIFO

@@ -6,8 +6,7 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{Debug, Display, Formatter, Write};
 
-/// 路径分隔符。
-pub const PATH_SEPARATOR: &str = "/";
+use crate::constants::PATH_SEPARATOR;
 
 /// 路径（仿 `std::path::Path`，内部以 UTF-8 字符串保存，为自有类型）。
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]

@@ -17,8 +17,6 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use athera_const::const_val;
-
 use crate::arch::registers::gpr::Tp;
 
 /// 当前 hart 槽位的守卫，由 [`PerCpu::current`] 返回。
@@ -45,10 +43,6 @@ impl<'a, T> DerefMut for PerCpuGuard<'a, T> {
         unsafe { &mut *self.storage.0.get() }
     }
 }
-
-/// 编译期配置的最大 hart 数。
-#[const_val]
-pub const MAX_CPU: usize = 4;
 
 /// 每 hart 一份的数据集合。
 ///

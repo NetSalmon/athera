@@ -15,7 +15,7 @@ use crate::{
         allocators::{buddy::BuddyAllocator, slub::Caches},
         frame::Frame,
     },
-    sync::{lazy::LazyLock, spin::SpinLock},
+    sync::lazy::LazyLock,
 };
 
 pub(crate) mod buddy;
@@ -49,19 +49,19 @@ pub fn dealloc_frame(Frame { start, size }: Frame) {
 }
 
 #[global_allocator]
-#[lazy(spin)]
+#[lazy]
 pub static CACHES: Caches = Caches::new();
 
-unsafe impl GlobalAlloc for LazyLock<SpinLock<Caches>> {
+unsafe impl GlobalAlloc for LazyLock<Caches> {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.force().lock().alloc(layout)
+        self.force().alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.force().lock().dealloc(ptr, layout)
+        self.force().dealloc(ptr, layout);
     }
 }
 
 pub fn caches_snapshot() {
-    debug!("{:#?}", CACHES.force().lock().0);
+    CACHES.force().snapshot();
 }

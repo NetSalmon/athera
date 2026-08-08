@@ -70,6 +70,16 @@ pub const SLUB_MAX_ORDER: usize = 12;
 pub const SLUB_MIN_ORDER: usize = 4;
 pub const CACHES_MAX: usize = SLUB_MAX_ORDER - SLUB_MIN_ORDER;
 
+/// 每个 SLUB 页最少容纳的对象数，不足则尝试扩大页大小。
+pub const SLUB_MIN_OBJECTS: usize = 4;
+/// 单个 SLUB 页大小上限（1 MiB），超过则不再扩大。
+pub const SLUB_MAX_PAGE_SIZE: usize = 1 << 20;
+
+/// 单次持锁恒等映射的块大小（8 MiB）。`SpinLock` 持锁期间会关闭中断，
+/// 把整段物理内存一次性映射完会让定时器中断长时间得不到响应；分块映射、
+/// 块间释放锁并恢复中断，保证长启动映射期间定时器仍能按时触发。
+pub const IDENTITY_MAP_CHUNK: usize = 8 * 1024 * 1024;
+
 pub const USERLAND_OFFSET: usize = 0xffff_ffc0_0000_0000;
 
 #[const_val(multiple_of = PAGE_SIZE)]

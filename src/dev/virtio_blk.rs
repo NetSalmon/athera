@@ -13,6 +13,7 @@ use core::{
 
 use crate::{
     bits,
+    constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT},
     dev::{
         device::Device,
         traits::BlockDevice,
@@ -26,15 +27,6 @@ use crate::{
 
 /// 本模块统一结果类型。
 pub type Result<T> = core::result::Result<T, DevError>;
-
-/// virtio-blk 请求类型：读（设备写入数据缓冲区）。
-const VIRTIO_BLK_T_IN: u32 = 0;
-/// virtio-blk 请求类型：写（设备读取数据缓冲区）。
-const VIRTIO_BLK_T_OUT: u32 = 1;
-/// virtio-blk 请求完成状态：成功。
-const VIRTIO_BLK_S_OK: u8 = 0;
-/// 设备扇区大小（字节）。
-const SECTOR_SIZE: usize = 512;
 
 pub struct VirtioBlk {
     pub device: Device,

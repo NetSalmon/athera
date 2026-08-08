@@ -11,11 +11,9 @@ use super::{
     dir::{DirEntries, DirEntry, EntryFormat},
     types::{DINode, DirEntryRaw, MinixFsMagic},
 };
+use crate::constants::{MAX_SYMLINK_HOPS, PATH_SEPARATOR};
 use crate::dev::traits::BlockDevice;
-use crate::fs::path::{PATH_SEPARATOR, Path};
-
-/// 解析路径时允许的最大符号链接跳数（与 Linux `MAXSYMLINKS` 一致）。
-const MAX_SYMLINK_HOPS: usize = 40;
+use crate::fs::path::Path;
 
 impl<T> MinixFs<T> {
     /// 读取目录内容，返回目录项列表（一次性读完全部数据）。
