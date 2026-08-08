@@ -19,11 +19,12 @@ pub fn switch() -> ! {
 
     loop {
         let ctx = {
-            if TASKS.force().lock().is_empty() {
+            let mut tasks = TASKS.force().lock();
+            if tasks.is_empty() {
                 continue;
             }
 
-            TASKS.force().lock().run_first().unwrap()
+            tasks.run_first().unwrap()
         };
 
         restore_context(&ctx);

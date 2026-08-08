@@ -11,9 +11,8 @@
       <sourceFolder url="file://$MODULE_DIR$/const-val/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/const-val/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/id-alloc/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/athera-const-macros/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/athera-const-macros/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/athera-const/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/athera-macros-impl/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/athera-macros/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/athera-id-alloc/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/athera-rand/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/athera-userland/src" isTestSource="false" />
@@ -24,7 +23,7 @@
       <excludeFolder url="file://$MODULE_DIR$/buddy/target" />
       <excludeFolder url="file://$MODULE_DIR$/applications/target" />
       <excludeFolder url="file://$MODULE_DIR$/thaterror/target" />
-      <excludeFolder url="file://$MODULE_DIR$/athera-const-macros/target" />
+      <excludeFolder url="file://$MODULE_DIR$/athera-macros-impl/target" />
       <excludeFolder url="file://$MODULE_DIR$/const-num/target" />
       <excludeFolder url="file://$MODULE_DIR$/const-val/target" />
     </content>

@@ -16,8 +16,8 @@ name = "athera"
 version = "0.1.0"
 dependencies = [
  "athera-bitmap",
- "athera-const",
  "athera-id-alloc",
+ "athera-macros",
  "athera-rand",
  "chrono",
  "fdt",
@@ -34,26 +34,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "athera-const"
+name = "athera-id-alloc"
 version = "0.1.0"
 dependencies = [
- "athera-const-macros",
+ "athera-macros",
+ "thiserror",
+]
+
+[[package]]
+name = "athera-macros"
+version = "0.1.0"
+dependencies = [
+ "athera-macros-impl",
  "paste",
 ]
 
 [[package]]
-name = "athera-const-macros"
+name = "athera-macros-impl"
 version = "0.1.0"
 dependencies = [
  "quote",
  "syn 3.0.3",
-]
-
-[[package]]
-name = "athera-id-alloc"
-version = "0.1.0"
-dependencies = [
- "thiserror",
 ]
 
 [[package]]

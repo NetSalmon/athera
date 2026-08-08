@@ -8,7 +8,7 @@
 use alloc::{sync::Arc, vec, vec::Vec};
 use core::{arch::asm, slice};
 
-use athera_const::lazy;
+use athera_macros::lazy;
 
 use crate::{
     FDT_ADDR,
@@ -30,6 +30,7 @@ pub(crate) mod traits;
 mod virtio_blk;
 mod virtio_mmio;
 mod virtio_rng;
+mod tree;
 
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
     Ok(unsafe { fdt::Fdt::from_ptr(FDT_ADDR)? })
@@ -41,10 +42,10 @@ fn boot_fail(err: Error) -> ! {
 
 #[lazy]
 pub static UART: Option<SpinLock<Ns16550a>> = {
-    match parse_fdt() {
-        Ok(fdt) => Ns16550a::probe(&fdt).map(|uart| {
-            uart.init();
-            SpinLock::new(uart)
+        match parse_fdt() {
+            Ok(fdt) => Ns16550a::probe(&fdt).map(|uart| {
+                uart.init();
+                SpinLock::new(uart)
         }),
         Err(err) => {
             warn!("failed to init UART: {err}");

@@ -9,7 +9,7 @@ pub(crate) mod handle;
 use alloc::collections::BTreeMap;
 use core::arch::asm;
 
-use athera_const::lazy;
+use athera_macros::lazy;
 
 use crate::{
     arch::registers::{
@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, MemError>;
+pub type MemResult<T> = core::result::Result<T, MemError>;
 
 bits! {
     pub type PageTableEntry: u64 {
@@ -113,7 +113,7 @@ impl PageTable {
 #[lazy(spin)]
 pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();
 
-pub fn identity_map() -> Result<()> {
+pub fn identity_map() -> MemResult<()> {
     debug!("start identity mapping memory");
 
     // 先在各自锁内短暂取出设备 MMIO 区间，避免把设备锁嵌套在页表锁里。
@@ -200,7 +200,7 @@ impl AddressSpace {
         va: VirtualAddr,
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
-    ) -> Result<()> {
+    ) -> MemResult<()> {
         let vpn2 = va.vpn2();
         let vpn1 = va.vpn1();
         let vpn0 = va.vpn0();
@@ -315,7 +315,7 @@ impl AddressSpace {
     ///
     /// 分配失败时返回 [`MemError::OutOfMemory`]；需要无条件克隆时可用
     /// [`Clone`] trait（分配失败会 panic）。
-    pub fn try_clone(&self) -> Result<Self> {
+    pub fn try_clone(&self) -> MemResult<Self> {
         let mut root = PageTableHandle::create()?;
         self.root.copy_from(&mut root);
 
@@ -371,7 +371,7 @@ impl Clone for AddressSpace {
 }
 
 impl PageTableManager {
-    pub fn create_user_address_space(&mut self, tid: Tid) -> Result<()> {
+    pub fn create_user_address_space(&mut self, tid: Tid) -> MemResult<()> {
         let mut page_table = PageTableHandle::create()?;
         self.kernel.root.copy_low_half(&mut page_table);
 
@@ -399,7 +399,7 @@ impl PageTableManager {
         self.kernel.root.as_phys_addr()
     }
 
-    pub fn user_root_addr(&self, tid: Tid) -> Result<PhysicalAddr> {
+    pub fn user_root_addr(&self, tid: Tid) -> MemResult<PhysicalAddr> {
         self.user
             .get(&tid)
             .map(|space| space.root.as_phys_addr())
@@ -413,14 +413,14 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) -> Result<()> {
+    ) -> MemResult<()> {
         match id {
             AddressSpaceId::Kernel => self.kernel_map(va, pa, flags, flush),
             AddressSpaceId::User(tid) => self.user_map(tid, va, pa, flags, flush),
         }
     }
 
-    pub fn unmap(&mut self, id: AddressSpaceId, va: VirtualAddr, flush: bool) -> Result<()> {
+    pub fn unmap(&mut self, id: AddressSpaceId, va: VirtualAddr, flush: bool) -> MemResult<()> {
         match id {
             AddressSpaceId::Kernel => self.kernel_unmap(va, flush),
             AddressSpaceId::User(tid) => self.user_unmap(tid, va, flush),
@@ -433,7 +433,7 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) -> Result<()> {
+    ) -> MemResult<()> {
         self.kernel.map(va, pa, flags)?;
         if flush {
             Self::flush();
@@ -441,7 +441,7 @@ impl PageTableManager {
         Ok(())
     }
 
-    pub fn kernel_unmap(&mut self, va: VirtualAddr, flush: bool) -> Result<()> {
+    pub fn kernel_unmap(&mut self, va: VirtualAddr, flush: bool) -> MemResult<()> {
         self.kernel.unmap(va);
         if flush {
             Self::flush();
@@ -456,7 +456,7 @@ impl PageTableManager {
         pa: PhysicalAddr,
         flags: PageTableEntryFlags,
         flush: bool,
-    ) -> Result<()> {
+    ) -> MemResult<()> {
         self.user
             .get_mut(&tid)
             .ok_or(MemError::AddressSpaceNotFound)?
@@ -467,7 +467,7 @@ impl PageTableManager {
         Ok(())
     }
 
-    pub fn user_unmap(&mut self, tid: Tid, va: VirtualAddr, flush: bool) -> Result<()> {
+    pub fn user_unmap(&mut self, tid: Tid, va: VirtualAddr, flush: bool) -> MemResult<()> {
         self.user
             .get_mut(&tid)
             .ok_or(MemError::AddressSpaceNotFound)?
@@ -478,7 +478,7 @@ impl PageTableManager {
         Ok(())
     }
 
-    pub fn identity_map(&mut self, start: usize, end: usize) -> Result<()> {
+    pub fn identity_map(&mut self, start: usize, end: usize) -> MemResult<()> {
         let mut flags = PageTableEntryFlags::new();
         flags.set_r(true);
         flags.set_w(true);
@@ -490,7 +490,7 @@ impl PageTableManager {
         Ok(())
     }
 
-    pub fn activate(&self, id: AddressSpaceId) -> Result<()> {
+    pub fn activate(&self, id: AddressSpaceId) -> MemResult<()> {
         let root = match id {
             AddressSpaceId::Kernel => self.kernel.root.as_phys_addr(),
             AddressSpaceId::User(tid) => self
@@ -511,7 +511,7 @@ impl PageTableManager {
     }
 
     /// 克隆 `id` 指定的地址空间（深拷贝），并把副本登记到 `new_tid` 名下。
-    pub fn clone(&mut self, id: AddressSpaceId, new_tid: Tid) -> Result<()> {
+    pub fn clone(&mut self, id: AddressSpaceId, new_tid: Tid) -> MemResult<()> {
         let space = match id {
             AddressSpaceId::Kernel => self.kernel.try_clone()?,
             AddressSpaceId::User(tid) => self

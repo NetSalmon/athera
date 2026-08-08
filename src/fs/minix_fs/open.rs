@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     constants::{MAX_SYMLINK_HOPS, PATH_SEPARATOR},
-    dev::traits::BlockDevice,
+    dev::traits::{BlockDevice, IoResult},
     fs::path::Path,
 };
 
@@ -22,22 +22,22 @@ impl<T> MinixFs<T> {
     ///
     /// 需要按需逐项读取、避免一次读完整目录时，请使用 [`Self::dir_entries_iter`]。
     /// `device` 为一次持锁得到的块设备守卫（见 [`MinixFs::lock`]）。
-    pub fn dir_entries<E>(&self, d_inode: &DINode, device: &mut T) -> Result<Vec<DirEntry>, E>
+    pub fn dir_entries(&self, d_inode: &DINode, device: &mut T) -> IoResult<Vec<DirEntry>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         self.dir_entries_iter(d_inode, device)?.collect()
     }
 
     /// 创建按需读取的目录项迭代器：每次 [`Iterator::next`] 只解析一个目录项，
     /// 数据块按需从设备读取，不会一次性把整个目录读进内存。
-    pub fn dir_entries_iter<'a, 'd, E>(
+    pub fn dir_entries_iter<'a, 'd>(
         &'a self,
         d_inode: &DINode,
         device: &'d mut T,
-    ) -> Result<DirEntries<'a, 'd, T>, E>
+    ) -> IoResult<DirEntries<'a, 'd, T>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zones = self.data_zones(d_inode, device)?;
 
@@ -67,9 +67,9 @@ impl<T> MinixFs<T> {
     /// 目录时，返回 `Ok(None)`。设备出错时返回 `Err`。
     ///
     /// 底层设备在方法内部临时持锁，返回的 [`File`] 不占用设备引用。
-    pub fn open<'a, E>(&'a self, path: &Path) -> Result<Option<File<'a, T>>, E>
+    pub fn open<'a>(&'a self, path: &Path) -> IoResult<Option<File<'a, T>>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut dev = self.lock();
         self.resolve_path(path, &mut dev, 0)
@@ -77,14 +77,14 @@ impl<T> MinixFs<T> {
 
     /// `open` 的公共实现：用待解析分量的队列逐级查找，遇到符号链接时把
     /// 目标路径的分量插回队首继续，直到消费完所有分量。
-    fn resolve_path<'a, E>(
+    fn resolve_path<'a>(
         &'a self,
         path: &Path,
         device: &mut T,
         mut hops: usize,
-    ) -> Result<Option<File<'a, T>>, E>
+    ) -> IoResult<Option<File<'a, T>>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         // 待解析分量队列（原路径的分量，以及符号链接目标的路径分量）。
         let mut components: VecDeque<String> = path
@@ -97,7 +97,7 @@ impl<T> MinixFs<T> {
         // 当前目录（在其中查找下一个分量）；相对链接目标以此为基准，
         // 绝对链接目标会重置为根目录。
         let mut dir_ino: u16 = 1;
-        let mut dir = self.d_inode(dir_ino, device)?;
+        let mut dir: DINode = self.d_inode(dir_ino, device)?;
 
         while let Some(name) = components.pop_front() {
             // 在当前目录里查找名为 `name` 的目录项。
@@ -145,6 +145,7 @@ impl<T> MinixFs<T> {
         }
 
         let zones = self.data_zones(&dir, device)?;
+        
         Ok(Some(File::new(
             self,
             path.to_path_buf(),

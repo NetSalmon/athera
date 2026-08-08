@@ -20,7 +20,7 @@ use alloc::{
     vec::Vec,
 };
 
-use athera_const::lazy;
+use athera_macros::lazy;
 
 use crate::{
     bits,
@@ -28,44 +28,60 @@ use crate::{
     numeric,
 };
 
+use crate::dev::traits::IoError;
+
 /// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum FsError {
     /// 路径分量不存在（ENOENT）。
+    #[error("not found")]
     NotFound,
     /// 路径上的某个分量不是目录（ENOTDIR）。
+    #[error("not a directory")]
     NotDir,
     /// 目标本身是目录，却按普通文件操作（EISDIR）。
+    #[error("is a directory")]
     IsDir,
     /// 已存在（EEXIST）。
+    #[error("already exists")]
     AlreadyExists,
     /// 目录非空（ENOTEMPTY）。
+    #[error("directory not empty")]
     NotEmpty,
     /// 权限不足（EACCES）。
+    #[error("permission denied")]
     PermissionDenied,
     /// 文件名过长（ENAMETOOLONG）。
+    #[error("name too long")]
     NameTooLong,
     /// 符号链接跳数过多（ELOOP）。
+    #[error("too many symbolic links")]
     TooManyLinks,
     /// 跨设备（EXDEV）。
+    #[error("cross-device operation")]
     CrossDevice,
     /// 磁盘空间不足（ENOSPC）。
+    #[error("no space left on device")]
     NoSpace,
     /// 参数非法（EINVAL）。
+    #[error("invalid argument")]
     Invalid,
     /// 设备 I/O 错误（EIO）。
+    #[error("I/O error")]
     Io,
     /// 内存不足（ENOMEM）。
+    #[error("out of memory")]
     OutOfMemory,
     /// 不支持的操作（ENOTSUP）。
+    #[error("operation not supported")]
     Unsupported,
 }
 
 impl FsError {
     /// 映射为 Linux errno 数值，供系统调用层直接返回。
-    pub const fn errno(&self) -> isize {
+    pub const fn errno(self) -> isize {
         use FsError::*;
-        match *self {
+        match self {
             NotFound => 2,          // ENOENT
             Io => 5,                // EIO
             OutOfMemory => 12,      // ENOMEM
@@ -84,8 +100,14 @@ impl FsError {
     }
 }
 
+impl From<IoError> for FsError {
+    fn from(_: IoError) -> Self {
+        Self::Io
+    }
+}
+
 /// 统一错误类型别名。
-pub type Result<T> = core::result::Result<T, FsError>;
+pub type FsResult<T> = core::result::Result<T, FsError>;
 
 /// 文件元数据（对应 `stat` / `fstat` 系统调用返回的核心字段）。
 #[derive(Debug, Clone)]
@@ -182,25 +204,25 @@ pub enum SeekFrom {
 /// 是类型擦除的文件句柄，不再依赖具体文件系统类型。
 pub trait FileSystem: Send + Sync {
     /// 按 `flags` 打开（必要时创建）`path`，返回文件句柄。
-    fn open(&self, path: &Path, flags: OpenFlags, mode: Mode) -> Result<File>;
+    fn open(&self, path: &Path, flags: OpenFlags, mode: Mode) -> FsResult<File>;
     /// 读取路径元数据。
-    fn stat(&self, path: &Path) -> Result<Stat>;
+    fn stat(&self, path: &Path) -> FsResult<Stat>;
     /// 创建目录。
-    fn mkdir(&self, path: &Path, mode: Mode) -> Result<()>;
+    fn mkdir(&self, path: &Path, mode: Mode) -> FsResult<()>;
     /// 删除非目录文件 / 符号链接。
-    fn unlink(&self, path: &Path) -> Result<()>;
+    fn unlink(&self, path: &Path) -> FsResult<()>;
     /// 删除空目录。
-    fn rmdir(&self, path: &Path) -> Result<()>;
+    fn rmdir(&self, path: &Path) -> FsResult<()>;
     /// 重命名（`old` → `new`）。
-    fn rename(&self, old: &Path, new: &Path) -> Result<()>;
+    fn rename(&self, old: &Path, new: &Path) -> FsResult<()>;
     /// 创建硬链接（`new` 指向 `old`）。
-    fn link(&self, old: &Path, new: &Path) -> Result<()>;
+    fn link(&self, old: &Path, new: &Path) -> FsResult<()>;
     /// 创建符号链接，内容为 `target` 路径。
-    fn symlink(&self, target: &str, linkpath: &Path) -> Result<()>;
+    fn symlink(&self, target: &str, linkpath: &Path) -> FsResult<()>;
     /// 读取符号链接的目标路径。
-    fn readlink(&self, path: &Path) -> Result<PathBuf>;
+    fn readlink(&self, path: &Path) -> FsResult<PathBuf>;
     /// 把本文件系统的缓存 / 脏数据写回磁盘。
-    fn sync(&self) -> Result<()>;
+    fn sync(&self) -> FsResult<()>;
 }
 
 /// 文件对象操作：pread / pwrite 语义的底层原语 + 元数据 / 同步。
@@ -208,16 +230,16 @@ pub trait FileSystem: Send + Sync {
 /// `read` / `write` / `seek`（偏移管理）由 [`File`] 在此之上组合。
 pub trait FileOps: Send + Sync {
     /// 从 `offset` 处读取，返回实际读取字节数；到文件末尾返回 0。
-    fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize>;
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize>;
     /// 从 `offset` 处写入，返回实际写入字节数。
-    fn write_at(&mut self, buf: &[u8], offset: u64) -> Result<usize>;
-    fn stat(&self) -> Result<Stat>;
+    fn write_at(&mut self, buf: &[u8], offset: u64) -> FsResult<usize>;
+    fn stat(&self) -> FsResult<Stat>;
     /// 把文件截断到 `len`。
-    fn truncate(&mut self, len: u64) -> Result<()>;
+    fn truncate(&mut self, len: u64) -> FsResult<()>;
     /// 把该打开文件未落盘的数据写回磁盘。
-    fn sync(&mut self) -> Result<()>;
+    fn sync(&mut self) -> FsResult<()>;
     /// 读取下一个目录项（仅目录文件有效），读完返回 `Ok(None)`。
-    fn read_dir(&mut self) -> Result<Option<DirEntry>>;
+    fn read_dir(&mut self) -> FsResult<Option<DirEntry>>;
 }
 
 /// 内存超级块：一个已挂载文件系统的元数据与路径级操作。
@@ -268,19 +290,19 @@ pub struct File {
 
 impl File {
     /// 从当前偏移读取，到文件末尾返回 0；推进内部偏移。
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+    pub fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
         let n = self.ops.read_at(buf, self.offset)?;
         self.offset += n as u64;
         Ok(n)
     }
 
     /// 从 `offset` 处读取（pread 语义），不改变内部偏移。
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
         self.ops.read_at(buf, offset)
     }
 
     /// 从当前偏移写入；`append` 模式下无视偏移、总是写到文件末尾。
-    pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
         let offset = if self.flags.append() {
             self.stat()?.size
         } else {
@@ -292,12 +314,12 @@ impl File {
     }
 
     /// 从 `offset` 处写入（pwrite 语义），不改变内部偏移。
-    pub fn write_at(&mut self, buf: &[u8], offset: u64) -> Result<usize> {
+    pub fn write_at(&mut self, buf: &[u8], offset: u64) -> FsResult<usize> {
         self.ops.write_at(buf, offset)
     }
 
     /// 移动读写位置，返回新的偏移。
-    pub fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+    pub fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
         let size = self.stat()?.size as i64;
         let new = match pos {
             SeekFrom::Start(off) => off as i64,
@@ -308,20 +330,20 @@ impl File {
         Ok(self.offset)
     }
 
-    pub fn stat(&self) -> Result<Stat> {
+    pub fn stat(&self) -> FsResult<Stat> {
         self.ops.stat()
     }
 
-    pub fn truncate(&mut self, len: u64) -> Result<()> {
+    pub fn truncate(&mut self, len: u64) -> FsResult<()> {
         self.ops.truncate(len)
     }
 
-    pub fn sync(&mut self) -> Result<()> {
+    pub fn sync(&mut self) -> FsResult<()> {
         self.ops.sync()
     }
 
     /// 读取下一个目录项（仅目录文件有效）。
-    pub fn read_dir(&mut self) -> Result<Option<DirEntry>> {
+    pub fn read_dir(&mut self) -> FsResult<Option<DirEntry>> {
         self.ops.read_dir()
     }
 
@@ -359,43 +381,43 @@ pub static MOUNT_TABLE: BTreeMap<Path, MountEntry> = BTreeMap::new();
 pub struct Vfs;
 
 impl Vfs {
-    pub fn open(path: &Path, flags: OpenFlags, mode: Mode) -> Result<File> {
+    pub fn open(path: &Path, flags: OpenFlags, mode: Mode) -> FsResult<File> {
         todo!()
     }
 
-    pub fn stat(path: &Path) -> Result<Stat> {
+    pub fn stat(path: &Path) -> FsResult<Stat> {
         todo!()
     }
 
-    pub fn mkdir(path: &Path, mode: Mode) -> Result<()> {
+    pub fn mkdir(path: &Path, mode: Mode) -> FsResult<()> {
         todo!()
     }
 
-    pub fn unlink(path: &Path) -> Result<()> {
+    pub fn unlink(path: &Path) -> FsResult<()> {
         todo!()
     }
 
-    pub fn rmdir(path: &Path) -> Result<()> {
+    pub fn rmdir(path: &Path) -> FsResult<()> {
         todo!()
     }
 
-    pub fn rename(old: &Path, new: &Path) -> Result<()> {
+    pub fn rename(old: &Path, new: &Path) -> FsResult<()> {
         todo!()
     }
 
-    pub fn link(old: &Path, new: &Path) -> Result<()> {
+    pub fn link(old: &Path, new: &Path) -> FsResult<()> {
         todo!()
     }
 
-    pub fn symlink(target: &str, linkpath: &Path) -> Result<()> {
+    pub fn symlink(target: &str, linkpath: &Path) -> FsResult<()> {
         todo!()
     }
 
-    pub fn readlink(path: &Path) -> Result<PathBuf> {
+    pub fn readlink(path: &Path) -> FsResult<PathBuf> {
         todo!()
     }
 
-    pub fn sync() -> Result<()> {
+    pub fn sync() -> FsResult<()> {
         todo!()
     }
 }

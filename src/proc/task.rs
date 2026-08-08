@@ -6,8 +6,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::ops::{Deref, DerefMut};
 
-use athera_const::lazy;
-use athera_id_alloc::IdAllocator;
+use athera_macros::lazy;
+use athera_id_alloc::{Id, IdAllocator};
 
 use crate::{
     constants::TID_MAX,
@@ -20,17 +20,17 @@ use crate::{
 };
 
 #[lazy(spin)]
-pub static TID_ALLOCATOR: IdAllocator = IdAllocator::from_range(0..TID_MAX);
+pub static TID_ALLOCATOR: IdAllocator<Tid> = IdAllocator::from_range(Tid::MIN..Tid(TID_MAX));
 
-#[derive(Debug, PartialEq, Clone, Ord, Eq, PartialOrd, Copy)]
+#[derive(athera_macros::Id)]
 pub struct Tid(pub usize);
 
 pub fn alloc_tid() -> Option<Tid> {
-    TID_ALLOCATOR.force().lock().alloc().map(Tid)
+    TID_ALLOCATOR.force().lock().alloc()
 }
 
 pub fn dealloc_tid(tid: Tid) {
-    let _ = TID_ALLOCATOR.force().lock().dealloc(tid.0);
+    let _ = TID_ALLOCATOR.force().lock().dealloc(tid);
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

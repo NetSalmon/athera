@@ -6,7 +6,7 @@
 //!   `Vec` / `String` / `BTreeMap` 等 `alloc` 结构可用。
 use core::alloc::{GlobalAlloc, Layout};
 
-use athera_const::lazy;
+use athera_macros::lazy;
 
 use crate::{
     constants::{AVAIL_RANGE, PAGE_SIZE},
@@ -25,9 +25,7 @@ pub(crate) mod slub;
 #[lazy(spin)]
 pub static FRAME_ALLOCATOR: BuddyAllocator = {
     let mut allocator = BuddyAllocator::new();
-
     allocator.add(AVAIL_RANGE.force());
-
     debug!("allocator init ok");
     allocator
 };

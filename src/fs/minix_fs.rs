@@ -29,6 +29,8 @@ pub(crate) use types::{
     DINode, DirEntryRaw, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, MinixString, SuperBlock,
 };
 
+use crate::dev::traits::IoResult;
+
 pub(crate) use super::{
     path::{Component, Path, PathBuf},
     types::{FileType, Mode, S_IFMT},
@@ -56,9 +58,9 @@ impl<T> MinixFs<T> {
     /// 设备读取失败返回 `Err`；magic 不匹配（设备上不是 MINIX 文件系统）
     /// 返回 `Ok(None)`；成功则返回 `Ok(Some(Self))`。`MinixFs` 克隆共享的
     /// 设备句柄，与调用方共用同一个底层设备。
-    pub fn from_device<E>(device: &Arc<SpinLock<T>>) -> Result<Option<Self>, E>
+    pub fn from_device(device: &Arc<SpinLock<T>>) -> IoResult<Option<Self>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut dev = device.lock();
 
@@ -83,9 +85,9 @@ impl<T> MinixFs<T> {
         self.device.lock()
     }
 
-    pub fn d_inode<E>(&self, ino: u16, device: &mut T) -> Result<DINode, E>
+    pub fn d_inode(&self, ino: u16, device: &mut T) -> IoResult<DINode>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let offset = (ino - 1) as usize * size_of::<DINode>();
 
@@ -99,9 +101,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 读取 inode 指向的全部数据块，返回文件内容（末尾按 `d_inode.size` 截断）。
-    pub fn data<E>(&self, d_inode: &DINode, device: &mut T) -> Result<Vec<u8>, E>
+    pub fn data(&self, d_inode: &DINode, device: &mut T) -> IoResult<Vec<u8>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if d_inode.size == 0 {
             return Ok(Vec::new());
@@ -118,9 +120,9 @@ impl<T> MinixFs<T> {
 
     /// 依次收集 inode 引用的数据块号：7 个直接块 → 一级间接块 → 二级间接块。
     /// 块号为 0 表示“没有更多块”，遇到即停止。
-    pub(crate) fn data_zones<E>(&self, d_inode: &DINode, device: &mut T) -> Result<Vec<u16>, E>
+    pub(crate) fn data_zones(&self, d_inode: &DINode, device: &mut T) -> IoResult<Vec<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut zones = Vec::new();
 
@@ -148,9 +150,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 读取 `zone` 指向的一个数据块，追加到 `out` 末尾。
-    fn read_zone<E>(&self, device: &mut T, zone: u16, out: &mut Vec<u8>) -> Result<(), E>
+    fn read_zone(&self, device: &mut T, zone: u16, out: &mut Vec<u8>) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut buffer = vec![0u8; self.superblock.zone_size()];
         self.read_zone_into(device, zone, &mut buffer)?;
@@ -159,14 +161,14 @@ impl<T> MinixFs<T> {
     }
 
     /// 把 `zone` 指向的数据块开头读入 `out`（`out` 长度不能超过 zone 大小）。
-    pub(crate) fn read_zone_into<E>(
+    pub(crate) fn read_zone_into(
         &self,
         device: &mut T,
         zone: u16,
         out: &mut [u8],
-    ) -> Result<(), E>
+    ) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         debug_assert!(out.len() <= zone_size);
@@ -176,9 +178,9 @@ impl<T> MinixFs<T> {
 
     /// 读取一个“块号表”：把 `zone` 指向的块按 `u16` 数组解释并返回其中的块号。
     /// `zone == 0` 表示该级间接块不存在，返回空表；表内遇到 0 提前结束。
-    pub(crate) fn zone_table<E>(&self, device: &mut T, zone: u16) -> Result<Vec<u16>, E>
+    pub(crate) fn zone_table(&self, device: &mut T, zone: u16) -> IoResult<Vec<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if zone == 0 {
             return Ok(Vec::new());
@@ -191,9 +193,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 读取一个“块号表”的完整内容（含中间为 0 的空槽位），供写入路径使用。
-    pub(crate) fn read_zone_table<E>(&self, device: &mut T, zone: u16) -> Result<Vec<u16>, E>
+    pub(crate) fn read_zone_table(&self, device: &mut T, zone: u16) -> IoResult<Vec<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         let mut buffer = vec![0u8; zone_size];
@@ -208,14 +210,14 @@ impl<T> MinixFs<T> {
     }
 
     /// 把一个“块号表”写回 `zone` 指向的块（表长必须恰好为一个 zone）。
-    pub(crate) fn write_zone_table<E>(
+    pub(crate) fn write_zone_table(
         &self,
         device: &mut T,
         zone: u16,
         table: &[u16],
-    ) -> Result<(), E>
+    ) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         debug_assert_eq!(table.len(), zone_size / size_of::<u16>());
@@ -228,9 +230,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 把 inode 写回磁盘（`ino` 从 1 起）。
-    pub fn write_d_inode<E>(&self, ino: u16, d_inode: &DINode, device: &mut T) -> Result<(), E>
+    pub fn write_d_inode(&self, ino: u16, d_inode: &DINode, device: &mut T) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let offset = self.superblock.d_inode_start() + (ino - 1) as usize * size_of::<DINode>();
 
@@ -244,9 +246,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 把 `data` 写入 `zone` 指向的数据块开头（`data` 长度不能超过 zone 大小）。
-    pub fn write_zone<E>(&self, zone: u16, data: &[u8], device: &mut T) -> Result<(), E>
+    pub fn write_zone(&self, zone: u16, data: &[u8], device: &mut T) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         debug_assert!(data.len() <= zone_size);
@@ -258,16 +260,16 @@ impl<T> MinixFs<T> {
     ///
     /// `map_offset` 是位图在磁盘上的字节偏移，`map_bytes` 是位图占用的字节数，
     /// `bits` 是其中可用的位数（超出部分视为保留位）。
-    fn with_bitmap<E, F, R>(
+    fn with_bitmap<F, R>(
         &self,
         device: &mut T,
         map_offset: usize,
         map_bytes: usize,
         bits: usize,
         f: F,
-    ) -> Result<R, E>
+    ) -> IoResult<R>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
         F: FnOnce(&mut BitMapView<'_>) -> R,
     {
         let words = map_bytes / size_of::<usize>();
@@ -300,9 +302,9 @@ impl<T> MinixFs<T> {
     ///
     /// MINIX v1 的 inode 位图按“第 i 位对应 inode i”索引（位 0 保留），
     /// 因此从位 1 起搜索，位号即 inode 号。
-    pub fn alloc_inode<E>(&self, device: &mut T) -> Result<Option<u16>, E>
+    pub fn alloc_inode(&self, device: &mut T) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         let map_bytes = self.superblock.imap_blocks as usize * zone_size;
@@ -316,9 +318,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 释放 inode（清 inode 位图对应位，位号 = inode 号）；越界时忽略。
-    pub fn free_inode<E>(&self, ino: u16, device: &mut T) -> Result<(), E>
+    pub fn free_inode(&self, ino: u16, device: &mut T) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if ino == 0 || ino > self.superblock.ninodes {
             return Ok(());
@@ -341,9 +343,9 @@ impl<T> MinixFs<T> {
     /// MINIX v1 的 zone 位图按“第 i 位对应 zone `first_data_zone - 1 + i`”
     /// 索引（位 0 是最后一个元数据块），因此从位 1 起搜索，从
     /// `first_data_zone` 起分配。位图由 [`BitMapView`] 维护。
-    pub fn alloc_zone<E>(&self, device: &mut T) -> Result<Option<u16>, E>
+    pub fn alloc_zone(&self, device: &mut T) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         let map_offset = (2 + self.superblock.imap_blocks as usize) * zone_size;
@@ -356,9 +358,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 释放数据块（清 zone 位图对应位）；元数据区或越界块号忽略。
-    pub fn free_zone<E>(&self, zone: u16, device: &mut T) -> Result<(), E>
+    pub fn free_zone(&self, zone: u16, device: &mut T) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let first = self.superblock.first_data_zone;
         if zone < first || zone >= self.superblock.nzones {

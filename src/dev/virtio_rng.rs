@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, DevError>;
+pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioRng {
     pub device: Device,
@@ -59,7 +59,7 @@ impl VirtioRng {
     /// 单个可写描述符（设备写入 `buf`），提交后轮询等待 used 元素，
     /// 返回设备实际写入的字节数（可能小于 `buf.len()`）。描述符 0 每次
     /// 复用，同一时刻最多一个在途请求。
-    fn submit(&mut self, buf: &mut [u8]) -> Result<usize> {
+    fn submit(&mut self, buf: &mut [u8]) -> DevResult<usize> {
         let last_used = {
             let queue = self.queue()?;
             {

@@ -14,7 +14,7 @@ use crate::{
         },
     },
     debug,
-    dev::UART,
+    dev::{UART, traits::CharDevice},
     info,
     mem::{
         allocators::alloc_frame,
@@ -23,7 +23,7 @@ use crate::{
     numeric,
     proc::{
         CURRENT_TASK, CurrentTask,
-        task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
+        task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus},
     },
 };
 
@@ -64,27 +64,33 @@ fn read(_fd: u64, buf: &mut [u8]) -> u64 {
         None => return ErrorCode::EIO.0 as u64,
     };
 
-    let mut bytes_read = 0;
-    for i in buf.iter_mut() {
-        if let Some(ch) = uart.lock().getchar() {
-            *i = ch;
-            bytes_read += 1;
-        } else {
+    let mut read = 0;
+    for chunk in buf.chunks_mut(64) {
+        let bytes = match uart.lock().read(chunk) {
+            Ok(bytes) => bytes,
+            Err(_) => return ErrorCode::EIO.0 as u64,
+        };
+        read += bytes;
+        if bytes < chunk.len() {
             break;
         }
     }
-    bytes_read
+    read as u64
 }
 
 fn write(_fd: u64, buf: &[u8]) -> u64 {
-    // 一次持锁写完整个缓冲区，避免逐字节加锁/关中断。
+    // 分段持锁，避免大块输出长时间关闭中断。
     if let Some(uart) = UART.force().as_ref() {
-        let guard = uart.lock();
-        for &c in buf {
-            guard.putchar(c);
+        let mut written = 0;
+        for chunk in buf.chunks(64) {
+            match uart.lock().write(chunk) {
+                Ok(bytes) => written += bytes,
+                Err(_) => return ErrorCode::EIO.0 as u64,
+            }
         }
+        return written as u64;
     }
-    buf.len() as u64
+    ErrorCode::EIO.0 as u64
 }
 
 fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
@@ -180,7 +186,6 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let current_tid = tid;
 
             let new_tid = TID_ALLOCATOR.force().lock().alloc().unwrap();
-            let new_tid = Tid(new_tid);
 
             info!("new tid: {:?}", new_tid);
 
@@ -197,30 +202,36 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
                 .user_root_addr(new_tid)
                 .unwrap();
 
-            let mut guard = TASKS.force().lock();
+            let (mut new_context, source_pages) = {
+                let mut tasks = TASKS.force().lock();
+                let current_tcb = tasks.get_mut(&current_tid).unwrap();
+                current_tcb.children.push(new_tid);
 
-            let current_tcb = guard.get_mut(&current_tid).unwrap();
+                (
+                    current_tcb.trap_context.clone(),
+                    current_tcb
+                        .memory_set
+                        .used_page
+                        .iter()
+                        .map(|page| (page.start, page.size))
+                        .collect::<Vec<_>>(),
+                )
+            };
 
-            current_tcb.children.push(new_tid);
-
-            let mut pages = Vec::new();
-
-            let mut new_context = current_tcb.trap_context.clone();
-            for i in current_tcb.memory_set.used_page.iter() {
-                let new_page = alloc_frame(Some(i.size)).expect("out of memory");
+            // Allocate and copy pages without holding the global task-table lock.
+            let mut pages = Vec::with_capacity(source_pages.len());
+            for (source_start, size) in source_pages {
+                let new_page = alloc_frame(Some(size)).expect("out of memory");
 
                 unsafe {
                     core::ptr::copy(
-                        i.start as *const u8,
+                        source_start as *const u8,
                         new_page.start as *mut u8,
-                        new_page.size,
+                        size,
                     )
                 }
-
                 pages.push(new_page);
             }
-
-            drop(guard);
 
             info!("pages clone ok");
 

@@ -8,9 +8,7 @@ use super::{
     types::{DirEntryRaw, MinixFsMagic},
 };
 use crate::{
-    constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR},
-    dev::traits::BlockDevice,
-    fs::path::PathBuf,
+    constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR}, dev::traits::{BlockDevice, IoResult}, fs::path::PathBuf,
 };
 
 impl<T> MinixFs<T> {
@@ -21,14 +19,14 @@ impl<T> MinixFs<T> {
     /// `zone[8]`。磁盘空间不足时提前返回（已分配的块不会回收）。
     ///
     /// 需要调用方已持锁（`device` 为块设备守卫）。
-    pub(crate) fn write_file_zones<E>(
+    pub(crate) fn write_file_zones(
         &self,
         d_inode: &mut DINode,
         zones: &[u16],
         device: &mut T,
-    ) -> Result<(), E>
+    ) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let zone_size = self.superblock.zone_size();
         let per = zone_size / size_of::<u16>(); // 每个间接块可容纳的块号数
@@ -96,9 +94,9 @@ impl<T> MinixFs<T> {
     /// 依次分配 inode（[`alloc_inode`](Self::alloc_inode)）、写回空 inode、
     /// 在目录中追加目录项；inode 用尽或名字过长返回 `Ok(None)`，目录写入
     /// 失败时回收已分配的 inode。底层设备在方法内部临时持锁。
-    pub fn create_file<E>(&self, dir_ino: u16, name: &str) -> Result<Option<u16>, E>
+    pub fn create_file(&self, dir_ino: u16, name: &str) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) {
             return Ok(None);
@@ -122,9 +120,9 @@ impl<T> MinixFs<T> {
     /// 名字不合法、inode 无效/未分配/是目录、链接数已达上限（`u8::MAX`）
     /// 时返回 `Ok(false)`；目录写入失败返回 `Err`。底层设备在方法内部临时
     /// 持锁。
-    pub fn link<E>(&self, old_ino: u16, dir_ino: u16, name: &str) -> Result<bool, E>
+    pub fn link(&self, old_ino: u16, dir_ino: u16, name: &str) -> IoResult<bool>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) || old_ino == 0 || old_ino > self.superblock.ninodes {
             return Ok(false);
@@ -152,9 +150,9 @@ impl<T> MinixFs<T> {
     ///
     /// 名字不合法或目录项不存在返回 `Ok(false)`；目录类型的目标拒绝删除。
     /// 底层设备在方法内部临时持锁。
-    pub fn unlink<E>(&self, dir_ino: u16, name: &str) -> Result<bool, E>
+    pub fn unlink(&self, dir_ino: u16, name: &str) -> IoResult<bool>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) {
             return Ok(false);
@@ -189,9 +187,9 @@ impl<T> MinixFs<T> {
     /// 在目录 `dir_ino` 下创建符号链接 `name`，内容为 `target` 路径
     /// （按 MINIX v1 惯例存放在 inode 的数据块中）。返回新 inode 号；
     /// 名字/目标不合法或磁盘空间不足返回 `Ok(None)`。
-    pub fn symlink<E>(&self, dir_ino: u16, name: &str, target: &str) -> Result<Option<u16>, E>
+    pub fn symlink(&self, dir_ino: u16, name: &str, target: &str) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) || target.is_empty() {
             return Ok(None);
@@ -255,9 +253,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 分配一个空 inode（size 0、nlinks 1、无数据块）并写回，返回 inode 号。
-    fn alloc_empty_inode<E>(&self, mode: Mode, device: &mut T) -> Result<Option<u16>, E>
+    fn alloc_empty_inode(&self, mode: Mode, device: &mut T) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let Some(ino) = self.alloc_inode(device)? else {
             return Ok(None);
@@ -276,14 +274,14 @@ impl<T> MinixFs<T> {
     }
 
     /// 在目录 `dir_ino` 中只读查找名为 `name` 的目录项，返回其 inode 号。
-    fn find_dir_entry_ino<E>(
+    fn find_dir_entry_ino(
         &self,
         dir_ino: u16,
         name: &str,
         device: &mut T,
-    ) -> Result<Option<u16>, E>
+    ) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
@@ -306,9 +304,9 @@ impl<T> MinixFs<T> {
     }
 
     /// 删除目录 `dir_ino` 中名为 `name` 的目录项（槽位清零并写回）。
-    fn remove_dir_entry<E>(&self, dir_ino: u16, name: &str, device: &mut T) -> Result<bool, E>
+    fn remove_dir_entry(&self, dir_ino: u16, name: &str, device: &mut T) -> IoResult<bool>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
@@ -334,9 +332,9 @@ impl<T> MinixFs<T> {
 
     /// 释放 inode 占用的全部数据块与间接块，清零并释放 inode 位图。
     /// 需要调用方已持锁。
-    fn free_inode_blocks_at<E>(&self, ino: u16, device: &mut T) -> Result<(), E>
+    fn free_inode_blocks_at(&self, ino: u16, device: &mut T) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let d_inode = self.d_inode(ino, device)?;
 
@@ -369,9 +367,9 @@ impl<T> MinixFs<T> {
 
     /// 释放 inode 占用的全部数据块与间接块并回收 inode（自持锁版本，
     /// 供不持锁的调用方使用）。
-    fn free_inode_blocks<E>(&self, ino: u16) -> Result<(), E>
+    fn free_inode_blocks(&self, ino: u16) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut dev = self.lock();
         self.free_inode_blocks_at(ino, &mut dev)
@@ -387,15 +385,15 @@ impl<T> MinixFs<T> {
     ///
     /// 逐块查找空闲槽位（`ino == 0`），不够时分配并追加新数据块；目录
     /// 的 inode 与间接块表同步写回。需要调用方已持锁。
-    fn add_dir_entry_at<E>(
+    fn add_dir_entry_at(
         &self,
         dir_ino: u16,
         name: &str,
         new_ino: u16,
         device: &mut T,
-    ) -> Result<(), E>
+    ) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
@@ -439,9 +437,9 @@ impl<T> MinixFs<T> {
 
     /// 在目录 `dir_ino` 中追加一个指向 `new_ino` 的目录项（自持锁版本，
     /// 供不持锁的调用方使用）。
-    fn add_dir_entry<E>(&self, dir_ino: u16, name: &str, new_ino: u16) -> Result<(), E>
+    fn add_dir_entry(&self, dir_ino: u16, name: &str, new_ino: u16) -> IoResult<()>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         let mut dev = self.lock();
         self.add_dir_entry_at(dir_ino, name, new_ino, &mut dev)
@@ -461,9 +459,9 @@ impl<T> MinixFs<T> {
     /// 新目录含 `.`（指向自身）与 `..`（指向父目录）两个目录项，父目录
     /// 的链接数 +1（子目录的 `..` 引用）。名字不合法或 inode/数据块用尽时
     /// 返回 `Ok(None)`。底层设备在方法内部临时持锁。
-    pub fn create_dir<E>(&self, dir_ino: u16, name: &str) -> Result<Option<u16>, E>
+    pub fn create_dir(&self, dir_ino: u16, name: &str) -> IoResult<Option<u16>>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) {
             return Ok(None);
@@ -512,9 +510,9 @@ impl<T> MinixFs<T> {
     ///
     /// 非空目录、目标不是目录或名字不合法时返回 `Ok(false)`；成功后父目录
     /// 链接数 -1，并释放子目录的数据块与 inode。底层设备在方法内部临时持锁。
-    pub fn remove_dir<E>(&self, dir_ino: u16, name: &str) -> Result<bool, E>
+    pub fn remove_dir(&self, dir_ino: u16, name: &str) -> IoResult<bool>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         if !self.valid_name(name) {
             return Ok(false);
@@ -564,9 +562,9 @@ impl<T> MinixFs<T> {
     /// 删除目录 `dir_ino` 下的 `name`：文件/符号链接走 [`unlink`](Self::unlink)，
     /// 目录走 [`remove_dir`](Self::remove_dir)（仅空目录）。不存在或失败返回
     /// `Ok(false)`。
-    pub fn remove<E>(&self, dir_ino: u16, name: &str) -> Result<bool, E>
+    pub fn remove(&self, dir_ino: u16, name: &str) -> IoResult<bool>
     where
-        T: BlockDevice<Error = E>,
+        T: BlockDevice,
     {
         // 先短暂持锁判断目标类型，再调用不持锁的 `remove_dir` / `unlink`，
         // 避免在已持锁状态下再次进入会持锁的公共方法（自旋锁不可重入）。

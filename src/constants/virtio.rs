@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 //! virtio 常量：魔数、版本、环大小等。
-use athera_const::const_val;
+use athera_macros::const_val;
 
 pub const MAGIC_VALUE: u32 = 0x74726976;
 

@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, DevError>;
+pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtqCfg {
     pub device: Device,
@@ -173,7 +173,7 @@ pub trait VirtioDevice: Sized {
     /// 完成 ACK / DRIVER 状态、特性协商与队列 0 配置的完整握手。
     ///
     /// 队列尚未配置时，[`Self::queue`] 与提交流程会自动补一次握手。
-    fn handshake(&mut self) -> Result<()> {
+    fn handshake(&mut self) -> DevResult<()> {
         let mut cfg = VirtqCfg {
             device: self.device(),
         };
@@ -202,7 +202,7 @@ pub trait VirtioDevice: Sized {
     }
 
     /// 队列 0 的可变引用；未配置时先补一次握手。
-    fn queue(&mut self) -> Result<&mut Virtq> {
+    fn queue(&mut self) -> DevResult<&mut Virtq> {
         if self.queues_mut().is_none() {
             self.handshake()?;
         }

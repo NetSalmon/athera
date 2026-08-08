@@ -93,8 +93,8 @@ athera/                       # 内核（根 crate）
 │   │   │   ├── panic.rs
 │   │   │   └── linker.ld
 │   │   └── build.rs
-│   ├── athera-const/        编译期常量与属性宏（const_val / lazy / spin）
-│   ├── athera-const-macros/ proc-macro crate（const_val / lazy / spin）
+│   ├── athera-macros/        内核属性/派生宏与编译期常量（const_val / lazy / spin / Id）
+│   ├── athera-macros-impl/   proc-macro crate（const_val / lazy / spin / Id）
 │   ├── athera-id-alloc/     ID 分配器（用于 TID）
 │   ├── athera-bitmap/       no_std 定长位图（空闲位查找 / 按位操作）
 │   └── athera-rand/         no_std 随机数库（ChaCha20 / xoshiro256**）
@@ -207,7 +207,7 @@ qcow2 由脚本内置的纯 Python 读写器生成/解析（v3、64K 簇、16 �
 
 ## 初始化依赖
 
-内核大量使用 `LazyLock`（经 `athera-const` 的 `#[lazy]` / `#[lazy(spin)]` 宏生成）实现懒加载静态。
+内核大量使用 `LazyLock`（经 `athera-macros` 的 `#[lazy]` / `#[lazy(spin)]` 宏生成）实现懒加载静态。
 各静态首次通过 `.force()` 访问时按需初始化，其依赖关系如下：
 
 ```mermaid

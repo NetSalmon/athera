@@ -6,7 +6,7 @@
 //! 参数与用户栈布局常量。
 use core::ops::Range;
 
-use athera_const::{const_val, lazy};
+use athera_macros::{const_val, lazy};
 use fdt::Fdt;
 
 use crate::FDT_ADDR;
@@ -75,9 +75,8 @@ pub const SLUB_MIN_OBJECTS: usize = 4;
 /// 单个 SLUB 页大小上限（1 MiB），超过则不再扩大。
 pub const SLUB_MAX_PAGE_SIZE: usize = 1 << 20;
 
-/// 单次持锁恒等映射的块大小（8 MiB）。`SpinLock` 持锁期间会关闭中断，
-/// 把整段物理内存一次性映射完会让定时器中断长时间得不到响应；分块映射、
-/// 块间释放锁并恢复中断，保证长启动映射期间定时器仍能按时触发。
+/// 单次恒等映射的块大小（8 MiB）。分块映射可以限制单次页表更新的工作量，
+/// 也避免启动阶段一次性占用过多内存管理器资源。
 pub const IDENTITY_MAP_CHUNK: usize = 8 * 1024 * 1024;
 
 pub const USERLAND_OFFSET: usize = 0xffff_ffc0_0000_0000;

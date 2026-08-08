@@ -1,5 +1,5 @@
 [package]
-name = "athera-const"
+name = "athera-macros"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,6 +10,6 @@ doctest = false
 
 [dependencies]
 paste = "1.0.15"
-athera-const-macros = { path = "../athera-const-macros" }
+athera-macros-impl = { path = "../athera-macros-impl" }
 
 [dev-dependencies]

@@ -9,4 +9,4 @@ pub(crate) mod minix_fs;
 
 pub(crate) use path::{Component, Path, PathBuf};
 pub(crate) use types::{FileType, Mode, S_IFMT};
-pub(crate) use vfs::SeekFrom;
+pub(crate) use vfs::{FsError, FsResult, SeekFrom};

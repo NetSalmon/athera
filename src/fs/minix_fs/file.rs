@@ -6,8 +6,7 @@ use core::fmt;
 
 use super::{FileType, MinixFs, types::DINode};
 use crate::{
-    dev::traits::BlockDevice,
-    fs::{
+    dev::traits::{BlockDevice, IoResult}, fs::{
         SeekFrom,
         path::{Path, PathBuf},
     },
@@ -41,14 +40,14 @@ where
     offset: usize,
 }
 
-impl<'a, T, E> File<'a, T>
+impl<'a, T> File<'a, T>
 where
-    T: BlockDevice<Error = E>,
+    T: BlockDevice,
 {
     /// 按路径打开文件，等价于 `fs.open(path)`。
     ///
     /// 路径不存在返回 `Ok(None)`；设备出错返回 `Err`。
-    pub fn open(fs: &'a MinixFs<T>, path: &Path) -> Result<Option<Self>, E> {
+    pub fn open(fs: &'a MinixFs<T>, path: &Path) -> IoResult<Option<Self>> {
         fs.open(path)
     }
 
@@ -101,7 +100,7 @@ where
     ///
     /// 目标位置超过文件末尾时钳制到末尾。返回 `Ok(new_offset)`，错误类型
     /// 为底层设备错误（当前定位本身不会失败，保留 `Result` 以对齐标准库）。
-    pub fn seek(&mut self, pos: SeekFrom) -> Result<u64, E> {
+    pub fn seek(&mut self, pos: SeekFrom) -> IoResult<u64> {
         let size = self.size() as i64;
         let new = match pos {
             SeekFrom::Start(off) => off as i64,
@@ -114,7 +113,7 @@ where
 
     /// 从当前读写位置读取最多 `buf.len()` 字节，返回实际读取的字节数；
     /// 到达文件末尾时返回 0。读取会推进内部读写位置。
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, E> {
+    pub fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         let n = self.read_at(buf, self.offset)?;
         self.offset += n;
         Ok(n)
@@ -122,12 +121,11 @@ where
 
     /// 从文件 `offset` 处读取最多 `buf.len()` 字节，返回实际读取的字节数；
     /// 到达文件末尾时返回 0。不会改变内部读写位置。
-    pub fn read_at(&self, buf: &mut [u8], offset: usize) -> Result<usize, E> {
+    pub fn read_at(&self, buf: &mut [u8], offset: usize) -> IoResult<usize> {
         let size = self.size() as usize;
         let mut pos = offset;
         let mut done = 0;
 
-        let mut dev = self.fs.lock();
         while pos < size && done < buf.len() {
             let zone_index = pos / self.zone_size;
             let in_zone = pos % self.zone_size;
@@ -141,10 +139,13 @@ where
                 break; // 数据块号缺失（磁盘空洞），按文件末尾处理
             };
 
-            dev.read_at(
-                &mut buf[done..done + n],
-                zone as usize * self.zone_size + in_zone,
-            )?;
+            {
+                let mut dev = self.fs.lock();
+                dev.read_at(
+                    &mut buf[done..done + n],
+                    zone as usize * self.zone_size + in_zone,
+                )?;
+            }
 
             pos += n;
             done += n;
@@ -159,7 +160,7 @@ where
     /// 的 zone 数组与间接块表，文件大小随之增长。`offset` 超过文件末尾时
     /// 按“追加到末尾”处理；磁盘空间不足时返回实际写入的字节数
     /// （小于 `buf.len()`）。不会改变内部读写位置。
-    pub fn write_at(&mut self, buf: &[u8], offset: usize) -> Result<usize, E> {
+    pub fn write_at(&mut self, buf: &[u8], offset: usize) -> IoResult<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -171,48 +172,54 @@ where
 
         // 1. 补齐不足的数据块（超出部分保持原样，不重复分配）。
         let grew = self.zones.len() < need_zones;
-        let done = {
+        while self.zones.len() < need_zones {
+            let zone = {
+                let mut dev = self.fs.lock();
+                self.fs.alloc_zone(&mut dev)?
+            };
+            let Some(zone) = zone else {
+                break; // 磁盘空间不足
+            };
+            self.zones.push(zone);
+        }
+
+        if grew {
             let mut dev = self.fs.lock();
-            while self.zones.len() < need_zones {
-                let Some(zone) = self.fs.alloc_zone(&mut dev)? else {
-                    break; // 磁盘空间不足
-                };
-                self.zones.push(zone);
-            }
-            if grew {
-                self.fs
-                    .write_file_zones(&mut self.inode, &self.zones, &mut dev)?;
-            }
+            self.fs
+                .write_file_zones(&mut self.inode, &self.zones, &mut dev)?;
+        }
 
-            // 2. 写入数据（只写能落到已分配数据块的部分）。
-            let mut pos = offset;
-            let mut done = 0;
-            while pos < end && done < buf.len() {
-                let zone_index = pos / zone_size;
-                let Some(&zone) = self.zones.get(zone_index) else {
-                    break; // 数据块号缺失（磁盘已满等），按实际写入量返回
-                };
-                let in_zone = pos % zone_size;
-                let n = (zone_size - in_zone).min(buf.len() - done);
+        // 2. 写入数据（只写能落到已分配数据块的部分）。
+        let mut pos = offset;
+        let mut done = 0;
+        while pos < end && done < buf.len() {
+            let zone_index = pos / zone_size;
+            let Some(&zone) = self.zones.get(zone_index) else {
+                break; // 数据块号缺失（磁盘已满等），按实际写入量返回
+            };
+            let in_zone = pos % zone_size;
+            let n = (zone_size - in_zone).min(buf.len() - done);
+            {
+                let mut dev = self.fs.lock();
                 dev.write_at(&buf[done..done + n], zone as usize * zone_size + in_zone)?;
-                pos += n;
-                done += n;
             }
+            pos += n;
+            done += n;
+        }
 
-            // 3. 扩展文件大小并写回 inode。
-            let new_size = size.max(offset.saturating_add(done));
-            if new_size > self.inode.size as usize {
-                self.inode.size = new_size as u32;
-                self.fs.write_d_inode(self.ino, &self.inode, &mut dev)?;
-            }
-            done
-        };
+        // 3. 扩展文件大小并写回 inode。
+        let new_size = size.max(offset.saturating_add(done));
+        if new_size > self.inode.size as usize {
+            self.inode.size = new_size as u32;
+            let mut dev = self.fs.lock();
+            self.fs.write_d_inode(self.ino, &self.inode, &mut dev)?;
+        }
 
         Ok(done)
     }
 
     /// 从当前读写位置写入 `buf`，返回实际写入字节数；写入会推进内部读写位置。
-    pub fn write(&mut self, buf: &[u8]) -> Result<usize, E> {
+    pub fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         let n = self.write_at(buf, self.offset)?;
         self.offset += n;
         Ok(n)
@@ -224,9 +231,9 @@ where
     }
 }
 
-impl<T, E> fmt::Debug for File<'_, T>
+impl<T> fmt::Debug for File<'_, T>
 where
-    T: BlockDevice<Error = E>,
+    T: BlockDevice,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("File")

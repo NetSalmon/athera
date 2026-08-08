@@ -1,5 +1,5 @@
 //! 版本信息（uname）。
-use athera_const::const_val;
+use athera_macros::const_val;
 
 #[const_val]
 pub const VERSION: &str = "0.1.0";

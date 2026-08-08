@@ -8,16 +8,14 @@ use alloc::vec;
 use crate::{
     dev::VIRTIO_BLK,
     error,
-    fs::{Path, minix_fs::MinixFs},
-    info,
+    fs::{minix_fs::MinixFs, Path},
     proc::exec::spawn_buffer,
 };
 
 /// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
 pub(crate) fn spawn_from_disk(path: &str) {
     let blk = {
-        let guard = VIRTIO_BLK.force().lock();
-        match guard.as_ref() {
+        match VIRTIO_BLK.force().lock().as_ref() {
             Some(blk) => blk.clone(),
             None => {
                 error!("no virtio-blk device, skip {path}");
@@ -38,16 +36,32 @@ pub(crate) fn spawn_from_disk(path: &str) {
         }
     };
 
-    let Some(mut f) = fs.open(&Path::from_str(path)).unwrap() else {
+    let Some(mut f) = (match fs.open(&Path::from_str(path)) {
+        Ok(file) => file,
+        Err(err) => {
+            error!("failed to open {path}: {err}");
+            return;
+        }
+    }) else {
         error!("{path} not found on disk");
         return;
     };
 
-    let mut buf = vec![0u8; f.size() as usize];
-    info!("{:#?}", f);
+    let Ok(size) = usize::try_from(f.size()) else {
+        error!("{path} is too large to load");
+        return;
+    };
+    let mut buf = vec![0u8; size];
 
-    if f.read(&mut buf).unwrap() != buf.len() {
-        error!("short read, skip {path}");
+    let read = match f.read(&mut buf) {
+        Ok(read) => read,
+        Err(err) => {
+            error!("failed to read {path}: {err}");
+            return;
+        }
+    };
+    if read != buf.len() {
+        error!("short read for {path}: expected {}, got {read}", buf.len());
         return;
     }
 

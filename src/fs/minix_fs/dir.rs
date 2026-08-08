@@ -6,7 +6,7 @@ use alloc::{
 };
 
 use super::{MinixFs, types::DirEntryRaw};
-use crate::dev::traits::BlockDevice;
+use crate::dev::traits::{BlockDevice, IoResult};
 
 /// 目录项：目录中的一个文件或子目录。
 #[derive(Debug, Clone)]
@@ -102,11 +102,11 @@ impl<'a, 'd, T> DirEntries<'a, 'd, T> {
     }
 }
 
-impl<'a, 'd, T, E> Iterator for DirEntries<'a, 'd, T>
+impl<'a, 'd, T> Iterator for DirEntries<'a, 'd, T>
 where
-    T: BlockDevice<Error = E>,
+    T: BlockDevice,
 {
-    type Item = Result<DirEntry, E>;
+    type Item = IoResult<DirEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // 出错后不再产出任何项。

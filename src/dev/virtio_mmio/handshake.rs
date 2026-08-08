@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, DevError>;
+pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct QueueConfig {
     pub index: u32,
@@ -52,7 +52,7 @@ impl VirtqCfg {
 }
 
 impl<'a> HandshakeBegin<'a> {
-    pub fn legacy(self, negotiate: impl FnOnce(u32) -> u32) -> Result<FeaturesNegotiated<'a>> {
+    pub fn legacy(self, negotiate: impl FnOnce(u32) -> u32) -> DevResult<FeaturesNegotiated<'a>> {
         self.cfg.write_device_features_sel(0);
         let features: u32 = self.cfg.device_features();
 
@@ -67,7 +67,7 @@ impl<'a> HandshakeBegin<'a> {
     pub fn modern(
         self,
         negotiate: impl FnOnce(u32, u32) -> (u32, u32),
-    ) -> Result<FeaturesNegotiated<'a>> {
+    ) -> DevResult<FeaturesNegotiated<'a>> {
         self.cfg.write_device_features_sel(0);
         let features_low: u32 = self.cfg.device_features();
 
@@ -85,7 +85,7 @@ impl<'a> HandshakeBegin<'a> {
         Self::commit_features(self.cfg)
     }
 
-    fn commit_features(cfg: &mut VirtqCfg) -> Result<FeaturesNegotiated<'_>> {
+    fn commit_features(cfg: &mut VirtqCfg) -> DevResult<FeaturesNegotiated<'_>> {
         let mut status: DeviceStatus = cfg.status().into();
         status.set_features_ok(true);
         cfg.write_status(status.into());
@@ -102,11 +102,11 @@ impl<'a> HandshakeBegin<'a> {
 }
 
 impl<'a> FeaturesNegotiated<'a> {
-    pub fn setup_queue(self, config: QueueConfig) -> Result<QueuesReady<'a>> {
+    pub fn setup_queue(self, config: QueueConfig) -> DevResult<QueuesReady<'a>> {
         self.setup_queues(&[config])
     }
 
-    pub fn setup_queues(self, configs: &[QueueConfig]) -> Result<QueuesReady<'a>> {
+    pub fn setup_queues(self, configs: &[QueueConfig]) -> DevResult<QueuesReady<'a>> {
         let version = self.cfg.version();
         let mut queues = Vec::new();
 
@@ -152,18 +152,18 @@ impl<'a> FeaturesNegotiated<'a> {
 }
 
 impl<'a> QueuesReady<'a> {
-    pub fn setup_queue(mut self, config: QueueConfig) -> Result<Self> {
+    pub fn setup_queue(mut self, config: QueueConfig) -> DevResult<Self> {
         let configs = [config];
         self.add_queues(&configs)?;
         Ok(self)
     }
 
-    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> Result<Self> {
+    pub fn setup_queues(mut self, configs: &[QueueConfig]) -> DevResult<Self> {
         self.add_queues(configs)?;
         Ok(self)
     }
 
-    fn add_queues(&mut self, configs: &[QueueConfig]) -> Result<()> {
+    fn add_queues(&mut self, configs: &[QueueConfig]) -> DevResult<()> {
         let version = self.cfg.version();
 
         for qcfg in configs {

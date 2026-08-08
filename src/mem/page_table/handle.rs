@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, MemError>;
+pub type MemResult<T> = core::result::Result<T, MemError>;
 
 #[derive(Debug)]
 pub struct PageTableHandle {
@@ -40,7 +40,7 @@ impl PageTableHandle {
     }
 
     /// 从伙伴系统分配一页并初始化为空的根页表。
-    pub fn create() -> Result<Self> {
+    pub fn create() -> MemResult<Self> {
         let page = alloc_frame(None).ok_or(MemError::OutOfMemory)?;
 
         let page_table = unsafe { &mut *(page.start as *mut PageTable) };

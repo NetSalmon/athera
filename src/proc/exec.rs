@@ -19,7 +19,7 @@ use crate::{
         allocators::alloc_frame,
         page_table::{PAGE_TABLE_MANAGER, PageTableEntryFlags},
     },
-    proc::task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid},
+    proc::task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus},
     trace,
     trap::TrapContext,
 };
@@ -43,8 +43,6 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         .lock()
         .alloc()
         .ok_or(Error::NoTidAvailable)?;
-
-    let tid = Tid(tid);
 
     info!(
         "executing user program: tid = {}, entry = {entry:#x}",

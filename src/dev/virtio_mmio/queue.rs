@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, DevError>;
+pub type DevResult<T> = core::result::Result<T, DevError>;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -80,7 +80,7 @@ pub struct Virtq {
 }
 
 impl Virtq {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> DevResult<Self> {
         let layout = Layout::new::<Queue>();
         let start = FRAME_ALLOCATOR
             .force()
@@ -138,7 +138,7 @@ impl Virtq {
 
     /// 轮询等待设备产生新的 used 元素（`last_used` 之后第一个），
     /// 返回被消费的描述符链信息。
-    pub fn wait_used(&mut self, last_used: u16) -> Result<VirtqUsedElem> {
+    pub fn wait_used(&mut self, last_used: u16) -> DevResult<VirtqUsedElem> {
         loop {
             let queue = self.as_mut();
             let used_idx = unsafe { addr_of!(queue.used.idx).read_volatile() };

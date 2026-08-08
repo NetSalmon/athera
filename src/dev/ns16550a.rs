@@ -9,16 +9,49 @@ use fdt::Fdt;
 
 use crate::{
     bits,
-    dev::device::{Device, Resource},
+    dev::{
+        device::{Device, Resource},
+        traits::{CharDevice, Dev, IoResult},
+    },
     mmio_regs,
 };
+
+impl Dev for Ns16550a {
+    fn name(&self) -> &'static str {
+        "ns16550a"
+    }
+
+    fn irq(&self) -> Option<usize> {
+        self.device.irq
+    }
+}
+
+impl CharDevice for Ns16550a {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        let mut read = 0;
+        for byte in buf {
+            let Some(value) = self.rbr_thr_if_ready() else {
+                break;
+            };
+            *byte = value;
+            read += 1;
+        }
+        Ok(read)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        for &byte in buf {
+            while !self.lsr().thre() {}
+            self.write_rbr_thr(byte);
+        }
+        Ok(buf.len())
+    }
+}
 
 /// 让 UART 满足 `core::fmt::Write`，供 `print!` / `println!` 输出。
 impl fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.bytes() {
-            self.putchar(c);
-        }
+        let _ = CharDevice::write(self, s.as_bytes());
         Ok(())
     }
 }
@@ -79,25 +112,12 @@ impl Ns16550a {
         self.write_lcr(lcr);
     }
 
-    pub fn getchar(&self) -> Option<u8> {
+    fn rbr_thr_if_ready(&self) -> Option<u8> {
         if self.lsr().dr() {
             self.rbr_thr()
         } else {
             None
         }
-    }
-
-    pub fn block_getchar(&self) -> u8 {
-        loop {
-            if self.lsr().dr() {
-                return self.rbr_thr();
-            }
-        }
-    }
-
-    pub fn putchar(&self, c: u8) {
-        while !self.lsr().thre() {}
-        self.write_rbr_thr(c);
     }
 
     pub fn probe(fdt: &Fdt) -> Option<Self> {

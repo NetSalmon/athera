@@ -5,9 +5,10 @@
 //! - [`spin`]：关中断自旋锁 [`spin::SpinLock`]，用于保护被普通执行流与
 //!   中断/异常处理共享的数据；
 //! - [`once`]：一次性初始化原语 [`once::OnceLock`]，是懒加载的底层实现；
-//! - [`lazy`]：懒加载静态 [`lazy::LazyLock`]，供 `athera_const` 的
+//! - [`lazy`]：懒加载静态 [`lazy::LazyLock`]，供 `athera_macros` 的
 //!   `#[lazy]` / `#[lazy(spin)]` 属性宏展开使用；
 //! - [`per_cpu`]：每 hart（CPU）一份的存储 [`per_cpu::PerCpu`]。
+//! - [`rwlock`]：写优先的读写自旋锁 [`rwlock::RwLock`]。
 //!
 //! # 说明
 //!
@@ -17,4 +18,5 @@
 pub(crate) mod lazy;
 pub(crate) mod once;
 pub(crate) mod per_cpu;
+pub(crate) mod rwlock;
 pub(crate) mod spin;

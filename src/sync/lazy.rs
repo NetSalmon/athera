@@ -1,6 +1,6 @@
 //! 懒加载静态 [`LazyLock`]。
 //!
-//! `athera_const` 的 `#[lazy]` / `#[lazy(spin)]` 属性宏会展开为
+//! `athera_macros` 的 `#[lazy]` / `#[lazy(spin)]` 属性宏会展开为
 //! [`LazyLock`]（必要时内层再包 [`super::spin::SpinLock`]），因此内核中的
 //! `MEMORY_RANGE`、`FRAME_ALLOCATOR`、`UART` 等静态都是首次访问时才
 //! 初始化的。

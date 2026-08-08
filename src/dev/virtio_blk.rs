@@ -12,21 +12,13 @@ use core::{
 };
 
 use crate::{
-    bits,
-    constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT},
-    dev::{
-        device::Device,
-        traits::BlockDevice,
-        virtio_mmio::{
+    bits, constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT}, dev::{
+        device::Device, traits::{BlockDevice, Dev, IoError, IoResult}, virtio_mmio::{
             DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},
         },
     },
-    error::DevError,
 };
-
-/// 本模块统一结果类型。
-pub type Result<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioBlk {
     pub device: Device,
@@ -72,6 +64,11 @@ bits! {
     }
 }
 
+impl Dev for VirtioBlk {
+    fn name(&self) -> &'static str { "virtio-mmio-blk" }
+    fn irq(&self) -> Option<usize> { self.device.irq }
+}
+
 impl VirtioDevice for VirtioBlk {
     const DEVICE_TYPE: DeviceType = DeviceType::BLOCK;
 
@@ -109,7 +106,7 @@ impl VirtioBlk {
     /// （读请求），为假表示设备从 `data` 读取（写请求）。描述符 0/1/2
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
-    fn submit(&mut self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> Result<()> {
+    fn submit(&mut self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> IoResult<()> {
         let req = VirtioBlkReq {
             r#type: req_type,
             reserved: 0,
@@ -119,7 +116,7 @@ impl VirtioBlk {
 
         // 组装描述符链并追加到 avail 环，记录设备当前 used 位置。
         let last_used = {
-            let queue = self.queue()?;
+            let queue = self.queue().map_err(|_| IoError::NotReady)?;
             {
                 let q = queue.as_mut();
 
@@ -158,13 +155,14 @@ impl VirtioBlk {
         self.notify();
 
         // 等待设备产生 used 元素，并校验被消费的描述符链头。
-        let elem = self.queue()?.wait_used(last_used)?;
+        let queue = self.queue().map_err(|_| IoError::NotReady)?;
+        let elem = queue.wait_used(last_used).map_err(|_| IoError::NotReady)?;
         if elem.id != 0 {
-            return Err(DevError::VirtioBlockFailed);
+            return Err(IoError::Request);
         }
 
         if unsafe { addr_of!(status).read_volatile() } != VIRTIO_BLK_S_OK {
-            return Err(DevError::VirtioBlockFailed);
+            return Err(IoError::Request);
         }
 
         Ok(())
@@ -172,13 +170,11 @@ impl VirtioBlk {
 }
 
 impl BlockDevice for VirtioBlk {
-    type Error = DevError;
-
     fn read_at(
         &mut self,
         buf: &mut [u8],
         offset: usize,
-    ) -> core::result::Result<usize, Self::Error> {
+    ) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done;
@@ -195,7 +191,7 @@ impl BlockDevice for VirtioBlk {
         Ok(done)
     }
 
-    fn write_at(&mut self, buf: &[u8], offset: usize) -> core::result::Result<usize, Self::Error> {
+    fn write_at(&mut self, buf: &[u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done;
