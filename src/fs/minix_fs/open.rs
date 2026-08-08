@@ -145,7 +145,7 @@ impl<T> MinixFs<T> {
         }
 
         let zones = self.data_zones(&dir, device)?;
-        
+
         Ok(Some(File::new(
             self,
             path.to_path_buf(),

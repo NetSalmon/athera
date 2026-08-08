@@ -224,11 +224,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
                 let new_page = alloc_frame(Some(size)).expect("out of memory");
 
                 unsafe {
-                    core::ptr::copy(
-                        source_start as *const u8,
-                        new_page.start as *mut u8,
-                        size,
-                    )
+                    core::ptr::copy(source_start as *const u8, new_page.start as *mut u8, size)
                 }
                 pages.push(new_page);
             }

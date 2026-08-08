@@ -7,7 +7,6 @@
 pub(crate) mod handle;
 
 use alloc::collections::BTreeMap;
-use core::arch::asm;
 
 use athera_macros::lazy;
 
@@ -526,6 +525,6 @@ impl PageTableManager {
 
     #[inline]
     pub fn flush() {
-        unsafe { asm!("sfence.vma") }
+        crate::arch::address_translation_fence();
     }
 }

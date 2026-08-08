@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 //! SBI 调用封装。
 //!
+//! 本模块统一处理 SBI v0.2+ 的 `a0`/`a1` 返回约定，并保留 SBI v0.1
+//! legacy ABI 的独立入口。各扩展模块只负责组织参数，不重复编写 `ecall`
+//! 汇编。
+//!
 //! 定义错误码 [`SbiError`]、调用结果与各扩展的调用入口（legacy、
 //! srst 复位/关机、hsm 停止等）。
 use crate::numeric;
@@ -20,15 +24,21 @@ numeric! {
     }
 }
 
-#[derive(Debug)]
+/// SBI 调用的原始返回值。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SbiResult {
+    /// SBI error code returned in `a0`.
     pub error: i64,
+    /// SBI value returned in `a1`.
     pub value: u64,
 }
 
-#[derive(Debug)]
+/// SBI 调用结果。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Result {
+    /// The call failed and carries the SBI error code.
     Err(SbiError),
+    /// The call succeeded and carries the SBI `a1` value.
     Ok(u64),
 }
 
@@ -52,6 +62,38 @@ impl From<SbiResult> for Result {
             Result::Err(err)
         } else {
             Result::Ok(result.value)
+        }
+    }
+}
+
+impl Result {
+    /// 返回调用是否成功。
+    #[inline]
+    pub const fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok(_))
+    }
+
+    /// 返回调用是否失败。
+    #[inline]
+    pub const fn is_err(&self) -> bool {
+        !self.is_ok()
+    }
+
+    /// 获取成功返回值；失败时返回 `None`。
+    #[inline]
+    pub const fn value(&self) -> Option<u64> {
+        match self {
+            Self::Ok(value) => Some(*value),
+            Self::Err(_) => None,
+        }
+    }
+
+    /// 获取 SBI 错误码；成功时返回 `None`。
+    #[inline]
+    pub const fn error(&self) -> Option<SbiError> {
+        match self {
+            Self::Ok(_) => None,
+            Self::Err(error) => Some(*error),
         }
     }
 }
@@ -82,6 +124,10 @@ numeric! {
     }
 }
 
+/// 按 SBI v0.2+ 标准 ABI 执行一次扩展调用。
+///
+/// `a6` 保存 function ID，`a7` 保存 extension ID；返回的 `a0` 被解释为
+/// 有符号错误码，`a1` 作为成功时的返回值。
 pub fn ecall(eid: Eid, fid: u64, args: [u64; 6]) -> Result {
     let (mut a0, mut a1) = (args[0], args[1]);
 
@@ -112,6 +158,10 @@ pub fn ecall(eid: Eid, fid: u64, args: [u64; 6]) -> Result {
 /// in `a7` alone, and the only return value is `a0` (no separate error / value
 /// split). Some calls return 0 on success and a negative error otherwise;
 /// `console_getchar` returns the byte read or -1.
+/// 执行一次 SBI v0.1 legacy ABI 调用。
+///
+/// legacy ABI 不携带 function ID，extension ID 位于 `a7`，返回值位于
+/// `a0`。调用者负责解释不同 legacy 调用的返回约定。
 pub fn legacy_ecall(eid: Eid, args: [u64; 4]) -> i64 {
     let mut a0 = args[0];
 
@@ -130,6 +180,7 @@ pub fn legacy_ecall(eid: Eid, args: [u64; 4]) -> i64 {
 }
 
 // ========================== BASE ==========================
+/// SBI Base 扩展。
 pub mod base {
     use super::*;
 
@@ -163,6 +214,7 @@ pub mod base {
 }
 
 // ========================== TIME ==========================
+/// SBI Timer 扩展。
 pub mod time {
     use super::*;
 
@@ -172,6 +224,7 @@ pub mod time {
 }
 
 // ========================== IPI ==========================
+/// SBI IPI 扩展。
 pub mod ipi {
     use super::*;
 
@@ -181,6 +234,7 @@ pub mod ipi {
 }
 
 // ========================== RFENCE ==========================
+/// SBI RFENCE 扩展。
 pub mod rfence {
     use super::*;
 
@@ -204,27 +258,49 @@ pub mod rfence {
 }
 
 // ========================== HSM ==========================
+/// SBI Hart State Management 扩展。
+///
+/// HSM 用 hart 编号管理其他硬件线程的生命周期。除 `hart_stop()` 外，
+/// 这些调用通常由启动 hart 发起；目标 hart 的启动入口必须符合 SBI
+/// 约定，并从 `a0`/`tp` 等启动状态中获取自身上下文。
 pub mod hsm {
     use super::*;
 
+    /// 启动指定 hart。
+    ///
+    /// `hart_id` 是目标 hart 编号，`start_addr` 是目标 hart 进入 S 模式
+    /// 后跳转的物理地址，`opaque` 会原样传递给启动入口的 `a1`。
+    /// 成功时返回 SBI 规定的零值。
     pub fn hart_start(hart_id: u64, start_addr: u64, opaque: u64) -> Result {
         ecall(Eid::HSM, 0, [hart_id, start_addr, opaque, 0, 0, 0])
     }
 
+    /// 停止当前 hart。
+    ///
+    /// SBI 成功处理后通常不会返回；保留返回值是为了处理固件不支持或
+    /// 拒绝该操作的情况。
     pub fn hart_stop() -> Result {
         ecall(Eid::HSM, 1, [0; 6])
     }
 
+    /// 查询指定 hart 的当前状态。
+    ///
+    /// 成功时 `Result::Ok` 中的值是 SBI HSM 状态编码，失败时返回固件错误。
     pub fn hart_get_status(hart_id: u64) -> Result {
         ecall(Eid::HSM, 2, [hart_id, 0, 0, 0, 0, 0])
     }
 
+    /// 挂起当前 hart，并指定恢复入口。
+    ///
+    /// `suspend_type`、`resume_addr` 和 `opaque` 的具体取值由 SBI HSM
+    /// 挂起类型定义；当前内核通常不需要直接调用此接口。
     pub fn hart_suspend(suspend_type: u64, resume_addr: u64, opaque: u64) -> Result {
         ecall(Eid::HSM, 3, [suspend_type, resume_addr, opaque, 0, 0, 0])
     }
 }
 
 // ========================== SRST ==========================
+/// SBI System Reset 扩展。
 pub mod srst {
     use super::*;
 
@@ -254,6 +330,7 @@ pub mod srst {
 // or stubbed out by the SBI firmware (OpenSBI keeps them as a thin wrapper
 // over DBCN when DBCN is present). They are useful as an early-boot console
 // before the device tree has been parsed and a real UART driver brought up.
+/// SBI v0.1 legacy 扩展。
 pub mod legacy {
     use super::*;
 
@@ -274,7 +351,7 @@ pub mod legacy {
         legacy_ecall(Eid::LEGACY_SHUTDOWN, [0; 4]);
         // SBI never returns from shutdown; loop just to satisfy `!`.
         loop {
-            unsafe { core::arch::asm!("wfi") }
+            crate::arch::wait_for_interrupt();
         }
     }
 
@@ -292,6 +369,7 @@ pub mod legacy {
 // The modern replacement for the legacy console. Probe with
 // `base::probe_extension(EID::DBCN)` before using; fall back to `legacy`
 // otherwise.
+/// SBI Debug Console extension.
 pub mod dbcn {
     use super::*;
 

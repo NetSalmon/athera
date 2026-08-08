@@ -6,5 +6,6 @@ unsafe extern "C" {
     pub fn _end();
     pub fn trap_entry();
     pub fn user_trap_entry();
+    pub fn hart_entry();
     pub static FDT_ADDR: *const u8;
 }

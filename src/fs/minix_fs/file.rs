@@ -6,7 +6,8 @@ use core::fmt;
 
 use super::{FileType, MinixFs, types::DINode};
 use crate::{
-    dev::traits::{BlockDevice, IoResult}, fs::{
+    dev::traits::{BlockDevice, IoResult},
+    fs::{
         SeekFrom,
         path::{Path, PathBuf},
     },

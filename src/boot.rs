@@ -8,7 +8,7 @@ use alloc::vec;
 use crate::{
     dev::VIRTIO_BLK,
     error,
-    fs::{minix_fs::MinixFs, Path},
+    fs::{Path, minix_fs::MinixFs},
     proc::exec::spawn_buffer,
 };
 

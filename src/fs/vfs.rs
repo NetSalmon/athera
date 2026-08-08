@@ -24,11 +24,10 @@ use athera_macros::lazy;
 
 use crate::{
     bits,
+    dev::traits::IoError,
     fs::{FileType, Mode, Path, PathBuf},
     numeric,
 };
-
-use crate::dev::traits::IoError;
 
 /// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

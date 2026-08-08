@@ -5,7 +5,7 @@
 //! `Ns16550a` 对 `core::fmt::Write` 的实现见 `dev::ns16550a`。
 use core::fmt;
 
-use crate::dev::{traits::CharDevice, UART};
+use crate::dev::{UART, traits::CharDevice};
 
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
@@ -20,9 +20,7 @@ impl fmt::Write for ConsoleWriter {
             let Some(uart) = UART.force().as_ref() else {
                 return Err(fmt::Error);
             };
-            uart.lock()
-                .write(chunk)
-                .map_err(|_| fmt::Error)?;
+            uart.lock().write(chunk).map_err(|_| fmt::Error)?;
         }
         Ok(())
     }

@@ -37,10 +37,15 @@ global_asm!(include_str!("entry.asm"));
 /// 初始化日志级别、恒等映射页表，然后从 MINIX 文件系统加载并执行
 /// `/bin/hello_world`、`/bin/sort`，最后执行内嵌的用户程序 `add`。
 fn main(hart_id: usize, dev_tree_address: usize) -> ! {
-    arch::registers::gpr::Tp::write(hart_id as u64);
-
     if hart_id != 0 {
         core::hint::spin_loop();
+    }
+
+    #[cfg(feature = "smp")]
+    {
+        arch::sbi::hsm::hart_start(1, hart_entry as *const () as u64, 0);
+        let r = arch::sbi::hsm::hart_get_status(1);
+        info!("hart 1 status: {:#?}", r);
     }
 
     set_next_timer();
@@ -77,6 +82,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     boot::spawn_from_disk("/bin/panic");
     boot::spawn_from_disk("/bin/sort");
     boot::spawn_from_disk("/bin/add");
+    boot::spawn_from_disk("/bin/fork");
 
     proc::sched::switch();
 }

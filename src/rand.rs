@@ -12,12 +12,7 @@
 use athera_macros::lazy;
 use athera_rand::{EntropySource, SecureRng};
 
-use crate::{
-    constants::MAX_CPU,
-    dev::VIRTIO_RNG,
-    sync::per_cpu::PerCpu,
-    warn,
-};
+use crate::{constants::MAX_CPU, dev::VIRTIO_RNG, sync::per_cpu::PerCpu, warn};
 
 /// 每 hart 独立的密码学安全随机数生成器（ChaCha20 CSPRNG）。
 #[lazy]

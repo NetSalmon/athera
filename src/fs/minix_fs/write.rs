@@ -8,7 +8,9 @@ use super::{
     types::{DirEntryRaw, MinixFsMagic},
 };
 use crate::{
-    constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR}, dev::traits::{BlockDevice, IoResult}, fs::path::PathBuf,
+    constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR},
+    dev::traits::{BlockDevice, IoResult},
+    fs::path::PathBuf,
 };
 
 impl<T> MinixFs<T> {
@@ -274,12 +276,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 在目录 `dir_ino` 中只读查找名为 `name` 的目录项，返回其 inode 号。
-    fn find_dir_entry_ino(
-        &self,
-        dir_ino: u16,
-        name: &str,
-        device: &mut T,
-    ) -> IoResult<Option<u16>>
+    fn find_dir_entry_ino(&self, dir_ino: u16, name: &str, device: &mut T) -> IoResult<Option<u16>>
     where
         T: BlockDevice,
     {

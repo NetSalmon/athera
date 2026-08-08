@@ -16,6 +16,7 @@ _start:
 
     la t0, FDT_ADDR
     sd a1, 0(t0)              # a1 = 设备树物理地址（QEMU 约定）
+    mv tp, a0
 
     # 2. 陷阱向量 + 中断使能
     la t0, trap_entry
@@ -31,6 +32,14 @@ _start:
     csrs sstatus, t0
 
     call main                # 进入 Rust 内核入口（不返回）
+
+.section .text
+.global hart_entry
+hart_entry:
+    mv tp, a0
+hart_entry_loop:
+    wfi
+    j hart_entry_loop
 
 .section .text
 .balign 4

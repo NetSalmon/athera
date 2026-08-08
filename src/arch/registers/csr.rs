@@ -1,4 +1,10 @@
 #![allow(dead_code)]
+//! Control and Status Register (CSR) accessors.
+//!
+//! The table below records the standard RISC-V CSR assignments used by the
+//! kernel. Accessors are generated from it with the local `csr!` macro. A
+//! read-only CSR only exposes `read()`, while a read/write CSR additionally
+//! exposes `write()`, `modify()`, `set_bits()`, and `clear_bits()`.
 // | Address | Name       | Mode | Access | Description                          |
 // | ------- | ---------- | ---- | ------ | ------------------------------------ |
 // | 0x001   | fflags     | U    | rw     | Floating-point accrued exceptions    |
@@ -109,11 +115,16 @@
 
 use core::arch::asm;
 
+/// CSR 的类型级描述。
 pub trait CsrRegister {
+    /// 返回该 CSR 的特权级。
     fn mode() -> Mode;
+    /// 返回该 CSR 的架构编号。
     fn number() -> u16;
 }
 
+/// CSR 所属的 RISC-V 特权级。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Machine,
     Supervisor,
@@ -179,6 +190,18 @@ macro_rules! csr {
                 #[inline]
                 pub fn modify<T>(func: T) where T: FnOnce(u64) -> u64 {
                     [<$name:camel>]::write(func([<$name:camel>]::read()))
+                }
+
+                /// 设置指定的位，其他位保持不变。
+                #[inline]
+                pub fn set_bits(mask: u64) {
+                    [<$name:camel>]::modify(|value| value | mask)
+                }
+
+                /// 清除指定的位，其他位保持不变。
+                #[inline]
+                pub fn clear_bits(mask: u64) {
+                    [<$name:camel>]::modify(|value| value & !mask)
                 }
             }
         }

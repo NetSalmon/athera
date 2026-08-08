@@ -12,8 +12,12 @@ use core::{
 };
 
 use crate::{
-    bits, constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT}, dev::{
-        device::Device, traits::{BlockDevice, Dev, IoError, IoResult}, virtio_mmio::{
+    bits,
+    constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT},
+    dev::{
+        device::Device,
+        traits::{BlockDevice, Dev, IoError, IoResult},
+        virtio_mmio::{
             DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},
         },
@@ -65,8 +69,13 @@ bits! {
 }
 
 impl Dev for VirtioBlk {
-    fn name(&self) -> &'static str { "virtio-mmio-blk" }
-    fn irq(&self) -> Option<usize> { self.device.irq }
+    fn name(&self) -> &'static str {
+        "virtio-mmio-blk"
+    }
+
+    fn irq(&self) -> Option<usize> {
+        self.device.irq
+    }
 }
 
 impl VirtioDevice for VirtioBlk {
@@ -106,7 +115,13 @@ impl VirtioBlk {
     /// （读请求），为假表示设备从 `data` 读取（写请求）。描述符 0/1/2
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
-    fn submit(&mut self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> IoResult<()> {
+    fn submit(
+        &mut self,
+        req_type: u32,
+        sector: u64,
+        data: &[u8],
+        data_write: bool,
+    ) -> IoResult<()> {
         let req = VirtioBlkReq {
             r#type: req_type,
             reserved: 0,
@@ -170,11 +185,7 @@ impl VirtioBlk {
 }
 
 impl BlockDevice for VirtioBlk {
-    fn read_at(
-        &mut self,
-        buf: &mut [u8],
-        offset: usize,
-    ) -> IoResult<usize> {
+    fn read_at(&mut self, buf: &mut [u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done;

@@ -122,7 +122,7 @@ cargo build -p athera-userland --release
 
 # 构建内核并启动
 cargo build --release
-./start.sh
+./scripts/start.sh
 ```
 
 可选：启用 `halt_directly` feature 后，`kernel_halt()` 会直接通过 SBI 关机而不是空转：
@@ -133,33 +133,42 @@ cargo build --release --features halt_directly
 
 调试构建（`debug_assertions`）默认日志级别为 `TRACE`，发布构建为 `INFO`。
 
-`start.sh` 选项：
+`scripts/start.sh` 支持长参数和短参数：
 
 | 选项 | 作用 |
 | ---- | ---- |
-| `-s` | 启用 GDB 调试（`-s -S`）|
-| `-i` | 输出中断日志 |
-| `-m` | 输出 MMU 日志 |
-| `-p` | 挂载 virtio-blk PCI 磁盘（`resources/disk.qcow2`）|
-| `-d` | 挂载 virtio-blk MMIO 磁盘（`resources/minix.qcow2`）|
-| `-r` | 添加 virtio-rng（MMIO 熵源）设备，建议放在 `-d` / `-p` 之后 |
-| `-b` | 使用 GTK 显示（`-display gtk` + ramfb）|
+| `-c`, `--cpus NUM` | 设置 CPU 核数，默认 `1` |
+| `-k`, `--kernel FILE` | 指定内核 ELF |
+| `-M`, `--machine NAME` | 指定 QEMU machine，默认 `virt` |
+| `-q`, `--qemu FILE` | 指定 QEMU 程序 |
+| `--disk-format FMT` | 设置磁盘格式，默认 `qcow2` |
+| `-d`, `--blk FILE` | 挂载 virtio-blk MMIO 磁盘 |
+| `-p`, `--pci-blk FILE` | 挂载 virtio-blk PCI 磁盘 |
+| `-r`, `--random` | 添加 virtio-rng（MMIO 熵源）设备 |
+| `-b`, `--gui` | 使用 GTK 显示（`-display gtk` + ramfb） |
+| `-s`, `--gdb` | 启用 GDB 调试（`-s -S`） |
+| `-i`, `--int-debug` | 输出中断日志 |
+| `-m`, `--mmu-debug` | 输出 MMU 日志 |
+| `-t`, `--trace EVENT` | 添加 QEMU trace 事件，可重复指定 |
+| `--no-trace` | 禁用默认 QEMU trace 事件 |
+| `-h`, `--help` | 显示帮助 |
 
-> `-r` 需配合 `-d` / `-p` 使用并放在其后，保证 virtio-blk 仍是第一个 `virtio,mmio` 节点（内核探测时只匹配第一个同类节点）。
+`--blk` 和 `--pci-blk` 互斥；`--random` 必须与其中一个磁盘选项一起使用，保证 virtio-blk 仍是第一个 `virtio,mmio` 节点。也可以在 `--` 后追加任意 QEMU 参数。
 
 示例：
 
 ```bash
-./start.sh -p          # 带 PCI 块设备启动
-./start.sh -s -i       # 调试 + 中断日志
-./start.sh -b -d -r    # GTK 图形界面 + MMIO 磁盘 + virtio-rng
+./scripts/start.sh --cpus 2 --blk resources/minix.qcow2 --random
+./scripts/start.sh -c 2 -d resources/minix.qcow2 -m -i
+./scripts/start.sh --pci-blk resources/disk.qcow2
+./scripts/start.sh --gdb --no-trace
 ```
 
 ## MINIX 文件系统
 
 内核启动时从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix_fs.rs`）：解析超级块（`SuperBlock`）、磁盘 inode（`DINode`）与目录项（`DirEntryV1_14` / `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过 `MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `proc::exec::spawn_buffer` 加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，自动分配数据块并维护直接/一级/二级间接块），inode 与数据块位图用 `athera-bitmap` 的 `BitMapView` 零拷贝维护（`alloc_inode` / `free_inode` / `alloc_zone` / `free_zone`），并支持硬链接（`link`）、删除（`unlink` / `remove`，链接数归零时释放数据块与 inode）、目录创建/删除（`create_dir` / `remove_dir`，仅空目录）与符号链接（`symlink`，目标路径存放在数据块中）；`open` 解析路径时自动解引用符号链接（含嵌套与相对/绝对目标，循环检测上限 40 跳）；路径类型 `Path` / `PathBuf` 仿标准库（`parent` / `file_name` / `extension` / `join` / `components` / `push` / `pop` 等），打开的文件 `File` 携带路径并支持 `path()` / `name()`；写入结果可通过 `fsck.minix` 校验。
 
-启动时会依次加载并执行磁盘上的 `/bin/hello_world` 与 `/bin/sort`，最后执行编译期内嵌的 `add`。`-d` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
+启动时会依次加载并执行磁盘上的 `/bin/hello_world` 与 `/bin/sort`，最后执行编译期内嵌的 `add`。`--blk` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
 
 把用户程序复制到该镜像的 `/bin/` 目录下（依赖 libguestfs 的 `guestfish`，会自动构建 `athera-userland`）：
 

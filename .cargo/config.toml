@@ -6,4 +6,4 @@ rustflags = [
     "-Cforce-frame-pointers=yes"
  ]
 
-runner = "./scripts/start.sh -d"
+runner = "./scripts/start.sh --blk ./resources/minix.qcow2 --kernel"

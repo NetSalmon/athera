@@ -29,15 +29,13 @@ pub(crate) use types::{
     DINode, DirEntryRaw, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, MinixString, SuperBlock,
 };
 
-use crate::dev::traits::IoResult;
-
 pub(crate) use super::{
     path::{Component, Path, PathBuf},
     types::{FileType, Mode, S_IFMT},
 };
 use crate::{
     constants::SUPERBLOCK_OFFSET,
-    dev::traits::BlockDevice,
+    dev::traits::{BlockDevice, IoResult},
     sync::spin::{SpinLock, SpinLockGuard},
 };
 
@@ -161,12 +159,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 把 `zone` 指向的数据块开头读入 `out`（`out` 长度不能超过 zone 大小）。
-    pub(crate) fn read_zone_into(
-        &self,
-        device: &mut T,
-        zone: u16,
-        out: &mut [u8],
-    ) -> IoResult<()>
+    pub(crate) fn read_zone_into(&self, device: &mut T, zone: u16, out: &mut [u8]) -> IoResult<()>
     where
         T: BlockDevice,
     {
@@ -210,12 +203,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 把一个“块号表”写回 `zone` 指向的块（表长必须恰好为一个 zone）。
-    pub(crate) fn write_zone_table(
-        &self,
-        device: &mut T,
-        zone: u16,
-        table: &[u16],
-    ) -> IoResult<()>
+    pub(crate) fn write_zone_table(&self, device: &mut T, zone: u16, table: &[u16]) -> IoResult<()>
     where
         T: BlockDevice,
     {

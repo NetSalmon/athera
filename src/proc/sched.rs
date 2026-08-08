@@ -1,8 +1,18 @@
+use alloc::collections::VecDeque;
+
+use athera_macros::lazy;
+
 use crate::{
+    constants::MAX_CPU,
     info,
-    proc::{CURRENT_TASK, CurrentTask, task::TASKS},
+    proc::{CURRENT_TASK, CurrentTask, Tid, task::TASKS},
+    sync::per_cpu::PerCpu,
     trap::restore_context,
 };
+
+#[lazy]
+pub static TASK_QUEUE: PerCpu<VecDeque<Tid>, MAX_CPU> =
+    PerCpu::new([const { VecDeque::new() }; MAX_CPU]);
 
 #[unsafe(no_mangle)]
 pub fn switch() -> ! {

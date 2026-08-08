@@ -35,3 +35,4 @@ members = [
 
 [features]
 halt_directly = []
+smp = []

@@ -45,3 +45,10 @@ path = "src/bin/quick_sort.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "fork"
+path = "src/bin/fork.rs"
+test = false
+doctest = false
+bench = false

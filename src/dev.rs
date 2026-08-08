@@ -27,10 +27,10 @@ mod device;
 mod memory;
 mod ns16550a;
 pub(crate) mod traits;
+mod tree;
 mod virtio_blk;
 mod virtio_mmio;
 mod virtio_rng;
-mod tree;
 
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
     Ok(unsafe { fdt::Fdt::from_ptr(FDT_ADDR)? })
@@ -42,10 +42,10 @@ fn boot_fail(err: Error) -> ! {
 
 #[lazy]
 pub static UART: Option<SpinLock<Ns16550a>> = {
-        match parse_fdt() {
-            Ok(fdt) => Ns16550a::probe(&fdt).map(|uart| {
-                uart.init();
-                SpinLock::new(uart)
+    match parse_fdt() {
+        Ok(fdt) => Ns16550a::probe(&fdt).map(|uart| {
+            uart.init();
+            SpinLock::new(uart)
         }),
         Err(err) => {
             warn!("failed to init UART: {err}");
