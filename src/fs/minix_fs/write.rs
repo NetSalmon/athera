@@ -7,9 +7,11 @@ use super::{
     DINode, File, FileType, MinixFs, Mode,
     types::{DirEntryRaw, MinixFsMagic},
 };
-use crate::constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR};
-use crate::dev::traits::BlockDevice;
-use crate::fs::path::PathBuf;
+use crate::{
+    constants::{MINIX_DIRECT_ZONES, PATH_SEPARATOR},
+    dev::traits::BlockDevice,
+    fs::path::PathBuf,
+};
 
 impl<T> MinixFs<T> {
     /// 把展开后的数据块号列表 `zones` 写回 inode 的 zone 数组与间接块表。
@@ -274,7 +276,12 @@ impl<T> MinixFs<T> {
     }
 
     /// 在目录 `dir_ino` 中只读查找名为 `name` 的目录项，返回其 inode 号。
-    fn find_dir_entry_ino<E>(&self, dir_ino: u16, name: &str, device: &mut T) -> Result<Option<u16>, E>
+    fn find_dir_entry_ino<E>(
+        &self,
+        dir_ino: u16,
+        name: &str,
+        device: &mut T,
+    ) -> Result<Option<u16>, E>
     where
         T: BlockDevice<Error = E>,
     {

@@ -73,11 +73,14 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
     boot::spawn_from_disk("/bin/hello_world");
+    boot::spawn_from_disk("/bin/quick_sort");
+    boot::spawn_from_disk("/bin/panic");
     boot::spawn_from_disk("/bin/sort");
     boot::spawn_from_disk("/bin/add");
 
     proc::sched::switch();
 }
+
 #[unsafe(no_mangle)]
 /// 停机：输出日志并通过 SBI 复位（关机）。
 fn kernel_halt() -> ! {
@@ -92,23 +95,21 @@ fn kernel_halt() -> ! {
 }
 
 #[panic_handler]
-fn panic_handle(info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
     error!("========= kernel panic =========");
-    error!("{}", info.message());
 
-    match info.location() {
-        Some(location) => {
-            error!(
-                "at {}:{}:{}",
-                location.file(),
-                location.line(),
-                location.column()
-            );
-        }
-        None => {
-            error!("location unknown");
-        }
+    if let Some(location) = info.location() {
+        error!(
+            "panicked at {}:{}:{}:",
+            location.file(),
+            location.line(),
+            location.column()
+        );
+    } else {
+        error!("panicked at unknown location:");
     }
+
+    error!("{}", info.message());
 
     error!("================================");
 

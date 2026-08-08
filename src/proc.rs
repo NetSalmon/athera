@@ -4,11 +4,7 @@
 //! - [`exec`]：从内嵌 ELF 加载用户程序，建立用户地址空间并切换进用户态。
 use athera_const::lazy;
 
-use crate::{
-    constants::MAX_CPU,
-    proc::task::Tid,
-    sync::per_cpu::PerCpu,
-};
+use crate::{constants::MAX_CPU, proc::task::Tid, sync::per_cpu::PerCpu};
 
 pub(crate) mod exec;
 pub(crate) mod sched;

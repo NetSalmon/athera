@@ -22,8 +22,11 @@ use alloc::{
 
 use athera_const::lazy;
 
-use crate::fs::{FileType, Mode, Path, PathBuf};
-use crate::{bits, numeric};
+use crate::{
+    bits,
+    fs::{FileType, Mode, Path, PathBuf},
+    numeric,
+};
 
 /// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,10 +4,14 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use super::{MinixFs, FileType, types::DINode};
-use crate::dev::traits::BlockDevice;
-use crate::fs::path::{Path, PathBuf};
-use crate::fs::SeekFrom;
+use super::{FileType, MinixFs, types::DINode};
+use crate::{
+    dev::traits::BlockDevice,
+    fs::{
+        SeekFrom,
+        path::{Path, PathBuf},
+    },
+};
 
 /// 打开的文件：保存 inode 信息、数据块号与所属文件系统的引用。
 ///

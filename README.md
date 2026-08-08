@@ -101,9 +101,10 @@ athera/                       # 内核（根 crate）
 ├── linker.ld               内核链接脚本
 ├── config.toml             构建时配置
 ├── build.rs
-├── mkdisk.py               磁盘索引镜像写入脚本（见“磁盘索引格式”）
-├── minix_put.py             MINIX V1 镜像写入脚本（见“MINIX 文件系统”）
-└── start.sh                QEMU 启动脚本
+└── scripts/
+    ├── mkdisk.py           磁盘索引镜像写入脚本（见“磁盘索引格式”）
+    ├── put_userland.sh     构建并把用户程序复制到 MINIX 镜像 /bin/（见“MINIX 文件系统”）
+    └── start.sh            QEMU 启动脚本
 ```
 
 ## 构建与运行
@@ -159,6 +160,14 @@ cargo build --release --features halt_directly
 内核启动时从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix_fs.rs`）：解析超级块（`SuperBlock`）、磁盘 inode（`DINode`）与目录项（`DirEntryV1_14` / `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过 `MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `proc::exec::spawn_buffer` 加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，自动分配数据块并维护直接/一级/二级间接块），inode 与数据块位图用 `athera-bitmap` 的 `BitMapView` 零拷贝维护（`alloc_inode` / `free_inode` / `alloc_zone` / `free_zone`），并支持硬链接（`link`）、删除（`unlink` / `remove`，链接数归零时释放数据块与 inode）、目录创建/删除（`create_dir` / `remove_dir`，仅空目录）与符号链接（`symlink`，目标路径存放在数据块中）；`open` 解析路径时自动解引用符号链接（含嵌套与相对/绝对目标，循环检测上限 40 跳）；路径类型 `Path` / `PathBuf` 仿标准库（`parent` / `file_name` / `extension` / `join` / `components` / `push` / `pop` 等），打开的文件 `File` 携带路径并支持 `path()` / `name()`；写入结果可通过 `fsck.minix` 校验。
 
 启动时会依次加载并执行磁盘上的 `/bin/hello_world` 与 `/bin/sort`，最后执行编译期内嵌的 `add`。`-d` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
+
+把用户程序复制到该镜像的 `/bin/` 目录下（依赖 libguestfs 的 `guestfish`，会自动构建 `athera-userland`）：
+
+```bash
+./scripts/put_userland.sh              # 构建并写入全部 [[bin]]（hello_world / add / sort / panic）
+./scripts/put_userland.sh -n           # 不重新构建，直接用现有 ELF
+./scripts/put_userland.sh -i disk.img  # 指定其他镜像
+```
 
 ## 磁盘索引格式
 

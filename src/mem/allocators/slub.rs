@@ -5,11 +5,14 @@
 use core::{alloc::Layout, cmp::max, fmt, marker::PhantomData, ptr::null_mut};
 
 use crate::{
-    constants::{CACHES_MAX, MAX_CPU, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MAX_PAGE_SIZE, SLUB_MIN_OBJECTS, SLUB_MIN_ORDER, align}, mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList}, sync::{
-        per_cpu::{
-            PerCpu
-        }, spin::SpinLock
-    }, debug, trace,
+    constants::{
+        CACHES_MAX, MAX_CPU, PAGE_SIZE, SLUB_MAX_ORDER, SLUB_MAX_PAGE_SIZE, SLUB_MIN_OBJECTS,
+        SLUB_MIN_ORDER, align,
+    },
+    debug,
+    mem::allocators::{FRAME_ALLOCATOR, intrusive_list::IntrusiveList},
+    sync::{per_cpu::PerCpu, spin::SpinLock},
+    trace,
 };
 
 #[derive(Debug)]
@@ -20,7 +23,7 @@ pub struct SlowCaches(pub(crate) [Cache; CACHES_MAX]);
 
 pub struct Caches {
     cpu_caches: CpuCache,
-    slow_caches: SpinLock<SlowCaches>
+    slow_caches: SpinLock<SlowCaches>,
 }
 
 impl Caches {

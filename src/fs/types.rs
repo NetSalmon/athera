@@ -4,9 +4,8 @@
 
 #![allow(unused)]
 
-use crate::{bits, numeric};
-
 pub use crate::constants::S_IFMT;
+use crate::{bits, numeric};
 
 // 文件 mode 位，布局与 Unix `st_mode` 一致：
 //

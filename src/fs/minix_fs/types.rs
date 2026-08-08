@@ -7,9 +7,8 @@
 
 use core::fmt::{Debug, Display, Formatter, Write};
 
-use crate::numeric;
-
 use super::super::types::{FileType, Mode, S_IFMT};
+use crate::numeric;
 
 #[repr(transparent)]
 #[derive(Clone)]

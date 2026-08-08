@@ -1,9 +1,24 @@
 use core::panic::PanicInfo;
 
-use crate::syscall;
+use crate::{println, syscall};
 
-/// 用户程序 panic 时直接通过 `exit` 系统调用退出。
+/// 用户程序 panic 时以 Rust 风格打印信息，然后通过 `exit` 系统调用退出。
 #[panic_handler]
-pub fn panic_handle(_info: &PanicInfo) -> ! {
+pub fn panic_handle(info: &PanicInfo) -> ! {
+    if let Some(location) = info.location() {
+        println!(
+            "thread 'main' panicked at {}:{}:{}:",
+            location.file(),
+            location.line(),
+            location.column()
+        );
+    } else {
+        println!("thread 'main' panicked:");
+    }
+
+    println!("{}", info.message());
+
+    println!("note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace");
+
     syscall::exit(1);
 }

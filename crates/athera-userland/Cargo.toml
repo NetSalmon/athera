@@ -31,3 +31,17 @@ path = "src/bin/sort.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "panic"
+path = "src/bin/panic.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "quick_sort"
+path = "src/bin/quick_sort.rs"
+test = false
+doctest = false
+bench = false
