@@ -1,0 +1,12 @@
+[package]
+name = "athera-bitmap"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+test = false
+bench = false
+doctest = false
+
+[dependencies]
+thiserror = { version = "2.0.19", default-features = false }
