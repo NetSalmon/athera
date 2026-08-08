@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 mod arch;
+mod boot;
 mod constants;
 mod dev;
 mod elf;
@@ -18,14 +19,11 @@ mod trap;
 
 extern crate alloc;
 
-use alloc::vec;
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
     arch::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
-    dev::VIRTIO_BLK,
-    fs::minix_fs::{MinixFs, Path},
     log::Level,
     mem::page_table::identity_map,
     trap::set_next_timer,
@@ -74,50 +72,12 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     info!("page table setup ok");
 
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
-    spawn_from_disk("/bin/hello_world");
-    spawn_from_disk("/bin/sort");
-    spawn_from_disk("/bin/add");
+    boot::spawn_from_disk("/bin/hello_world");
+    boot::spawn_from_disk("/bin/sort");
+    boot::spawn_from_disk("/bin/add");
 
     proc::sched::switch();
 }
-
-/// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
-fn spawn_from_disk(path: &str) {
-    let Some(ref mut blk) = *VIRTIO_BLK.force().lock() else {
-        error!("no virtio-blk device, skip {path}");
-        return;
-    };
-
-    let fs = match MinixFs::from_device(blk) {
-        Ok(Some(fs)) => fs,
-        Ok(None) => {
-            error!("not a MINIX filesystem, skip {path}");
-            return;
-        }
-        Err(_) => {
-            error!("failed to read MINIX superblock, skip {path}");
-            return;
-        }
-    };
-
-    let Some(mut f) = fs.open(&Path::from_str(path), blk).unwrap() else {
-        error!("{path} not found on disk");
-        return;
-    };
-
-    let mut buf = vec![0u8; f.size() as usize];
-    info!("{:#?}", f);
-
-    if f.read(&mut buf, blk).unwrap() != buf.len() {
-        error!("short read, skip {path}");
-        return;
-    }
-
-    if let Err(err) = proc::exec::spawn_buffer(&buf, None) {
-        error!("failed to execute user program: {err}");
-    }
-}
-
 #[unsafe(no_mangle)]
 /// 停机：输出日志并通过 SBI 复位（关机）。
 fn kernel_halt() -> ! {

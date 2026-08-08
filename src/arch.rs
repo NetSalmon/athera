@@ -5,8 +5,8 @@
 //! - [`sbi`]：SBI 调用封装（srst 复位/关机、hsm 停止等）。
 use core::arch::asm;
 
-pub mod registers;
-pub mod sbi;
+pub(crate) mod registers;
+pub(crate) mod sbi;
 
 #[inline]
 pub fn breakpoint() {

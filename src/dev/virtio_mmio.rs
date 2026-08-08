@@ -3,8 +3,8 @@
 //!
 //! 定义 MMIO 寄存器布局（`VirtqCfg`）、设备状态/类型枚举与虚拟队列
 //! 结构；设备初始化流程见 [`handshake`]，队列实现见 [`queue`]。
-pub mod handshake;
-pub mod queue;
+mod handshake;
+pub(crate) mod queue;
 
 use alloc::vec::Vec;
 use core::sync::atomic::{Ordering, fence};

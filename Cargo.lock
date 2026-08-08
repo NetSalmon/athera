@@ -15,6 +15,7 @@ dependencies = [
 name = "athera"
 version = "0.1.0"
 dependencies = [
+ "athera-bitmap",
  "athera-const",
  "athera-id-alloc",
  "athera-rand",
@@ -23,6 +24,13 @@ dependencies = [
  "paste",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "athera-bitmap"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

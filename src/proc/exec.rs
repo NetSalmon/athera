@@ -83,7 +83,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
             continue;
         }
 
-        let alloc_page = alloc_frame(Some(memsz)).ok_or(MemError::OutOfMemory)?;
+        let frame = alloc_frame(Some(memsz)).ok_or(MemError::OutOfMemory)?;
 
         let mapping_flags = PageTableEntryFlags::builder()
             .set_u(true)
@@ -94,9 +94,9 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
             .set_d(true)
             .build();
 
-        for step in (0..alloc_page.size).step_by(PAGE_SIZE) {
+        for step in (0..frame.size).step_by(PAGE_SIZE) {
             let va = vaddr as usize + step;
-            let pa = alloc_page.start + step;
+            let pa = frame.start + step;
 
             PAGE_TABLE_MANAGER.force().lock().user_map(
                 tid,
@@ -107,9 +107,9 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
             )?;
         }
 
-        let start = alloc_page.start as *mut u8;
+        let start = frame.start as *mut u8;
 
-        memory_set.used_page.push(alloc_page);
+        memory_set.used_page.push(frame);
 
         // clean
         unsafe { ptr::write_bytes(start, 0, memsz) };

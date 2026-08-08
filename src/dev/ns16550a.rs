@@ -3,6 +3,8 @@
 //!
 //! 通过 `mmio_regs!` 访问 RBR/THR、IER、FCR、LCR、LSR 寄存器，支持
 //! FIFO/行控制初始化、字符收发与设备树探测。
+use core::fmt;
+
 use fdt::Fdt;
 
 use crate::{
@@ -10,6 +12,16 @@ use crate::{
     dev::device::{Device, Resource},
     mmio_regs,
 };
+
+/// 让 UART 满足 `core::fmt::Write`，供 `print!` / `println!` 输出。
+impl fmt::Write for Ns16550a {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.bytes() {
+            self.putchar(c);
+        }
+        Ok(())
+    }
+}
 
 pub struct Ns16550a {
     pub device: Device,

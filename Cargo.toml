@@ -19,6 +19,7 @@ bench = false
 paste = "1.0.15"
 fdt = "0.1.5"
 thiserror = { version = "2.0.19", default-features = false }
+athera-bitmap = { path = "crates/athera-bitmap" }
 athera-const = { path = "crates/athera-const" }
 athera-id-alloc = { path = "crates/athera-id-alloc" }
 athera-rand = { path = "crates/athera-rand" }

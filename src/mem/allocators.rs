@@ -12,15 +12,15 @@ use crate::{
     constants::{AVAIL_RANGE, PAGE_SIZE},
     debug,
     mem::{
-        alloc_page::AllocPage,
         allocators::{buddy::BuddyAllocator, slub::Caches},
+        frame::Frame,
     },
     sync::{lazy::LazyLock, spin::SpinLock},
 };
 
-pub mod buddy;
-pub mod intrusive_list;
-pub mod slub;
+pub(crate) mod buddy;
+pub(crate) mod intrusive_list;
+pub(crate) mod slub;
 
 #[lazy(spin)]
 pub static FRAME_ALLOCATOR: BuddyAllocator = {
@@ -33,18 +33,18 @@ pub static FRAME_ALLOCATOR: BuddyAllocator = {
 };
 
 /// 从伙伴系统分配一个物理页帧；`size` 为 `None` 时使用默认页大小。
-pub fn alloc_frame(size: Option<usize>) -> Option<AllocPage> {
+pub fn alloc_frame(size: Option<usize>) -> Option<Frame> {
     let size = size.unwrap_or(PAGE_SIZE);
 
     FRAME_ALLOCATOR
         .force()
         .lock()
         .alloc_frame(size)
-        .map(|start| AllocPage { start, size })
+        .map(|start| Frame { start, size })
 }
 
-/// 归还一个物理页帧（解构 `AllocPage` 后直接归还，不触发 `Drop`）。
-pub fn dealloc_frame(AllocPage { start, size }: AllocPage) {
+/// 归还一个物理页帧（解构 `Frame` 后直接归还，不触发 `Drop`）。
+pub fn dealloc_frame(Frame { start, size }: Frame) {
     FRAME_ALLOCATOR.force().lock().dealloc_frame(start, size);
 }
 

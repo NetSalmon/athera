@@ -1,20 +1,11 @@
 #![allow(dead_code)]
-//! 格式化输出。
+//! 控制台输出层。
 //!
-//! 让 [`Ns16550a`] 实现
-//! `core::fmt::Write`，并提供 `print!` / `println!` 宏与 UART 字符读取。
+//! 基于 `dev::UART`（ns16550a）提供 `print!` / `println!` 宏与字符读取；
+//! `Ns16550a` 对 `core::fmt::Write` 的实现见 `dev::ns16550a`。
 use core::fmt;
 
-use crate::dev::{UART, ns16550a::Ns16550a};
-
-impl fmt::Write for Ns16550a {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        for c in s.bytes() {
-            self.putchar(c);
-        }
-        Ok(())
-    }
-}
+use crate::dev::UART;
 
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;

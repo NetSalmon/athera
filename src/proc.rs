@@ -9,9 +9,9 @@ use crate::{
     sync::per_cpu::{MAX_CPU, PerCpu},
 };
 
-pub mod exec;
-pub mod sched;
-pub mod task;
+pub(crate) mod exec;
+pub(crate) mod sched;
+pub(crate) mod task;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CurrentTask {

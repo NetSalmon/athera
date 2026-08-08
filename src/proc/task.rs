@@ -14,7 +14,7 @@ use crate::{
     error,
     error::{Error, ProcError},
     info,
-    mem::{addr::PhysicalAddr, alloc_page::AllocPage},
+    mem::{addr::PhysicalAddr, frame::Frame},
     proc::{CURRENT_TASK, CurrentTask},
     trap::TrapContext,
 };
@@ -45,7 +45,7 @@ pub enum TaskStatus {
 
 #[derive(Debug)]
 pub struct MemorySet {
-    pub used_page: Vec<AllocPage>,
+    pub used_page: Vec<Frame>,
     pub user_root_page_table: PhysicalAddr,
 }
 
@@ -81,7 +81,7 @@ impl Tasks {
     pub fn run_first(&mut self) -> Result<TrapContext, Error> {
         if let Some((tid, tcb)) = self.0.iter_mut().next() {
             *CURRENT_TASK.current() = Some(CurrentTask {
-                tid: tid.clone(),
+                tid: *tid,
                 exit_code: None,
             });
 

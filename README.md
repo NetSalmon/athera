@@ -29,6 +29,7 @@ athera/                       # 内核（根 crate）
 │   ├── arch/               RISC-V 相关
 │   │   ├── registers/      csr / gpr / values（寄存器抽象）
 │   │   └── sbi.rs          SBI 封装（base / time / ipi / rfence / hsm / srst / legacy / dbcn）
+│   ├── boot.rs            启动编排（从磁盘加载用户程序）
 │   ├── constants/          常量模块
 │   │   ├── memory.rs       内存常量与懒加载范围（MEMORY_RANGE 等）
 │   │   ├── symbols.rs      链接器符号（_end / trap_entry / user_trap_entry / FDT_ADDR）
@@ -49,13 +50,20 @@ athera/                       # 内核（根 crate）
 │   │       └── queue.rs      虚拟队列
 │   ├── mem/                内存管理
 │   │   ├── addr.rs         地址位域抽象（Sv39）
-│   │   ├── alloc_page.rs   物理页帧句柄（AllocPage）
+│   │   ├── frame.rs        物理页帧句柄（Frame）
 │   │   ├── allocators/     伙伴系统、SLUB 全局分配器、侵入式链表
 │   │   └── page_table/     页表（内核/用户地址空间）
 │   │       └── handle.rs   页表句柄
 │   ├── entry.asm           启动汇编（_start / 内核栈 / FDT_ADDR 声明）
 │   ├── fs/                文件系统
-│   │   ├── minix_fs.rs    MINIX V1 文件系统（SuperBlock / DINode / DirEntry / Path / DirEntries）
+│   │   ├── minix_fs.rs    MINIX V1 文件系统（模块根：MinixFs 核心 / 位图分配 / 再导出）
+│   │   ├── minix_fs/      MINIX V1 子模块
+│   │   │   ├── types.rs    磁盘结构（SuperBlock / DINode / DirEntryRaw / Mode / 魔数）
+│   │   │   ├── path.rs     路径类型（Path / PathBuf / Component）
+│   │   │   ├── dir.rs      目录项与按需读取迭代器（DirEntries）
+│   │   │   ├── file.rs     打开的文件（File 读写）
+│   │   │   ├── write.rs    写路径（创建/删除、硬链接、符号链接、目录）
+│   │   │   └── open.rs     目录读取与路径解析（open / resolve_path）
 │   │   └── record.rs      磁盘索引块（RecordString / File / Index，File 含 start_block / size_bytes / name）
 │   ├── rand.rs             全局随机源（ChaCha20 CSPRNG）
 │   ├── sync/               同步原语
@@ -70,7 +78,7 @@ athera/                       # 内核（根 crate）
 │   ├── trap.rs             陷阱处理与用户态上下文、定时器
 │   ├── syscall.rs          系统调用
 │   ├── elf.rs              ELF 结构定义
-│   ├── io.rs               格式化输出（print!/println!）
+│   ├── io.rs               控制台输出层（print!/println! / getchar，fmt::Write 实现在 dev/ns16550a）
 │   ├── log.rs              分级日志（trace!/debug!/info!/warn!/error!）
 │   ├── macros.rs           宏定义（bits!/numeric!/mmio_regs!/array_struct!）
 │   ├── error.rs            错误类型
@@ -88,6 +96,7 @@ athera/                       # 内核（根 crate）
 │   ├── athera-const/        编译期常量与属性宏（const_val / lazy / spin）
 │   ├── athera-const-macros/ proc-macro crate（const_val / lazy / spin）
 │   ├── athera-id-alloc/     ID 分配器（用于 TID）
+│   ├── athera-bitmap/       no_std 定长位图（空闲位查找 / 按位操作）
 │   └── athera-rand/         no_std 随机数库（ChaCha20 / xoshiro256**）
 ├── linker.ld               内核链接脚本
 ├── config.toml             构建时配置
@@ -147,7 +156,7 @@ cargo build --release --features halt_directly
 
 ## MINIX 文件系统
 
-内核启动时从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix_fs.rs`）：解析超级块（`SuperBlock`）、磁盘 inode（`DINode`）与目录项（`DirEntryV1_14` / `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过 `MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `proc::exec::spawn_buffer` 加载执行。
+内核启动时从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix_fs.rs`）：解析超级块（`SuperBlock`）、磁盘 inode（`DINode`）与目录项（`DirEntryV1_14` / `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过 `MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `proc::exec::spawn_buffer` 加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，自动分配数据块并维护直接/一级/二级间接块），inode 与数据块位图用 `athera-bitmap` 的 `BitMapView` 零拷贝维护（`alloc_inode` / `free_inode` / `alloc_zone` / `free_zone`），并支持硬链接（`link`）、删除（`unlink` / `remove`，链接数归零时释放数据块与 inode）、目录创建/删除（`create_dir` / `remove_dir`，仅空目录）与符号链接（`symlink`，目标路径存放在数据块中）；`open` 解析路径时自动解引用符号链接（含嵌套与相对/绝对目标，循环检测上限 40 跳）；路径类型 `Path` / `PathBuf` 仿标准库（`parent` / `file_name` / `extension` / `join` / `components` / `push` / `pop` 等），打开的文件 `File` 携带路径并支持 `path()` / `name()`；写入结果可通过 `fsck.minix` 校验。
 
 启动时会依次加载并执行磁盘上的 `/bin/hello_world` 与 `/bin/sort`，最后执行编译期内嵌的 `add`。`-d` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
 

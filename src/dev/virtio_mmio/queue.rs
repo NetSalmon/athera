@@ -13,7 +13,7 @@ use crate::{
     bits,
     constants::RING_SIZE,
     error::{DevError, MemError},
-    mem::{alloc_page::AllocPage, allocators::FRAME_ALLOCATOR},
+    mem::{allocators::FRAME_ALLOCATOR, frame::Frame},
 };
 
 /// 本模块统一结果类型。
@@ -76,7 +76,7 @@ impl Queue {
 }
 
 pub struct Virtq {
-    _mem: AllocPage,
+    _mem: Frame,
 }
 
 impl Virtq {
@@ -91,7 +91,7 @@ impl Virtq {
             core::ptr::write_bytes(start as *mut u8, 0, layout.size());
         }
         Ok(Virtq {
-            _mem: AllocPage {
+            _mem: Frame {
                 start,
                 size: layout.size(),
             },

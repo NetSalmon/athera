@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! 页表句柄 [`PageTableHandle`]。
 //!
-//! 包装根页表指针与对应的 [`AllocPage`]，保证页表页的生命周期（`Drop`
+//! 包装根页表指针与对应的 [`Frame`]，保证页表页的生命周期（`Drop`
 //! 时归还物理页），并提供高低半区复制（用于在用户地址空间内继承内核
 //! 映射）。
 use core::{
@@ -14,8 +14,8 @@ use crate::{
     constants::PTE_NUMBER,
     error::MemError,
     mem::{
-        alloc_page::AllocPage,
         allocators::alloc_frame,
+        frame::Frame,
         page_table::{PageTable, PageTableEntry},
     },
 };
@@ -26,12 +26,12 @@ pub type Result<T> = core::result::Result<T, MemError>;
 #[derive(Debug)]
 pub struct PageTableHandle {
     ptr: NonNull<PageTable>,
-    page: AllocPage,
+    page: Frame,
     _phantom: PhantomData<PageTable>,
 }
 
 impl PageTableHandle {
-    pub fn new(page_table: PageTable, page: AllocPage) -> Self {
+    pub fn new(page_table: PageTable, page: Frame) -> Self {
         Self {
             ptr: NonNull::from(&page_table),
             page,
@@ -61,7 +61,7 @@ impl PageTableHandle {
     /// `addr` 必须指向合法且对齐的页表内存，`size` 与页表的分配大小
     /// 一致；句柄 `Drop` 时会按 `size` 归还物理页。
     pub unsafe fn from_raw(addr: usize, size: usize) -> Self {
-        let page = unsafe { AllocPage::from_raw(addr, size) };
+        let page = unsafe { Frame::from_raw(addr, size) };
 
         Self {
             ptr: NonNull::new(addr as *mut PageTable)

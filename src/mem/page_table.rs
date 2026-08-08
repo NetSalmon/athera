@@ -4,7 +4,7 @@
 //! [`PageTable`] 是一页 512 项的页表；[`PageTableManager`] 维护内核
 //! 地址空间与按 TID 索引的用户地址空间，提供恒等映射、映射/解映射、
 //! 激活（写 `satp`）与 `sfence.vma` 刷新。
-pub mod handle;
+pub(crate) mod handle;
 
 use alloc::collections::BTreeMap;
 use core::arch::asm;
@@ -126,7 +126,10 @@ pub fn identity_map() -> Result<()> {
     let blk_range = VIRTIO_BLK
         .lock()
         .as_ref()
-        .map(|blk| blk.device.mmio.start..blk.device.mmio.start + blk.device.mmio.size);
+        .map(|blk| {
+            let dev = blk.lock();
+            dev.device.mmio.start..dev.device.mmio.start + dev.device.mmio.size
+        });
     let rng_range = VIRTIO_RNG
         .lock()
         .as_ref()

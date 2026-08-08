@@ -5,7 +5,7 @@
 //! `FDT` 等懒加载
 //! 静态。`FDT` 在初始化完成后会把设备树搬进堆中，并把 `FDT_ADDR` 指向
 //! 新副本，同时把原设备树所占物理内存归还给伙伴系统。
-use alloc::{vec, vec::Vec};
+use alloc::{sync::Arc, vec, vec::Vec};
 use core::{arch::asm, slice};
 
 use athera_const::lazy;
@@ -23,13 +23,13 @@ use crate::{
     warn,
 };
 
-pub mod device;
-pub mod memory;
-pub mod ns16550a;
-pub mod traits;
-pub mod virtio_blk;
-pub mod virtio_mmio;
-pub mod virtio_rng;
+mod device;
+mod memory;
+mod ns16550a;
+pub(crate) mod traits;
+mod virtio_blk;
+mod virtio_mmio;
+mod virtio_rng;
 
 fn parse_fdt() -> Result<fdt::Fdt<'static>> {
     Ok(unsafe { fdt::Fdt::from_ptr(FDT_ADDR)? })
@@ -54,9 +54,9 @@ pub static UART: Option<SpinLock<Ns16550a>> = {
 };
 
 #[lazy(spin)]
-pub static VIRTIO_BLK: Option<VirtioBlk> = {
+pub static VIRTIO_BLK: Option<Arc<SpinLock<VirtioBlk>>> = {
     match parse_fdt() {
-        Ok(fdt) => VirtioBlk::probe(&fdt),
+        Ok(fdt) => VirtioBlk::probe(&fdt).map(|blk| Arc::new(SpinLock::new(blk))),
         Err(err) => {
             warn!("failed to init virtio-blk: {err}");
             None

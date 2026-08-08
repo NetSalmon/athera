@@ -14,7 +14,7 @@
 //! 内核当前为单核运行，因此 [`spin::SpinLock`] 通过“进入临界区前关闭
 //! SIE 中断位、退出时恢复”的方式实现互斥，避免临界区被中断重入。
 
-pub mod lazy;
-pub mod once;
-pub mod per_cpu;
-pub mod spin;
+pub(crate) mod lazy;
+pub(crate) mod once;
+pub(crate) mod per_cpu;
+pub(crate) mod spin;
