@@ -1,7 +1,10 @@
-use crate::fs::vfs::Vec;
-use crate::fs::{FsError, FsResult, Path};
-use crate::fs::vfs::{DirEntry, Stat};
-use crate::numeric;
+use crate::{
+    fs::{
+        FsError, FsResult, Path,
+        vfs::{DirEntry, Stat, Vec},
+    },
+    numeric,
+};
 
 pub trait FileOps: Send + Sync {
     fn read(&self, buf: &mut [u8]) -> FsResult<usize> {

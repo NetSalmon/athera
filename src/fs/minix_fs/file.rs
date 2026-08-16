@@ -177,7 +177,7 @@ where
         while self.zones.len() < need_zones {
             let zone = {
                 let mut dev = self.fs.lock();
-                self.fs.alloc_zone(&mut dev)?
+                self.fs.alloc_zone(&dev)?
             };
             let Some(zone) = zone else {
                 break; // 磁盘空间不足
@@ -188,7 +188,7 @@ where
         if grew {
             let mut dev = self.fs.lock();
             self.fs
-                .write_file_zones(&mut self.inode, &self.zones, &mut dev)?;
+                .write_file_zones(&mut self.inode, &self.zones, &dev)?;
         }
 
         // 2. 写入数据（只写能落到已分配数据块的部分）。
@@ -214,7 +214,7 @@ where
         if new_size > self.inode.size as usize {
             self.inode.size = new_size as u32;
             let mut dev = self.fs.lock();
-            self.fs.write_d_inode(self.ino, &self.inode, &mut dev)?;
+            self.fs.write_d_inode(self.ino, &self.inode, &dev)?;
         }
 
         Ok(done)

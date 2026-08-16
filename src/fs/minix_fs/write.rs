@@ -106,12 +106,12 @@ impl<T> MinixFs<T> {
 
         let mode = Mode::from((u16::from(FileType::REG)) << 12 | 0o644);
         let mut dev = self.lock();
-        let Some(ino) = self.alloc_empty_inode(mode, &mut dev)? else {
+        let Some(ino) = self.alloc_empty_inode(mode, &dev)? else {
             return Ok(None);
         };
 
-        if let Err(err) = self.add_dir_entry_at(dir_ino, name, ino, &mut dev) {
-            let _ = self.free_inode(ino, &mut dev);
+        if let Err(err) = self.add_dir_entry_at(dir_ino, name, ino, &dev) {
+            let _ = self.free_inode(ino, &dev);
             return Err(err);
         }
         Ok(Some(ino))
@@ -131,7 +131,7 @@ impl<T> MinixFs<T> {
         }
 
         let mut dev = self.lock();
-        let d_inode = self.d_inode(old_ino, &mut dev)?;
+        let d_inode = self.d_inode(old_ino, &dev)?;
         if d_inode.nlinks == 0 || d_inode.nlinks == u8::MAX {
             return Ok(false); // inode 未分配，或链接数已达上限
         }
@@ -139,11 +139,11 @@ impl<T> MinixFs<T> {
             return Ok(false); // 目录不能硬链接
         }
 
-        self.add_dir_entry_at(dir_ino, name, old_ino, &mut dev)?;
+        self.add_dir_entry_at(dir_ino, name, old_ino, &dev)?;
 
         let mut updated = d_inode;
         updated.nlinks += 1;
-        self.write_d_inode(old_ino, &updated, &mut dev)?;
+        self.write_d_inode(old_ino, &updated, &dev)?;
         Ok(true)
     }
 
@@ -163,25 +163,25 @@ impl<T> MinixFs<T> {
         let mut dev = self.lock();
 
         // 先只读定位目标 inode 并检查类型，避免“删了目录项再回滚”。
-        let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &mut dev)? else {
+        let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
             return Ok(false);
         };
-        let d_inode = self.d_inode(ino, &mut dev)?;
+        let d_inode = self.d_inode(ino, &dev)?;
         if d_inode.mode.file_type() == FileType::DIR {
             return Ok(false);
         }
 
-        if !self.remove_dir_entry(dir_ino, name, &mut dev)? {
+        if !self.remove_dir_entry(dir_ino, name, &dev)? {
             return Ok(false);
         }
 
         let nlinks = d_inode.nlinks.saturating_sub(1);
         if nlinks == 0 {
-            self.free_inode_blocks_at(ino, &mut dev)?;
+            self.free_inode_blocks_at(ino, &dev)?;
         } else {
             let mut updated = d_inode;
             updated.nlinks = nlinks;
-            self.write_d_inode(ino, &updated, &mut dev)?;
+            self.write_d_inode(ino, &updated, &dev)?;
         }
         Ok(true)
     }
@@ -202,10 +202,10 @@ impl<T> MinixFs<T> {
         // Phase 1：分配 inode 并读取其磁盘 inode（临时持锁）。
         let (ino, inode) = {
             let mut dev = self.lock();
-            let Some(ino) = self.alloc_empty_inode(mode, &mut dev)? else {
+            let Some(ino) = self.alloc_empty_inode(mode, &dev)? else {
                 return Ok(None);
             };
-            (ino, self.d_inode(ino, &mut dev)?)
+            (ino, self.d_inode(ino, &dev)?)
         };
 
         // Phase 2：把目标路径作为符号链接内容写入（`File` 内部自行持锁）。
@@ -369,7 +369,7 @@ impl<T> MinixFs<T> {
         T: BlockDevice,
     {
         let mut dev = self.lock();
-        self.free_inode_blocks_at(ino, &mut dev)
+        self.free_inode_blocks_at(ino, &dev)
     }
 
     /// 从固定宽度的名字字段中取出 `NUL` 结尾的名字。
@@ -382,13 +382,7 @@ impl<T> MinixFs<T> {
     ///
     /// 逐块查找空闲槽位（`ino == 0`），不够时分配并追加新数据块；目录
     /// 的 inode 与间接块表同步写回。需要调用方已持锁。
-    fn add_dir_entry_at(
-        &self,
-        dir_ino: u16,
-        name: &str,
-        new_ino: u16,
-        device: &T,
-    ) -> IoResult<()>
+    fn add_dir_entry_at(&self, dir_ino: u16, name: &str, new_ino: u16, device: &T) -> IoResult<()>
     where
         T: BlockDevice,
     {
@@ -439,7 +433,7 @@ impl<T> MinixFs<T> {
         T: BlockDevice,
     {
         let mut dev = self.lock();
-        self.add_dir_entry_at(dir_ino, name, new_ino, &mut dev)
+        self.add_dir_entry_at(dir_ino, name, new_ino, &dev)
     }
 
     /// 把 `(ino, name)` 写入目录块 `block` 的 `offset` 字节偏移处的槽位
@@ -466,40 +460,40 @@ impl<T> MinixFs<T> {
 
         let mode = Mode::from((u16::from(FileType::DIR)) << 12 | 0o755);
         let mut dev = self.lock();
-        let Some(ino) = self.alloc_empty_inode(mode, &mut dev)? else {
+        let Some(ino) = self.alloc_empty_inode(mode, &dev)? else {
             return Ok(None);
         };
 
         // 分配新目录的第一个数据块，写入 `.` 与 `..`。
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        let Some(zone) = self.alloc_zone(&mut dev)? else {
-            let _ = self.free_inode(ino, &mut dev);
+        let Some(zone) = self.alloc_zone(&dev)? else {
+            let _ = self.free_inode(ino, &dev);
             return Ok(None);
         };
         let mut block = vec![0u8; zone_size];
         Self::write_dir_slot(&mut block, 0, entry_size, ino, ".");
         Self::write_dir_slot(&mut block, entry_size, entry_size, dir_ino, "..");
-        self.write_zone(zone, &block, &mut dev)?;
+        self.write_zone(zone, &block, &dev)?;
 
         // 新目录 inode：zone[0] = 数据块，size = 两个目录项，nlinks = 2（`.` 与 `..`）。
-        let mut d_inode = self.d_inode(ino, &mut dev)?;
+        let mut d_inode = self.d_inode(ino, &dev)?;
         d_inode.nlinks = 2;
         d_inode.zone[0] = zone;
         d_inode.size = (2 * entry_size) as u32;
-        self.write_d_inode(ino, &d_inode, &mut dev)?;
+        self.write_d_inode(ino, &d_inode, &dev)?;
 
         // 父目录追加目录项；失败时回滚数据块与 inode。
-        if let Err(err) = self.add_dir_entry_at(dir_ino, name, ino, &mut dev) {
-            let _ = self.free_zone(zone, &mut dev);
-            let _ = self.free_inode(ino, &mut dev);
+        if let Err(err) = self.add_dir_entry_at(dir_ino, name, ino, &dev) {
+            let _ = self.free_zone(zone, &dev);
+            let _ = self.free_inode(ino, &dev);
             return Err(err);
         }
 
         // 父目录链接数 +1（新子目录的 `..` 引用）。
-        let mut parent = self.d_inode(dir_ino, &mut dev)?;
+        let mut parent = self.d_inode(dir_ino, &dev)?;
         parent.nlinks = parent.nlinks.saturating_add(1);
-        self.write_d_inode(dir_ino, &parent, &mut dev)?;
+        self.write_d_inode(dir_ino, &parent, &dev)?;
         Ok(Some(ino))
     }
 
@@ -516,10 +510,10 @@ impl<T> MinixFs<T> {
         }
 
         let mut dev = self.lock();
-        let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &mut dev)? else {
+        let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
             return Ok(false);
         };
-        let d_inode = self.d_inode(ino, &mut dev)?;
+        let d_inode = self.d_inode(ino, &dev)?;
         if d_inode.mode.file_type() != FileType::DIR {
             return Ok(false);
         }
@@ -527,9 +521,9 @@ impl<T> MinixFs<T> {
         // 只能删除空目录：除 `.` 与 `..` 外不得有其他目录项。
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        for zone in self.data_zones(&d_inode, &mut dev)? {
+        for zone in self.data_zones(&d_inode, &dev)? {
             let mut block = vec![0u8; zone_size];
-            self.read_zone_into(&mut dev, zone, &mut block)?;
+            self.read_zone_into(&dev, zone, &mut block)?;
             for slot in (0..zone_size).step_by(entry_size) {
                 let ino = u16::from_le_bytes([block[slot], block[slot + 1]]);
                 if ino == 0 {
@@ -542,17 +536,17 @@ impl<T> MinixFs<T> {
             }
         }
 
-        if !self.remove_dir_entry(dir_ino, name, &mut dev)? {
+        if !self.remove_dir_entry(dir_ino, name, &dev)? {
             return Ok(false);
         }
 
         // 父目录链接数 -1（该子目录的 `..` 引用消失）。
-        let mut parent = self.d_inode(dir_ino, &mut dev)?;
+        let mut parent = self.d_inode(dir_ino, &dev)?;
         parent.nlinks = parent.nlinks.saturating_sub(1);
-        self.write_d_inode(dir_ino, &parent, &mut dev)?;
+        self.write_d_inode(dir_ino, &parent, &dev)?;
 
         // 释放子目录的数据块与 inode。
-        self.free_inode_blocks_at(ino, &mut dev)?;
+        self.free_inode_blocks_at(ino, &dev)?;
         Ok(true)
     }
 
@@ -567,10 +561,10 @@ impl<T> MinixFs<T> {
         // 避免在已持锁状态下再次进入会持锁的公共方法（自旋锁不可重入）。
         let is_dir = {
             let mut dev = self.lock();
-            let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &mut dev)? else {
+            let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
                 return Ok(false);
             };
-            self.d_inode(ino, &mut dev)?.mode.file_type() == FileType::DIR
+            self.d_inode(ino, &dev)?.mode.file_type() == FileType::DIR
         };
 
         if is_dir {

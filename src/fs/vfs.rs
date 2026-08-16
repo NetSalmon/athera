@@ -20,18 +20,23 @@ use alloc::{
     sync::{Arc, Weak},
     vec::Vec,
 };
-use core::fmt::Debug;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{
+    fmt::Debug,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
 use athera_macros::lazy;
 
 use crate::{
     bits,
     dev::traits::IoError,
-    fs::{FileType, Mode, Path, PathBuf},
+    fs::{
+        FileType, Mode, Path, PathBuf,
+        vfs::file_ops::{FileOps, Whence},
+    },
     numeric,
+    sync::rwlock::RwLock,
 };
-use crate::fs::vfs::file_ops::{FileOps, Whence};
-use crate::sync::rwlock::RwLock;
 
 /// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -251,7 +256,7 @@ pub struct Dentry {
     pub children: BTreeMap<String, Arc<Dentry>>,
 }
 
-pub struct File{
+pub struct File {
     /// 具体文件系统提供的文件操作（含该打开文件的内部状态）。
     pub ops: Arc<dyn FileOps>,
     /// 对应目录项（元数据 / 挂载信息）。

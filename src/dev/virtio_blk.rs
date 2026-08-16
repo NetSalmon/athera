@@ -116,13 +116,7 @@ impl VirtioBlk {
     /// （读请求），为假表示设备从 `data` 读取（写请求）。描述符 0/1/2
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
-    fn submit(
-        &self,
-        req_type: u32,
-        sector: u64,
-        data: &[u8],
-        data_write: bool,
-    ) -> IoResult<()> {
+    fn submit(&self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> IoResult<()> {
         let req = VirtioBlkReq {
             r#type: req_type,
             reserved: 0,

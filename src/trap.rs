@@ -13,10 +13,10 @@ use crate::{
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
     debug, error, info, numeric,
+    proc::sched::{save_current, switch},
     syscall::{self, SyscallResult},
     user_trap_entry,
 };
-use crate::proc::sched::{save_current, switch};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -120,7 +120,7 @@ fn trap_handler(
                     unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
                     arch::registers::csr::Sepc::write(next);
                 }
-                SyscallResult::Exit => {
+                SyscallResult::Yield => {
                     // 仍在陷阱处理期间，SIE 已由硬件清零；不能在这里
                     // 自旋等待定时器，而应直接切换到下一个任务。
                     switch();

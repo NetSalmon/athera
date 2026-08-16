@@ -3,8 +3,7 @@
 //! [`spawn_buffer`] 解析 ELF 程序头，为每个 `PT_LOAD` 段分配物理页并
 //! 映射进用户地址空间，最后创建用户栈并通过 [`restore_context`] 切换到
 //! 用户态。
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::ptr;
 
 use crate::{

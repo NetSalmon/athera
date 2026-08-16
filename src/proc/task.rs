@@ -6,7 +6,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::ops::{Bound, Deref, DerefMut};
 
-use athera_id_alloc::{Id, IdAllocator};
+use athera_id_alloc::IdAllocator;
 use athera_macros::lazy;
 
 use crate::{
@@ -14,16 +14,16 @@ use crate::{
     constants::TID_MAX,
     error,
     error::{Error, MemError, ProcError},
+    fs::vfs::File,
     info,
     mem::{
         addr::PhysicalAddr,
         frame::Frame,
         page_table::{AddressSpaceId, PAGE_TABLE_MANAGER},
     },
-    proc::{CURRENT_TASK, CurrentTask},
+    proc::CURRENT_TASK,
     trap::TrapContext,
 };
-use crate::fs::vfs::File;
 
 #[lazy(spin)]
 pub static TID_ALLOCATOR: IdAllocator<Tid> = IdAllocator::from_range(Tid(1)..Tid(TID_MAX));
@@ -41,12 +41,25 @@ pub fn dealloc_tid(tid: Tid) {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TaskStatus {
+    /// 可被调度器选择并运行的任务。
     Running,
+    /// 等待某个事件或资源，暂时不可运行。
     Waiting,
+    /// 被主动挂起，等待后续唤醒。
     Sleeping,
+    /// 已退出但仍保留退出状态，等待父任务回收。
     Zombie,
+    /// 被暂停执行，暂不参与调度。
     Stopped,
+    /// 已结束且不再参与任务生命周期。
     Dead,
+}
+
+impl TaskStatus {
+    #[inline]
+    pub const fn is_runnable(self) -> bool {
+        matches!(self, Self::Running)
+    }
 }
 
 #[derive(Debug)]
@@ -91,7 +104,7 @@ pub struct TaskControlBlock {
     pub trap_context: TrapContext,
     pub exit_code: i32,
     pub priority: i8,
-    pub fd_table: Vec<File>
+    pub fd_table: Vec<File>,
 }
 
 impl TaskControlBlock {
@@ -143,7 +156,7 @@ impl TaskControlBlock {
 /// 维护）。`frame` / `sepc` 为父进程陷入内核时的陷阱帧与 `sepc`。
 /// 返回子任务的 TID；失败时回收已分配的 TID。
 pub fn clone_task(frame: &[u64; 32], sepc: u64) -> Result<Tid, Error> {
-    let Some(CurrentTask { tid, .. }) = *CURRENT_TASK.current() else {
+    let Some(tid) = *CURRENT_TASK.current() else {
         return Err(ProcError::NoOtherTask.into());
     };
 
@@ -195,10 +208,7 @@ impl Tasks {
     pub fn spawn_first(&mut self) -> Result<TrapContext, Error> {
         if let Some((tid, tcb)) = self.map.iter_mut().next() {
             self.cursor = Some(*tid);
-            *CURRENT_TASK.current() = Some(CurrentTask {
-                tid: *tid,
-                exit_code: None,
-            });
+            *CURRENT_TASK.current() = Some(*tid);
 
             tcb.spawn();
 
@@ -232,7 +242,7 @@ impl Tasks {
         let next = |tasks: &BTreeMap<Tid, TaskControlBlock>, start| {
             tasks
                 .range(start)
-                .find(|(_, task)| task.status == TaskStatus::Running)
+                .find(|(_, task)| task.status.is_runnable())
                 .map(|(tid, _)| *tid)
         };
 
@@ -245,12 +255,12 @@ impl Tasks {
 
         self.cursor = Some(tid);
         let tcb = self.map.get_mut(&tid).ok_or(ProcError::NoOtherTask)?;
-        *CURRENT_TASK.current() = Some(CurrentTask {
-            tid,
-            exit_code: None,
-        });
+        *CURRENT_TASK.current() = Some(tid);
         tcb.spawn();
-        Ok(TaskContext{ tid, context: tcb.trap_context.clone() })
+        Ok(TaskContext {
+            tid,
+            context: tcb.trap_context.clone(),
+        })
     }
 
     pub fn snapshot(&self) {
