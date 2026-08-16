@@ -15,7 +15,7 @@
 - 内存管理：等值映射页表、内核/用户地址空间分离（Sv39）、伙伴系统物理页帧分配器、SLUB 全局分配器
 - 陷阱处理与用户态上下文恢复（`TrapContext` / `restore_context`），S 模式定时器中断（10 Hz）
 - ELF 加载器：解析 ELF64 程序头，逐段拷贝 `PT_LOAD` 并建立用户映射与栈（`add` 经 `include_bytes!` 内嵌为 `EMBEDDED_ELF`）
-- 用户态进程管理与 ecall 系统调用（read / write / exit / reboot / fork）
+- 用户态进程管理与 ecall 系统调用（read / write / exit / reboot / clone，调用号对齐 Linux asm-generic ABI）
 - TID 分配器（`athera-id-alloc`）
 - 同步原语：`SpinLock`（关中断自旋锁）/ `OnceLock` / `LazyLock`（懒加载静态）/ `PerCpu`（每 hart 存储）
 - 日志宏：`trace!` / `debug!` / `info!` / `warn!` / `error!`
@@ -199,20 +199,22 @@ qcow2 由脚本内置的纯 Python 读写器生成/解析（v3、64K 簇、16 �
 
 ## 系统调用
 
+系统调用号对齐 Linux asm-generic（riscv64）ABI（完整编号见 `resources/unistd.csv`），出错时按 Linux 约定返回 `-errno`。
+
 | 编号 | 系统调用 | 描述 |
 | ---- | -------- | ---- |
 | 63   | read     | 从 UART 读取 |
 | 64   | write    | 向 UART 写入 |
 | 93   | exit     | 退出用户程序 |
-| 95   | waitpid  | 等待子进程（未实现）|
 | 142  | reboot   | 重启/关机/停机 |
-| 220  | fork     | 创建子进程（克隆地址空间与陷阱上下文）|
-| 221  | exec     | 执行新程序（未实现）|
+| 215  | munmap   | 解除映射（`todo!()`，尚未实现）|
+| 216  | mremap   | 重映射（`todo!()`，尚未实现）|
+| 220  | clone    | 创建子进程（当前仅实现 fork 语义：深拷贝地址空间与陷阱上下文）|
+| 221  | execve   | 执行新程序（未实现）|
 | 222  | mmap     | 映射内存（`todo!()`，尚未实现）|
-| 223  | munmap   | 解除映射（`todo!()`，尚未实现）|
-| 224  | mremap   | 重映射（`todo!()`，尚未实现）|
+| 260  | wait4    | 等待子进程（未实现）|
 
-> `fork` 目前为最小实现：分配新 TID、克隆页表（`PageTableManager::clone`）与全部物理页（逐页 `copy`），子进程 `a0 = 0` 并从 `sepc + 4` 继续执行，随后直接切换到子进程。`waitpid` / `exec` 未显式处理，返回 `ENOSYS`。
+> asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`PageTableManager::clone`（页表）、`MemorySet::try_clone`（内存集）、`TrapContext::clone_child`（子进程现场）与 `TaskControlBlock::try_clone`，由 `proc::task::clone_task` 组合并登记子任务。`wait4` / `execve` 未显式处理，返回 `ENOSYS`。
 
 ## 初始化依赖
 

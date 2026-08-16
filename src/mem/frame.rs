@@ -4,7 +4,7 @@
 //! 持有起始物理地址与大小；`Drop` 时自动归还给 `FRAME_ALLOCATOR`。
 use core::ptr;
 
-use crate::mem::allocators::FRAME_ALLOCATOR;
+use crate::mem::allocators::{FRAME_ALLOCATOR, alloc_frame};
 
 /// 物理页帧句柄：持有物理内存区间的起始地址与大小。
 ///
@@ -36,6 +36,17 @@ impl Frame {
 
     pub fn as_ptr(&self) -> *const u8 {
         self.start as *const u8
+    }
+
+    /// 克隆本帧：分配一个同尺寸的新物理帧并拷贝全部内容。
+    ///
+    /// 用于 fork 深拷贝父进程的物理页；分配失败返回 `None`。
+    pub fn try_clone(&self) -> Option<Frame> {
+        let frame = alloc_frame(Some(self.size))?;
+        unsafe {
+            ptr::copy(self.start as *const u8, frame.start as *mut u8, self.size);
+        }
+        Some(frame)
     }
 }
 

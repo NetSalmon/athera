@@ -1,52 +1,80 @@
 //! 系统调用处理。
 //!
-//! 用户态 `ecall`（`U_MODE_ECALL`）陷入后由 `trap_handler` 分派到这里，
-//! 目前支持 read / write / exit / reboot 等。
-
-use alloc::vec::Vec;
+//! 用户态 `ecall`（`U_MODE_ECALL`）陷入后由 `trap_handler` 分派到这里。
+//! 系统调用号与返回值约定对齐 Linux asm-generic（riscv64）ABI：调用号
+//! 经 `a7` 传入，返回值经 `a0` 传回，出错时返回 `-errno`。
 
 use crate::{
-    arch::{
-        registers::values::{SatpMode, SatpValue},
-        sbi::{
-            self,
-            srst::{ResetReason, ResetType, system_reset},
-        },
+    arch::sbi::{
+        self,
+        srst::{ResetReason, ResetType, system_reset},
     },
     debug,
     dev::{UART, traits::CharDevice},
-    info,
-    mem::{
-        allocators::alloc_frame,
-        page_table::{AddressSpaceId, PAGE_TABLE_MANAGER},
-    },
-    numeric,
-    proc::{
-        CURRENT_TASK, CurrentTask,
-        task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus},
-    },
+    error,
+    error::{Error, MemError},
+    info, numeric,
+    proc::{CURRENT_TASK, task::clone_task},
+    trap::A0_INDEX,
 };
 
+// Linux errno（负数形式，直接作为系统调用的错误返回值）。
 numeric! {
     pub enum ErrorCode : isize {
-        EINVAL = -22,
+        EPERM = -1,
+        ENOENT = -2,
+        ESRCH = -3,
+        EINTR = -4,
         EIO = -5,
+        ENXIO = -6,
+        E2BIG = -7,
+        ENOEXEC = -8,
+        EBADF = -9,
+        ECHILD = -10,
+        EAGAIN = -11,
+        ENOMEM = -12,
+        EACCES = -13,
+        EFAULT = -14,
+        EBUSY = -16,
+        EEXIST = -17,
+        EXDEV = -18,
+        ENODEV = -19,
+        ENOTDIR = -20,
+        EISDIR = -21,
+        EINVAL = -22,
+        ENFILE = -23,
+        EMFILE = -24,
+        ENOTTY = -25,
+        EFBIG = -27,
+        ENOSPC = -28,
+        ESPIPE = -29,
+        EROFS = -30,
+        EMLINK = -31,
+        EPIPE = -32,
+        ERANGE = -34,
+        ENAMETOOLONG = -36,
         ENOSYS = -38,
+        ENOTEMPTY = -39,
+        ELOOP = -40,
     }
 }
 
+// 系统调用号：对齐 Linux asm-generic（riscv64）ABI。
+//
+// asm-generic 没有 fork / waitpid，libc 分别用 `clone`（flags 为
+// `SIGCHLD`）与 `wait4` 实现它们；执行新程序对应 `execve`。
 numeric! {
     pub enum Syscall: u64 {
         READ = 63,
         WRITE = 64,
         EXIT = 93,
         REBOOT = 142,
-        FORK = 220,
-        WAITPID = 95,
-        EXEC = 221,
+        MUNMAP = 215,
+        MREMAP = 216,
+        CLONE = 220,
+        EXECVE = 221,
         MMAP = 222,
-        MUNMAP = 223,
-        MREMAP = 224,
+        WAIT4 = 260,
     }
 }
 
@@ -55,6 +83,16 @@ numeric! {
         RESTART = 0x1234567,
         POWER_OFF = 0x4321fedc,
         HALT = 0xcdef0123,
+    }
+}
+
+/// 把内核错误映射为 Linux errno。
+fn errno_of(err: &Error) -> ErrorCode {
+    match err {
+        Error::NoTidAvailable => ErrorCode::EAGAIN,
+        Error::Mem(MemError::OutOfMemory) => ErrorCode::ENOMEM,
+        Error::Proc(_) => ErrorCode::ESRCH,
+        _ => ErrorCode::EINVAL,
     }
 }
 
@@ -96,7 +134,7 @@ fn write(_fd: u64, buf: &[u8]) -> u64 {
 fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
     if magic != 0xfee1dead || magic2 != 0x28121969 {
         debug!("reboot: invalid magic (magic = {magic:#x}, magic2 = {magic2:#x})");
-        return -1;
+        return ErrorCode::EINVAL.0;
     }
 
     match RebootCmd::from(cmd) {
@@ -114,15 +152,11 @@ fn reboot(magic: u64, magic2: u64, cmd: u64) -> isize {
         }
         _ => {
             debug!("reboot: unsupported command {cmd:#x}");
-            return -1;
+            return ErrorCode::EINVAL.0;
         }
     }
-    -1
+    ErrorCode::EINVAL.0
 }
-
-/// 陷阱帧（32 个通用寄存器数组）中 `a0` 的下标（x10），
-/// 系统调用参数依次存放于 `a0..a7`。
-const A0_INDEX: usize = 10;
 
 /// 系统调用处理结果。
 pub enum SyscallResult {
@@ -179,89 +213,16 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
         Syscall::MREMAP => {
             todo!()
         }
-        Syscall::FORK => {
-            info!("receive fork req");
-
-            let CurrentTask { tid, .. } = CURRENT_TASK.current().unwrap();
-            let current_tid = tid;
-
-            let new_tid = TID_ALLOCATOR.force().lock().alloc().unwrap();
-
-            info!("new tid: {:?}", new_tid);
-
-            // 克隆当前任务的地址空间（页表深拷贝），并登记到新 TID 名下。
-            PAGE_TABLE_MANAGER
-                .force()
-                .lock()
-                .clone(AddressSpaceId::User(current_tid), new_tid)
-                .unwrap();
-
-            let root_page_table_address = PAGE_TABLE_MANAGER
-                .force()
-                .lock()
-                .user_root_addr(new_tid)
-                .unwrap();
-
-            let (mut new_context, source_pages) = {
-                let mut tasks = TASKS.force().lock();
-                let current_tcb = tasks.get_mut(&current_tid).unwrap();
-                current_tcb.children.push(new_tid);
-
-                (
-                    current_tcb.trap_context.clone(),
-                    current_tcb
-                        .memory_set
-                        .used_page
-                        .iter()
-                        .map(|page| (page.start, page.size))
-                        .collect::<Vec<_>>(),
-                )
-            };
-
-            // Allocate and copy pages without holding the global task-table lock.
-            let mut pages = Vec::with_capacity(source_pages.len());
-            for (source_start, size) in source_pages {
-                let new_page = alloc_frame(Some(size)).expect("out of memory");
-
-                unsafe {
-                    core::ptr::copy(source_start as *const u8, new_page.start as *mut u8, size)
+        Syscall::CLONE => {
+            // 目前仅实现 fork 语义：忽略 flags / stack 等参数，子进程
+            // 获得父进程地址空间的深拷贝，并从 `sepc + 4` 返回 0。
+            match clone_task(trap_context, sepc) {
+                Ok(child) => SyscallResult::Return(child.0 as u64, sepc + 4),
+                Err(err) => {
+                    error!("clone failed: {err}");
+                    SyscallResult::Return(errno_of(&err).0 as u64, sepc + 4)
                 }
-                pages.push(new_page);
             }
-
-            info!("pages clone ok");
-
-            let satp = SatpValue::builder()
-                .set_ppn(root_page_table_address.ppn() as u64)
-                .set_mode(SatpMode::SV39.into())
-                .build();
-
-            new_context.context = *trap_context;
-            new_context.satp = satp.into();
-            new_context.sepc = sepc + 4;
-            new_context.context[A0_INDEX] = 0;
-
-            let new_memory_set = MemorySet {
-                used_page: pages,
-                user_root_page_table: root_page_table_address,
-            };
-
-            let new_tcb = TaskControlBlock {
-                parent: Some(current_tid),
-                children: Vec::new(),
-                status: TaskStatus::Running,
-                memory_set: new_memory_set,
-                trap_context: new_context.clone(),
-                exit_code: 0,
-                priority: 0,
-            };
-
-            TASKS
-                .force()
-                .lock()
-                .add(new_tid, Some(current_tid), new_tcb);
-
-            SyscallResult::Return(new_tid.0 as u64, sepc + 4)
         }
         _ => SyscallResult::Return(ErrorCode::ENOSYS.0 as u64, sepc + 4),
     }

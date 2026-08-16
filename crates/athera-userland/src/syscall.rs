@@ -12,7 +12,7 @@ const READ: u64 = 63;
 const WRITE: u64 = 64;
 const EXIT: u64 = 93;
 const REBOOT: u64 = 142;
-const FORK: u64 = 220;
+const CLONE: u64 = 220;
 
 #[macro_export]
 macro_rules! ecall {
@@ -58,8 +58,9 @@ pub fn reboot(cmd: RebootCmd) -> isize {
     ecall!(REBOOT => "a0" = 0xfee1deadu64, "a1" = 0x28121969, "a2" = cmd.0)
 }
 
+/// 创建子进程（fork 语义：内核当前忽略 clone 的 flags / stack 参数）。
 pub fn fork() -> isize {
-    ecall!(FORK)
+    ecall!(CLONE)
 }
 
 pub fn exit(code: u64) -> ! {

@@ -164,6 +164,10 @@ pub fn set_next_timer() {
     arch::registers::csr::Stimecmp::write(t + GAP);
 }
 
+/// 陷阱帧（32 个通用寄存器数组）中 `a0` 的下标（x10），
+/// 系统调用参数依次存放于 `a0..a7`。
+pub(crate) const A0_INDEX: usize = 10;
+
 /// 用户态陷阱上下文：32 个通用寄存器 + `satp` / `sepc` / `sstatus`。
 #[derive(Clone, Debug)]
 pub struct TrapContext {
@@ -171,6 +175,22 @@ pub struct TrapContext {
     pub satp: u64,
     pub sepc: u64,
     pub sstatus: u64,
+}
+
+impl TrapContext {
+    /// 克隆出子进程的用户态上下文（fork 语义）。
+    ///
+    /// 以本上下文为模板（沿用 `sstatus` 等），用父进程陷入内核时的
+    /// 陷阱帧 `frame` 覆盖通用寄存器现场，并改写三处：地址空间切换为
+    /// 子进程的 `satp`、从 `sepc + 4` 继续执行、返回值 `a0` 置 0。
+    pub fn clone_child(&self, frame: &[u64; 32], sepc: u64, satp: u64) -> Self {
+        let mut context = self.clone();
+        context.context = *frame;
+        context.satp = satp;
+        context.sepc = sepc + 4;
+        context.context[A0_INDEX] = 0;
+        context
+    }
 }
 
 /// 恢复用户态上下文并跳转到用户态（`sret`），不会返回。
