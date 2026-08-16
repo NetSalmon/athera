@@ -4,6 +4,7 @@
 //! 映射进用户地址空间，最后创建用户栈并通过 [`restore_context`] 切换到
 //! 用户态。
 use alloc::vec;
+use alloc::vec::Vec;
 use core::ptr;
 
 use crate::{
@@ -176,6 +177,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         trap_context: context.clone(),
         exit_code: 0,
         priority: priority.unwrap_or_default(),
+        fd_table: Vec::new(),
     };
 
     TASKS.force().lock().add(tid, None, tcb);

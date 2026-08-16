@@ -27,7 +27,7 @@ impl Dev for Ns16550a {
 }
 
 impl CharDevice for Ns16550a {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+    fn read(&self, buf: &mut [u8]) -> IoResult<usize> {
         let mut read = 0;
         for byte in buf {
             let Some(value) = self.rbr_thr_if_ready() else {
@@ -39,7 +39,7 @@ impl CharDevice for Ns16550a {
         Ok(read)
     }
 
-    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+    fn write(&self, buf: &[u8]) -> IoResult<usize> {
         for &byte in buf {
             while !self.lsr().thre() {}
             self.write_rbr_thr(byte);

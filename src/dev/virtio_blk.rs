@@ -22,11 +22,12 @@ use crate::{
             queue::{Flags, VRingDesc, Virtq},
         },
     },
+    sync::spin::SpinLock,
 };
 
 pub struct VirtioBlk {
     pub device: Device,
-    pub queues: Option<Vec<Virtq>>,
+    pub queues: SpinLock<Option<Vec<Virtq>>>,
 }
 
 bits! {
@@ -85,8 +86,8 @@ impl VirtioDevice for VirtioBlk {
         self.device
     }
 
-    fn queues_mut(&mut self) -> &mut Option<Vec<Virtq>> {
-        &mut self.queues
+    fn queues(&self) -> &SpinLock<Option<Vec<Virtq>>> {
+        &self.queues
     }
 
     /// modern 特性协商：接受 `VIRTIO_F_VERSION_1`（high 位 0）。
@@ -103,7 +104,7 @@ impl From<Device> for VirtioBlk {
     fn from(dev: Device) -> Self {
         VirtioBlk {
             device: dev,
-            queues: None,
+            queues: SpinLock::new(None),
         }
     }
 }
@@ -116,7 +117,7 @@ impl VirtioBlk {
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
     fn submit(
-        &mut self,
+        &self,
         req_type: u32,
         sector: u64,
         data: &[u8],
@@ -131,13 +132,16 @@ impl VirtioBlk {
 
         // 组装描述符链并追加到 avail 环，记录设备当前 used 位置。
         let last_used = {
-            let queue = self.queue().map_err(|_| IoError::NotReady)?;
+            let mut queues = self.queue().map_err(|_| IoError::NotReady)?;
             {
-                let q = queue.as_mut();
+                let q = queues
+                    .as_mut()
+                    .and_then(|queues| queues.first_mut())
+                    .ok_or(IoError::NotReady)?;
 
                 let mut flags = Flags::new();
                 flags.set_next(true);
-                q.desc[0] = VRingDesc {
+                q.as_mut().desc[0] = VRingDesc {
                     addr: addr_of!(req) as u64,
                     len: size_of::<VirtioBlkReq>() as u32,
                     flags,
@@ -147,7 +151,7 @@ impl VirtioBlk {
                 let mut flags = Flags::new();
                 flags.set_next(true);
                 flags.set_write(data_write);
-                q.desc[1] = VRingDesc {
+                q.as_mut().desc[1] = VRingDesc {
                     addr: data.as_ptr() as u64,
                     len: data.len() as u32,
                     flags,
@@ -156,22 +160,31 @@ impl VirtioBlk {
 
                 let mut flags = Flags::new();
                 flags.set_write(true);
-                q.desc[2] = VRingDesc {
+                q.as_mut().desc[2] = VRingDesc {
                     addr: addr_of_mut!(status) as u64,
                     len: size_of::<u8>() as u32,
                     flags,
                     next: 0,
                 };
             }
-            queue.post_avail(0)
+            queues
+                .as_mut()
+                .and_then(|queues| queues.first_mut())
+                .ok_or(IoError::NotReady)?
+                .post_avail(0)
         };
 
         // 通知设备处理队列 0。
         self.notify();
 
         // 等待设备产生 used 元素，并校验被消费的描述符链头。
-        let queue = self.queue().map_err(|_| IoError::NotReady)?;
-        let elem = queue.wait_used(last_used).map_err(|_| IoError::NotReady)?;
+        let mut queues = self.queue().map_err(|_| IoError::NotReady)?;
+        let elem = queues
+            .as_mut()
+            .and_then(|queues| queues.first_mut())
+            .ok_or(IoError::NotReady)?
+            .wait_used(last_used)
+            .map_err(|_| IoError::NotReady)?;
         if elem.id != 0 {
             return Err(IoError::Request);
         }
@@ -185,7 +198,7 @@ impl VirtioBlk {
 }
 
 impl BlockDevice for VirtioBlk {
-    fn read_at(&mut self, buf: &mut [u8], offset: usize) -> IoResult<usize> {
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done;
@@ -202,7 +215,7 @@ impl BlockDevice for VirtioBlk {
         Ok(done)
     }
 
-    fn write_at(&mut self, buf: &[u8], offset: usize) -> IoResult<usize> {
+    fn write_at(&self, buf: &[u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
             let pos = offset + done;

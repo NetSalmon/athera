@@ -19,7 +19,7 @@ use crate::{
     },
     error::{DevError, Error, Result},
     mem::allocators::FRAME_ALLOCATOR,
-    sync::spin::SpinLock,
+    sync::{rwlock::RwLock, spin::SpinLock},
     warn,
 };
 
@@ -55,9 +55,9 @@ pub static UART: Option<SpinLock<Ns16550a>> = {
 };
 
 #[lazy(spin)]
-pub static VIRTIO_BLK: Option<Arc<SpinLock<VirtioBlk>>> = {
+pub static VIRTIO_BLK: Option<Arc<RwLock<VirtioBlk>>> = {
     match parse_fdt() {
-        Ok(fdt) => VirtioBlk::probe(&fdt).map(|blk| Arc::new(SpinLock::new(blk))),
+        Ok(fdt) => VirtioBlk::probe(&fdt).map(|blk| Arc::new(RwLock::new(blk))),
         Err(err) => {
             warn!("failed to init virtio-blk: {err}");
             None

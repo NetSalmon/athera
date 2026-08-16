@@ -26,7 +26,6 @@ use crate::{
     constants::*,
     log::Level,
     mem::page_table::identity_map,
-    trap::set_next_timer,
 };
 
 global_asm!(include_str!("entry.asm"));
@@ -47,8 +46,6 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
         let r = arch::sbi::hsm::hart_get_status(1);
         info!("hart 1 status: {:#?}", r);
     }
-
-    set_next_timer();
 
     // 校验 entry.asm 写入的 FDT_ADDR 与 Rust 侧入口参数一致。
     unsafe {
@@ -77,6 +74,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     info!("page table setup ok");
 
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
+    boot::spawn_from_disk("/bin/init");
     boot::spawn_from_disk("/bin/hello_world");
     boot::spawn_from_disk("/bin/quick_sort");
     boot::spawn_from_disk("/bin/panic");
@@ -84,7 +82,12 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     boot::spawn_from_disk("/bin/add");
     boot::spawn_from_disk("/bin/fork");
 
+    // 只有在初始任务创建完成后才启动时钟，避免定时器中断进入空调度器。
+    trap::set_next_timer();
+    arch::registers::csr::Sstatus::set_bits(1 << 1);
     proc::sched::switch();
+
+    kernel_halt()
 }
 
 #[unsafe(no_mangle)]
@@ -121,7 +124,5 @@ fn panic(info: &PanicInfo) -> ! {
 
     let _ = system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
 
-    loop {
-        core::hint::spin_loop();
-    }
+    kernel_halt()
 }

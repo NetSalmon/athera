@@ -4,19 +4,12 @@
 //! 系统调用号与返回值约定对齐 Linux asm-generic（riscv64）ABI：调用号
 //! 经 `a7` 传入，返回值经 `a0` 传回，出错时返回 `-errno`。
 
-use crate::{
-    arch::sbi::{
-        self,
-        srst::{ResetReason, ResetType, system_reset},
-    },
-    debug,
-    dev::{UART, traits::CharDevice},
-    error,
-    error::{Error, MemError},
-    info, numeric,
-    proc::{CURRENT_TASK, task::clone_task},
-    trap::A0_INDEX,
-};
+use alloc::vec::Vec;
+use crate::{arch::sbi::{
+    self,
+    srst::{ResetReason, ResetType, system_reset},
+}, debug, dev::{UART, traits::CharDevice}, error, error::{Error, MemError}, info, numeric, panic, proc::{CURRENT_TASK, task::clone_task, CurrentTask}, trap::A0_INDEX};
+use crate::proc::task::{TaskStatus, TASKS, Tid};
 
 // Linux errno（负数形式，直接作为系统调用的错误返回值）。
 numeric! {
@@ -163,8 +156,6 @@ pub enum SyscallResult {
     /// 恢复用户态继续执行：`(返回值, 下一条指令地址)` 会分别写入 `a0`
     /// 与 `sepc`，随后照常 `sret` 回用户态。
     Return(u64, u64),
-    /// 当前任务退出：不再 `sret` 回用户态，由陷阱处理侧直接在内核态
-    /// 切换到下一个任务（退出码已记录到 `CURRENT_TASK`）。
     Exit,
 }
 
@@ -189,8 +180,26 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
         Syscall::EXIT => {
             let code = trap_context[A0_INDEX] as i32;
 
-            if let Some(ref mut current) = *CURRENT_TASK.current() {
-                current.exit_code = Some(code)
+            if let Some(CurrentTask{ tid, ..}) = *CURRENT_TASK.current() {
+                if tid.0 == 1 {
+                    panic!("pid 1 exit")
+                }
+
+                let ch = if let Some(task) = TASKS.force().lock().get_mut(&tid) {
+                    task.exit_code = code;
+                    task.status = TaskStatus::Zombie;
+                    let children = task.children.clone();
+                    task.children.clear();
+                    Some(children)
+                } else {
+                    None
+                };
+
+                if let Some(children) = ch {
+                    if let Some(init) = TASKS.force().lock().get_mut(&Tid(1)) {
+                        init.children.extend(children);
+                    }
+                }
             }
 
             SyscallResult::Exit

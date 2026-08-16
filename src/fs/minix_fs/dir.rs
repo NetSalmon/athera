@@ -29,11 +29,11 @@ pub(crate) enum EntryFormat {
 /// 目录项的惰性迭代器：每次 [`Iterator::next`] 只解析一个目录项，
 /// 数据块按需从设备读取，不会一次性把整个目录读进内存。
 ///
-/// 设备由调用方以 `&'d mut T`（通常是一次持锁得到的守卫）传入，迭代期间
+/// 设备由调用方以 `&'d T`（通常是一次持读锁得到的守卫）传入，迭代期间
 /// 需要一直持有该设备访问权。
 pub struct DirEntries<'a, 'd, T> {
     fs: &'a MinixFs<T>,
-    device: &'d mut T,
+    device: &'d T,
     /// 单个数据块的大小（字节）。
     zone_size: usize,
     /// 待读取的数据块号：7 个直接块 + 一级/二级间接块展开后的全部数据块。
@@ -58,7 +58,7 @@ impl<'a, 'd, T> DirEntries<'a, 'd, T> {
     /// 构造目录迭代器（由 `MinixFs::dir_entries_iter` 使用）。
     pub(crate) fn new(
         fs: &'a MinixFs<T>,
-        device: &'d mut T,
+        device: &'d T,
         zone_size: usize,
         zones: Vec<u16>,
         remaining: usize,

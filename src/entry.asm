@@ -18,7 +18,7 @@ _start:
     sd a1, 0(t0)              # a1 = 设备树物理地址（QEMU 约定）
     mv tp, a0
 
-    # 2. 陷阱向量 + 中断使能
+# 2. 陷阱向量 + 中断掩码
     la t0, trap_entry
     andi t0, t0, ~3
     csrs stvec, t0           # stvec = trap_entry（低 2 位清 0 = DIRECT）
@@ -27,8 +27,9 @@ _start:
     li   t0, (1 << 1) | (1 << 5) | (1 << 9)
     csrw sie, t0
 
-    # SSTATUS: SIE(1) 允许 S 模式中断，SUM(18) 允许访问用户页
-    li   t0, (1 << 1) | (1 << 18)
+    # SSTATUS: 先只开启 SUM。SIE 要等 Rust 完成定时器和初始任务
+    # 初始化后再开启，避免启动时已有 pending timer 进入空调度器。
+    li   t0, (1 << 18)
     csrs sstatus, t0
 
     call main                # 进入 Rust 内核入口（不返回）

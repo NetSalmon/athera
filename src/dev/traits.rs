@@ -21,14 +21,14 @@ pub enum IoError {
 pub type IoResult<T> = core::result::Result<T, IoError>;
 
 pub trait CharDevice: Dev {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize>;
-    fn write(&mut self, buf: &[u8]) -> IoResult<usize>;
+    fn read(&self, buf: &mut [u8]) -> IoResult<usize>;
+    fn write(&self, buf: &[u8]) -> IoResult<usize>;
 }
 
 pub trait BlockDevice: Dev {
     // offset 按字节算
-    fn read_at(&mut self, buf: &mut [u8], offset: usize) -> IoResult<usize>;
-    fn write_at(&mut self, buf: &[u8], offset: usize) -> IoResult<usize>;
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> IoResult<usize>;
+    fn write_at(&self, buf: &[u8], offset: usize) -> IoResult<usize>;
 }
 
 pub trait Dev: Send + Sync {

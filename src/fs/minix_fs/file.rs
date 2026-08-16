@@ -8,8 +8,8 @@ use super::{FileType, MinixFs, types::DINode};
 use crate::{
     dev::traits::{BlockDevice, IoResult},
     fs::{
-        SeekFrom,
         path::{Path, PathBuf},
+        vfs::file_ops::Whence,
     },
 };
 
@@ -97,16 +97,17 @@ where
         self.path.file_name()
     }
 
-    /// 移动读写位置到 `pos`，返回新的位置。
+    /// 按 Linux 风格的起点移动读写位置，返回新的位置。
     ///
     /// 目标位置超过文件末尾时钳制到末尾。返回 `Ok(new_offset)`，错误类型
     /// 为底层设备错误（当前定位本身不会失败，保留 `Result` 以对齐标准库）。
-    pub fn seek(&mut self, pos: SeekFrom) -> IoResult<u64> {
+    pub fn seek(&mut self, offset: i64, whence: Whence) -> IoResult<u64> {
         let size = self.size() as i64;
-        let new = match pos {
-            SeekFrom::Start(off) => off as i64,
-            SeekFrom::End(rel) => size + rel,
-            SeekFrom::Current(rel) => self.offset as i64 + rel,
+        let new = match whence {
+            Whence::SEEK_SET => offset,
+            Whence::SEEK_END => size + offset,
+            Whence::SEEK_CUR => self.offset as i64 + offset,
+            _ => return Err(crate::dev::traits::IoError::Request),
         };
         self.offset = new.clamp(0, size) as usize;
         Ok(self.offset as u64)
@@ -141,7 +142,7 @@ where
             };
 
             {
-                let mut dev = self.fs.lock();
+                let dev = self.fs.read_lock();
                 dev.read_at(
                     &mut buf[done..done + n],
                     zone as usize * self.zone_size + in_zone,

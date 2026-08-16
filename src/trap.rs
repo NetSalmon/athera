@@ -13,10 +13,10 @@ use crate::{
         sbi::srst::{ResetReason, ResetType, system_reset},
     },
     debug, error, info, numeric,
-    proc::sched,
     syscall::{self, SyscallResult},
     user_trap_entry,
 };
+use crate::proc::sched::{save_current, switch};
 
 const INTERRUPT_MASK: i64 = 1 << 63;
 
@@ -108,7 +108,9 @@ fn trap_handler(
 
     match trap {
         Trap::Interrupt(Interrupt::SUPERVISOR_TIMER) => {
+            save_current(trap_frame_sp, sepc, _sstatus, _satp);
             set_next_timer();
+            switch();
         }
         Trap::Exception(Exception::U_MODE_ECALL) => {
             let trap_context = unsafe { &*((trap_frame_sp) as *const [u64; 32]) };
@@ -119,9 +121,9 @@ fn trap_handler(
                     arch::registers::csr::Sepc::write(next);
                 }
                 SyscallResult::Exit => {
-                    // 当前任务已退出：不 sret 回用户态，直接在内核态
-                    // 切换到下一个任务（switch 不会返回）。
-                    sched::switch();
+                    // 仍在陷阱处理期间，SIE 已由硬件清零；不能在这里
+                    // 自旋等待定时器，而应直接切换到下一个任务。
+                    switch();
                 }
             }
         }

@@ -25,7 +25,7 @@ impl<T> MinixFs<T> {
         &self,
         d_inode: &mut DINode,
         zones: &[u16],
-        device: &mut T,
+        device: &T,
     ) -> IoResult<()>
     where
         T: BlockDevice,
@@ -255,7 +255,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 分配一个空 inode（size 0、nlinks 1、无数据块）并写回，返回 inode 号。
-    fn alloc_empty_inode(&self, mode: Mode, device: &mut T) -> IoResult<Option<u16>>
+    fn alloc_empty_inode(&self, mode: Mode, device: &T) -> IoResult<Option<u16>>
     where
         T: BlockDevice,
     {
@@ -276,7 +276,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 在目录 `dir_ino` 中只读查找名为 `name` 的目录项，返回其 inode 号。
-    fn find_dir_entry_ino(&self, dir_ino: u16, name: &str, device: &mut T) -> IoResult<Option<u16>>
+    fn find_dir_entry_ino(&self, dir_ino: u16, name: &str, device: &T) -> IoResult<Option<u16>>
     where
         T: BlockDevice,
     {
@@ -301,7 +301,7 @@ impl<T> MinixFs<T> {
     }
 
     /// 删除目录 `dir_ino` 中名为 `name` 的目录项（槽位清零并写回）。
-    fn remove_dir_entry(&self, dir_ino: u16, name: &str, device: &mut T) -> IoResult<bool>
+    fn remove_dir_entry(&self, dir_ino: u16, name: &str, device: &T) -> IoResult<bool>
     where
         T: BlockDevice,
     {
@@ -329,7 +329,7 @@ impl<T> MinixFs<T> {
 
     /// 释放 inode 占用的全部数据块与间接块，清零并释放 inode 位图。
     /// 需要调用方已持锁。
-    fn free_inode_blocks_at(&self, ino: u16, device: &mut T) -> IoResult<()>
+    fn free_inode_blocks_at(&self, ino: u16, device: &T) -> IoResult<()>
     where
         T: BlockDevice,
     {
@@ -387,7 +387,7 @@ impl<T> MinixFs<T> {
         dir_ino: u16,
         name: &str,
         new_ino: u16,
-        device: &mut T,
+        device: &T,
     ) -> IoResult<()>
     where
         T: BlockDevice,

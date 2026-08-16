@@ -4,7 +4,7 @@
 //! [`Tid`] 是任务 ID；[`TaskControlBlock`] 描述单个任务（父/子关系、
 //! 状态、内存集、陷阱上下文）；[`TASKS`] 是按 TID 索引的全局任务表。
 use alloc::{collections::BTreeMap, vec::Vec};
-use core::ops::{Deref, DerefMut};
+use core::ops::{Bound, Deref, DerefMut};
 
 use athera_id_alloc::{Id, IdAllocator};
 use athera_macros::lazy;
@@ -23,9 +23,10 @@ use crate::{
     proc::{CURRENT_TASK, CurrentTask},
     trap::TrapContext,
 };
+use crate::fs::vfs::File;
 
 #[lazy(spin)]
-pub static TID_ALLOCATOR: IdAllocator<Tid> = IdAllocator::from_range(Tid::MIN..Tid(TID_MAX));
+pub static TID_ALLOCATOR: IdAllocator<Tid> = IdAllocator::from_range(Tid(1)..Tid(TID_MAX));
 
 #[derive(athera_macros::Id)]
 pub struct Tid(pub usize);
@@ -90,10 +91,11 @@ pub struct TaskControlBlock {
     pub trap_context: TrapContext,
     pub exit_code: i32,
     pub priority: i8,
+    pub fd_table: Vec<File>
 }
 
 impl TaskControlBlock {
-    pub fn run(&mut self) {
+    pub fn spawn(&mut self) {
         self.status = TaskStatus::Running;
     }
 
@@ -129,6 +131,7 @@ impl TaskControlBlock {
             memory_set,
             exit_code: 0,
             priority: 0,
+            fd_table: self.fd_table.clone(),
         })
     }
 }
@@ -171,21 +174,33 @@ pub fn clone_task(frame: &[u64; 32], sepc: u64) -> Result<Tid, Error> {
 }
 
 #[derive(Debug)]
-pub struct Tasks(pub BTreeMap<Tid, TaskControlBlock>);
+pub struct Tasks {
+    pub map: BTreeMap<Tid, TaskControlBlock>,
+    cursor: Option<Tid>,
+}
+
+pub struct TaskContext {
+    pub tid: Tid,
+    pub context: TrapContext,
+}
 
 impl Tasks {
     pub const fn new() -> Self {
-        Self(BTreeMap::new())
+        Self {
+            map: BTreeMap::new(),
+            cursor: None,
+        }
     }
 
-    pub fn run_first(&mut self) -> Result<TrapContext, Error> {
-        if let Some((tid, tcb)) = self.0.iter_mut().next() {
+    pub fn spawn_first(&mut self) -> Result<TrapContext, Error> {
+        if let Some((tid, tcb)) = self.map.iter_mut().next() {
+            self.cursor = Some(*tid);
             *CURRENT_TASK.current() = Some(CurrentTask {
                 tid: *tid,
                 exit_code: None,
             });
 
-            tcb.run();
+            tcb.spawn();
 
             Ok(tcb.trap_context.clone())
         } else {
@@ -195,13 +210,47 @@ impl Tasks {
     }
 
     pub fn add(&mut self, tid: Tid, parent: Option<Tid>, tcb: TaskControlBlock) {
-        if let Some(parent_tcb) = self.0.get_mut(&parent.unwrap_or(Tid(1))) {
+        if let Some(parent_tcb) = self.map.get_mut(&parent.unwrap_or(Tid(1))) {
             parent_tcb.children.push(tid);
         } else {
             error!("parent: {parent:?} not exist");
         }
 
-        self.0.insert(tid, tcb);
+        self.map.insert(tid, tcb);
+    }
+
+    /// 创建一个按 `Tid` 升序循环遍历任务的 cursor。
+    pub fn cursor(&self) -> TasksCursor<'_> {
+        TasksCursor {
+            tasks: self,
+            current: None,
+        }
+    }
+
+    /// 运行循环游标指向的下一个任务，并将游标向后移动。
+    pub fn spawn_current(&mut self) -> Result<TaskContext, Error> {
+        let next = |tasks: &BTreeMap<Tid, TaskControlBlock>, start| {
+            tasks
+                .range(start)
+                .find(|(_, task)| task.status == TaskStatus::Running)
+                .map(|(tid, _)| *tid)
+        };
+
+        let tid = match self.cursor {
+            Some(current) => next(&self.map, (Bound::Excluded(current), Bound::Unbounded))
+                .or_else(|| next(&self.map, (Bound::Unbounded, Bound::Unbounded))),
+            None => next(&self.map, (Bound::Unbounded, Bound::Unbounded)),
+        }
+        .ok_or(ProcError::NoOtherTask)?;
+
+        self.cursor = Some(tid);
+        let tcb = self.map.get_mut(&tid).ok_or(ProcError::NoOtherTask)?;
+        *CURRENT_TASK.current() = Some(CurrentTask {
+            tid,
+            exit_code: None,
+        });
+        tcb.spawn();
+        Ok(TaskContext{ tid, context: tcb.trap_context.clone() })
     }
 
     pub fn snapshot(&self) {
@@ -209,17 +258,45 @@ impl Tasks {
     }
 }
 
+/// 任务表的循环顺序 cursor。
+///
+/// 非空任务表会在最大 `Tid` 后回到最小 `Tid`；空任务表的 `next` 返回
+/// `None`。cursor 只保存当前位置，因此任务表增删后仍可继续遍历。
+pub struct TasksCursor<'a> {
+    tasks: &'a Tasks,
+    current: Option<Tid>,
+}
+
+impl<'a> Iterator for TasksCursor<'a> {
+    type Item = (&'a Tid, &'a TaskControlBlock);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = match self.current {
+            Some(current) => self
+                .tasks
+                .map
+                .range((Bound::Excluded(current), Bound::Unbounded))
+                .next()
+                .or_else(|| self.tasks.map.iter().next()),
+            None => self.tasks.map.iter().next(),
+        }?;
+
+        self.current = Some(*next.0);
+        Some(next)
+    }
+}
+
 impl Deref for Tasks {
     type Target = BTreeMap<Tid, TaskControlBlock>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.map
     }
 }
 
 impl DerefMut for Tasks {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.map
     }
 }
 

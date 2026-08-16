@@ -22,6 +22,7 @@ use crate::{
         },
     },
     error::DevError,
+    sync::spin::SpinLock,
 };
 
 /// 本模块统一结果类型。
@@ -29,7 +30,7 @@ pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioRng {
     pub device: Device,
-    pub queues: Option<Vec<Virtq>>,
+    pub queues: SpinLock<Option<Vec<Virtq>>>,
 }
 
 impl VirtioDevice for VirtioRng {
@@ -39,8 +40,8 @@ impl VirtioDevice for VirtioRng {
         self.device
     }
 
-    fn queues_mut(&mut self) -> &mut Option<Vec<Virtq>> {
-        &mut self.queues
+    fn queues(&self) -> &SpinLock<Option<Vec<Virtq>>> {
+        &self.queues
     }
 }
 
@@ -48,7 +49,7 @@ impl From<Device> for VirtioRng {
     fn from(dev: Device) -> Self {
         VirtioRng {
             device: dev,
-            queues: None,
+            queues: SpinLock::new(None),
         }
     }
 }
@@ -59,29 +60,41 @@ impl VirtioRng {
     /// 单个可写描述符（设备写入 `buf`），提交后轮询等待 used 元素，
     /// 返回设备实际写入的字节数（可能小于 `buf.len()`）。描述符 0 每次
     /// 复用，同一时刻最多一个在途请求。
-    fn submit(&mut self, buf: &mut [u8]) -> DevResult<usize> {
+    fn submit(&self, buf: &mut [u8]) -> DevResult<usize> {
         let last_used = {
-            let queue = self.queue()?;
+            let mut queues = self.queue()?;
             {
-                let q = queue.as_mut();
+                let q = queues
+                    .as_mut()
+                    .and_then(|queues| queues.first_mut())
+                    .ok_or(DevError::VirtioRngFailed)?;
 
                 let mut flags = Flags::new();
                 flags.set_write(true);
-                q.desc[0] = VRingDesc {
+                q.as_mut().desc[0] = VRingDesc {
                     addr: buf.as_ptr() as u64,
                     len: buf.len() as u32,
                     flags,
                     next: 0,
                 };
             }
-            queue.post_avail(0)
+            queues
+                .as_mut()
+                .and_then(|queues| queues.first_mut())
+                .ok_or(DevError::VirtioRngFailed)?
+                .post_avail(0)
         };
 
         // 通知设备处理队列 0。
         self.notify();
 
         // 等待设备产生 used 元素，校验被消费的描述符链头并返回写入长度。
-        let elem = self.queue()?.wait_used(last_used)?;
+        let mut queues = self.queue()?;
+        let elem = queues
+            .as_mut()
+            .and_then(|queues| queues.first_mut())
+            .ok_or(DevError::VirtioRngFailed)?
+            .wait_used(last_used)?;
         if elem.id != 0 {
             return Err(DevError::VirtioRngFailed);
         }

@@ -21,8 +21,8 @@ impl<T> MinixFs<T> {
     /// 读取目录内容，返回目录项列表（一次性读完全部数据）。
     ///
     /// 需要按需逐项读取、避免一次读完整目录时，请使用 [`Self::dir_entries_iter`]。
-    /// `device` 为一次持锁得到的块设备守卫（见 [`MinixFs::lock`]）。
-    pub fn dir_entries(&self, d_inode: &DINode, device: &mut T) -> IoResult<Vec<DirEntry>>
+    /// `device` 为一次持读锁得到的块设备守卫（见 [`MinixFs::read_lock`]）。
+    pub fn dir_entries(&self, d_inode: &DINode, device: &T) -> IoResult<Vec<DirEntry>>
     where
         T: BlockDevice,
     {
@@ -34,7 +34,7 @@ impl<T> MinixFs<T> {
     pub fn dir_entries_iter<'a, 'd>(
         &'a self,
         d_inode: &DINode,
-        device: &'d mut T,
+        device: &'d T,
     ) -> IoResult<DirEntries<'a, 'd, T>>
     where
         T: BlockDevice,
@@ -71,8 +71,8 @@ impl<T> MinixFs<T> {
     where
         T: BlockDevice,
     {
-        let mut dev = self.lock();
-        self.resolve_path(path, &mut dev, 0)
+        let dev = self.read_lock();
+        self.resolve_path(path, &dev, 0)
     }
 
     /// `open` 的公共实现：用待解析分量的队列逐级查找，遇到符号链接时把
@@ -80,7 +80,7 @@ impl<T> MinixFs<T> {
     fn resolve_path<'a>(
         &'a self,
         path: &Path,
-        device: &mut T,
+        device: &T,
         mut hops: usize,
     ) -> IoResult<Option<File<'a, T>>>
     where

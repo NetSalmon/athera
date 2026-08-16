@@ -12,14 +12,16 @@
 
 #![allow(unused)]
 
+pub mod file_ops;
+
 use alloc::{
-    boxed::Box,
     collections::BTreeMap,
     string::String,
     sync::{Arc, Weak},
     vec::Vec,
 };
-
+use core::fmt::Debug;
+use core::sync::atomic::{AtomicU64, Ordering};
 use athera_macros::lazy;
 
 use crate::{
@@ -28,6 +30,8 @@ use crate::{
     fs::{FileType, Mode, Path, PathBuf},
     numeric,
 };
+use crate::fs::vfs::file_ops::{FileOps, Whence};
+use crate::sync::rwlock::RwLock;
 
 /// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -186,17 +190,6 @@ pub struct DirEntry {
     pub file_type: FileType,
 }
 
-/// 定位基准，对应 `lseek` 的三种模式。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SeekFrom {
-    /// 从文件开头偏移。
-    Start(u64),
-    /// 从文件末尾偏移（负值向前）。
-    End(i64),
-    /// 从当前读写位置偏移。
-    Current(i64),
-}
-
 /// 路径级文件系统操作：供挂载表分发，由具体文件系统实现。
 ///
 /// 输入路径是相对本文件系统根目录的完整路径（`/` 开头）。返回的 [`File`]
@@ -224,23 +217,6 @@ pub trait FileSystem: Send + Sync {
     fn sync(&self) -> FsResult<()>;
 }
 
-/// 文件对象操作：pread / pwrite 语义的底层原语 + 元数据 / 同步。
-///
-/// `read` / `write` / `seek`（偏移管理）由 [`File`] 在此之上组合。
-pub trait FileOps: Send + Sync {
-    /// 从 `offset` 处读取，返回实际读取字节数；到文件末尾返回 0。
-    fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize>;
-    /// 从 `offset` 处写入，返回实际写入字节数。
-    fn write_at(&mut self, buf: &[u8], offset: u64) -> FsResult<usize>;
-    fn stat(&self) -> FsResult<Stat>;
-    /// 把文件截断到 `len`。
-    fn truncate(&mut self, len: u64) -> FsResult<()>;
-    /// 把该打开文件未落盘的数据写回磁盘。
-    fn sync(&mut self) -> FsResult<()>;
-    /// 读取下一个目录项（仅目录文件有效），读完返回 `Ok(None)`。
-    fn read_dir(&mut self) -> FsResult<Option<DirEntry>>;
-}
-
 /// 内存超级块：一个已挂载文件系统的元数据与路径级操作。
 pub struct SuperBlock {
     /// 该文件系统的路径级操作实现。
@@ -250,6 +226,7 @@ pub struct SuperBlock {
 }
 
 /// 内存 inode：文件 / 目录在内存中的元数据缓存。
+#[derive(Debug)]
 pub struct INode {
     pub ino: u64,
     pub mode: Mode,
@@ -265,6 +242,7 @@ pub struct INode {
 }
 
 /// 目录项缓存：命名空间树上的一个节点。
+#[derive(Debug)]
 pub struct Dentry {
     pub name: String,
     pub inode: Arc<INode>,
@@ -273,76 +251,76 @@ pub struct Dentry {
     pub children: BTreeMap<String, Arc<Dentry>>,
 }
 
-/// 打开的文件描述：类型擦除的文件操作 + 共享偏移 + 打开标志。
-///
-/// 偏移属于“打开文件描述”（`dup` / `fork` 后共享）；若后续要支持该语义，
-/// 需要把 `offset` 改为可共享访问（例如放入自旋锁），目前先按独占持有设计。
-pub struct File {
+pub struct File{
     /// 具体文件系统提供的文件操作（含该打开文件的内部状态）。
-    pub ops: Box<dyn FileOps>,
+    pub ops: Arc<dyn FileOps>,
     /// 对应目录项（元数据 / 挂载信息）。
     pub dentry: Arc<Dentry>,
     /// 当前读写位置。
-    pub offset: u64,
+    pub offset: AtomicU64,
     pub flags: OpenFlags,
+}
+
+impl Clone for File {
+    fn clone(&self) -> Self {
+        Self {
+            ops: self.ops.clone(),
+            dentry: self.dentry.clone(),
+            offset: AtomicU64::new(self.offset.load(Ordering::Relaxed)),
+            flags: self.flags,
+        }
+    }
+}
+
+impl Debug for File {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("File")
+            .field("ops", &"<dyn FileOps>")
+            .field("dentry", &self.dentry)
+            .field("offset", &self.offset.load(Ordering::Relaxed))
+            .field("flags", &self.flags)
+            .finish()
+    }
 }
 
 impl File {
     /// 从当前偏移读取，到文件末尾返回 0；推进内部偏移。
-    pub fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
-        let n = self.ops.read_at(buf, self.offset)?;
-        self.offset += n as u64;
+    pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
+        let n = self.ops.read(buf)?;
+        self.offset.fetch_add(n as u64, Ordering::Relaxed);
         Ok(n)
-    }
-
-    /// 从 `offset` 处读取（pread 语义），不改变内部偏移。
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
-        self.ops.read_at(buf, offset)
     }
 
     /// 从当前偏移写入；`append` 模式下无视偏移、总是写到文件末尾。
-    pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
-        let offset = if self.flags.append() {
-            self.stat()?.size
-        } else {
-            self.offset
-        };
-        let n = self.ops.write_at(buf, offset)?;
-        self.offset = offset + n as u64;
+    pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
+        let n = self.ops.write(buf)?;
+        self.offset.fetch_add(n as u64, Ordering::Relaxed);
         Ok(n)
     }
 
-    /// 从 `offset` 处写入（pwrite 语义），不改变内部偏移。
-    pub fn write_at(&mut self, buf: &[u8], offset: u64) -> FsResult<usize> {
-        self.ops.write_at(buf, offset)
-    }
-
     /// 移动读写位置，返回新的偏移。
-    pub fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
-        let size = self.stat()?.size as i64;
-        let new = match pos {
-            SeekFrom::Start(off) => off as i64,
-            SeekFrom::End(rel) => size + rel,
-            SeekFrom::Current(rel) => self.offset as i64 + rel,
-        };
-        self.offset = new.max(0) as u64;
-        Ok(self.offset)
+    pub fn seek(&self, offset: i64, whence: Whence) -> FsResult<i64> {
+        let new_offset = self.ops.seek(offset, whence)?;
+        if new_offset >= 0 {
+            self.offset.store(new_offset as u64, Ordering::Relaxed);
+        }
+        Ok(new_offset)
     }
 
     pub fn stat(&self) -> FsResult<Stat> {
-        self.ops.stat()
-    }
-
-    pub fn truncate(&mut self, len: u64) -> FsResult<()> {
-        self.ops.truncate(len)
-    }
-
-    pub fn sync(&mut self) -> FsResult<()> {
-        self.ops.sync()
+        Ok(Stat {
+            ino: self.dentry.inode.ino,
+            mode: self.dentry.inode.mode,
+            size: self.dentry.inode.size,
+            nlinks: self.dentry.inode.nlinks,
+            mtime: self.dentry.inode.mtime,
+            uid: self.dentry.inode.uid,
+            gid: self.dentry.inode.gid,
+        })
     }
 
     /// 读取下一个目录项（仅目录文件有效）。
-    pub fn read_dir(&mut self) -> FsResult<Option<DirEntry>> {
+    pub fn read_dir(&self) -> FsResult<Option<DirEntry>> {
         self.ops.read_dir()
     }
 
@@ -351,7 +329,7 @@ impl File {
     }
 
     pub fn offset(&self) -> u64 {
-        self.offset
+        self.offset.load(Ordering::Relaxed)
     }
 
     pub fn dentry(&self) -> &Arc<Dentry> {

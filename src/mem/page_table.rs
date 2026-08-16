@@ -118,7 +118,7 @@ pub fn identity_map() -> MemResult<()> {
     // 先在各自锁内短暂取出设备 MMIO 区间，避免把设备锁嵌套在页表锁里。
     let uart_start = UART.as_ref().map(|uart| uart.lock().device.mmio.start);
     let blk_range = VIRTIO_BLK.lock().as_ref().map(|blk| {
-        let dev = blk.lock();
+        let dev = blk.read();
         dev.device.mmio.start..dev.device.mmio.start + dev.device.mmio.size
     });
     let rng_range = VIRTIO_RNG

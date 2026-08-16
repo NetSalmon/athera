@@ -109,7 +109,7 @@ mmio_regs! {
 /// 配置握手（[`Self::handshake`]）以及队列 0 的收发原语（[`Self::queue`] /
 /// [`Self::notify`]，配合 [`queue::Virtq`] 的 `post_avail` / `wait_used`）。
 ///
-/// 新设备驱动只需实现 [`Self::DEVICE_TYPE`] 与 `device` / `queues_mut`
+/// 新设备驱动只需实现 [`Self::DEVICE_TYPE`] 与 `device` / `queues`
 /// 两个访问器，并按需覆写 [`Self::negotiate`] / [`Self::negotiate_legacy`]，
 /// 即可获得完整的初始化与提交流程（见 `virtio_blk` / `virtio_rng`）。
 pub trait VirtioDevice: Sized {
@@ -120,7 +120,7 @@ pub trait VirtioDevice: Sized {
     fn device(&self) -> Device;
 
     /// 已配置虚拟队列的可变访问（未握手时为 `None`）。
-    fn queues_mut(&mut self) -> &mut Option<Vec<Virtq>>;
+    fn queues(&self) -> &crate::sync::spin::SpinLock<Option<Vec<Virtq>>>;
 
     /// modern 特性协商：输入设备特性（低 / 高 32 位），返回驱动协商值。
     ///
@@ -173,7 +173,7 @@ pub trait VirtioDevice: Sized {
     /// 完成 ACK / DRIVER 状态、特性协商与队列 0 配置的完整握手。
     ///
     /// 队列尚未配置时，[`Self::queue`] 与提交流程会自动补一次握手。
-    fn handshake(&mut self) -> DevResult<()> {
+    fn handshake(&self) -> DevResult<()> {
         let mut cfg = VirtqCfg {
             device: self.device(),
         };
@@ -197,19 +197,21 @@ pub trait VirtioDevice: Sized {
                 .finish()
         };
 
-        *self.queues_mut() = Some(queues);
+        *self.queues().lock() = Some(queues);
         Ok(())
     }
 
     /// 队列 0 的可变引用；未配置时先补一次握手。
-    fn queue(&mut self) -> DevResult<&mut Virtq> {
-        if self.queues_mut().is_none() {
+    fn queue(&self) -> DevResult<crate::sync::spin::SpinLockGuard<'_, Option<Vec<Virtq>>>> {
+        if self.queues().lock().is_none() {
             self.handshake()?;
         }
-        self.queues_mut()
-            .as_mut()
-            .and_then(|queues| queues.first_mut())
-            .ok_or(DevError::VirtioHandshakeFailed)
+        let queues = self.queues().lock();
+        if queues.as_ref().and_then(|queues| queues.first()).is_some() {
+            Ok(queues)
+        } else {
+            Err(DevError::VirtioHandshakeFailed)
+        }
     }
 
     /// 通知设备处理队列 0。

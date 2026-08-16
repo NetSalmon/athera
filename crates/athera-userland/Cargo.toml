@@ -12,6 +12,13 @@ doctest = false
 bench = false
 
 [[bin]]
+name = "init"
+path = "src/bin/init.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
 name = "hello_world"
 path = "src/bin/hello_world.rs"
 test = false
