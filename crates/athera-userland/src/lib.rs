@@ -6,6 +6,7 @@
 //! 通过 `exit` 系统调用结束；`syscall` / `panic` 模块提供用户态系统
 //! 调用封装与 panic 处理。
 
+pub mod alloc;
 pub mod panic;
 pub mod stdio;
 pub mod syscall;

@@ -109,7 +109,7 @@ fn trap_handler(
     match trap {
         Trap::Interrupt(Interrupt::SUPERVISOR_TIMER) => {
             save_current(trap_frame_sp, sepc, _sstatus, _satp);
-            set_next_timer();
+            set_next_timer(None);
             switch();
         }
         Trap::Exception(Exception::U_MODE_ECALL) => {
@@ -120,6 +120,7 @@ fn trap_handler(
                     unsafe { (trap_frame_sp as *mut u64).add(10).write(ret) };
                     arch::registers::csr::Sepc::write(next);
                 }
+                // 直接让出CPU
                 SyscallResult::Yield => {
                     // 仍在陷阱处理期间，SIE 已由硬件清零；不能在这里
                     // 自旋等待定时器，而应直接切换到下一个任务。
@@ -160,10 +161,10 @@ fn trap_handler(
 }
 
 #[inline]
-pub fn set_next_timer() {
+pub fn set_next_timer(gap: Option<u64>) {
     const GAP: u64 = 1_000_000; // 10 Hz
     let t = arch::registers::csr::Time::read();
-    arch::registers::csr::Stimecmp::write(t + GAP);
+    arch::registers::csr::Stimecmp::write(t + gap.unwrap_or(GAP));
 }
 
 /// 陷阱帧（32 个通用寄存器数组）中 `a0` 的下标（x10），

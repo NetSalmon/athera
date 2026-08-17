@@ -4,19 +4,20 @@
 //! [`PageTable`] 是一页 512 项的页表；[`PageTableManager`] 维护内核
 //! 地址空间与按 TID 索引的用户地址空间，提供恒等映射、映射/解映射、
 //! 激活（写 `satp`）与 `sfence.vma` 刷新。
+mod entry;
 pub(crate) mod handle;
 
 use alloc::collections::BTreeMap;
 
 use athera_macros::lazy;
+pub use entry::{PageTable, PageTableEntry, PageTableEntryFlags};
 
 use crate::{
     arch::registers::{
         csr::Satp,
         values::{SatpMode, SatpValue},
     },
-    bits,
-    constants::{IDENTITY_MAP_CHUNK, PAGE_SIZE, PTE_NUMBER},
+    constants::{IDENTITY_MAP_CHUNK, PAGE_SIZE},
     debug,
     dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
     error::MemError,
@@ -29,85 +30,6 @@ use crate::{
 
 /// 本模块统一结果类型。
 pub type MemResult<T> = core::result::Result<T, MemError>;
-
-bits! {
-    pub type PageTableEntry: u64 {
-        v: 0,
-        r: 1,
-        w: 2,
-        x: 3,
-        u: 4,
-        g: 5,
-        a: 6,
-        d: 7,
-        flags: 0 => 7,
-        rwx: 1 => 3,
-        ppn0: 10 => 18,
-        ppn1: 19 => 27,
-        ppn2: 28 => 53,
-        ppn: 10 => 53,
-    }
-}
-
-bits! {
-    pub type PageTableEntryFlags : usize {
-        v: 0,
-        r: 1,
-        w: 2,
-        x: 3,
-        u: 4,
-        g: 5,
-        a: 6,
-        d: 7,
-        rwx: 1 => 3,
-    }
-}
-
-#[repr(align(4096))]
-#[derive(Debug)]
-pub struct PageTable {
-    entries: [PageTableEntry; PTE_NUMBER],
-}
-
-impl PageTable {
-    pub const fn new() -> PageTable {
-        PageTable {
-            entries: [PageTableEntry::new(); PTE_NUMBER],
-        }
-    }
-
-    pub fn insert(&mut self, entry: PageTableEntry, index: usize) {
-        self.entries[index] = entry;
-    }
-
-    #[inline]
-    pub fn nth(&self, index: usize) -> Option<&PageTableEntry> {
-        self.entries.get(index)
-    }
-
-    #[inline]
-    pub fn nth_as_addr(&self, index: usize) -> Option<PhysicalAddr> {
-        let pte = self.nth(index)?;
-        let mut pa = PhysicalAddr::new();
-        pa.set_ppn(pte.ppn() as usize);
-        Some(pa)
-    }
-
-    #[inline]
-    pub fn as_ptr(&self) -> *const PageTable {
-        self as *const PageTable
-    }
-
-    #[inline]
-    pub fn as_phys_addr(&self) -> PhysicalAddr {
-        PhysicalAddr::from(self.as_ptr() as usize)
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut PageTable {
-        self as *mut PageTable
-    }
-}
 
 #[lazy(spin)]
 pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();

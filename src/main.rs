@@ -83,7 +83,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     boot::spawn_from_disk("/bin/fork");
 
     // 只有在初始任务创建完成后才启动时钟，避免定时器中断进入空调度器。
-    trap::set_next_timer();
+    trap::set_next_timer(None);
     arch::registers::csr::Sstatus::set_bits(1 << 1);
     proc::sched::switch();
 
