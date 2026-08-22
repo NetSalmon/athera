@@ -73,3 +73,4 @@ path = "src/bin/conway.rs"
 test = false
 doctest = false
 bench = false
+

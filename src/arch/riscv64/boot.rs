@@ -72,3 +72,52 @@ pub(crate) fn spawn_default_programs() {
         spawn_from_disk(path);
     }
 }
+
+pub(crate) fn spawn_init() {
+    for path in ["/sbin/init", "/etc/init", "/bin/init", "/bin/sh"] {
+        let f = match VFS.force().open(
+            &Path::from(path),
+            OpenFlags::read_only(),
+            crate::fs::Mode::from(0),
+        ) {
+            Ok(file) => file,
+            Err(err) => {
+                error!("failed to open {path}: {err}");
+                continue;
+            }
+        };
+
+        let Ok(size) = usize::try_from(match VFS.force().stat(&Path::from(path)) {
+            Ok(stat) => stat.size,
+            Err(err) => {
+                error!("failed to stat {path}: {err}");
+                continue;
+            }
+        }) else {
+            error!("{path} is too large to load");
+            continue;
+        };
+        let mut buf = vec![0u8; size];
+
+        let read = match f.read(&mut buf) {
+            Ok(read) => read,
+            Err(err) => {
+                error!("failed to read {path}: {err}");
+                continue;
+            }
+        };
+        if read != buf.len() {
+            error!("short read for {path}: expected {}, got {read}", buf.len());
+            continue;
+        }
+
+        if let Err(err) = spawn_buffer(&buf, None) {
+            error!("failed to execute user program: {err}");
+            continue;
+        }
+
+        return;
+    }
+
+    panic!("failed to start init");
+}

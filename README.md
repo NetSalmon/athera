@@ -9,7 +9,7 @@
 - UART 驱动：ns16550a，基于设备树自动探测，登记进设备管理器
 - 块设备驱动：virtio-blk（MMIO 模式，含 virtio-mmio 传输层、链式握手状态机与通用 `VirtioDevice` 抽象）
 - 熵源驱动：virtio-rng（MMIO 模式，为随机数提供真随机种子）
-- 显示驱动：ramfb（QEMU RamFB，经 fw_cfg 的 `etc/ramfb` 文件下发帧缓冲配置；帧缓冲为 32bpp XRGB8888，`WIDTH x HEIGHT = 1024x768`，含 `clear` / `fill_rect` / `blit` / `draw_color_card` 绘制原语），并附带 `driver/fw_cfg.rs` 的 fw_cfg MMIO/DMA 驱动。`scripts/start.sh` 的 `-b/--gui` 会添加 `-display gtk -device ramfb -serial stdio`
+- 显示驱动：ramfb（QEMU RamFB，经 fw_cfg 的 `etc/ramfb` 文件下发帧缓冲配置；帧缓冲为 32bpp XRGB8888，`WIDTH x HEIGHT = 1024x768`，含 `clear` / `fill_rect` / `blit` / `draw_color_card` 绘制原语），并附带 `driver/fw_cfg.rs` 的 fw_cfg MMIO/DMA 驱动。`scripts/start.py` 的 `-b/--gui` 会添加 `-display gtk -device ramfb -serial stdio`
 - 随机数：`athera-rand` 提供 ChaCha20 CSPRNG，内核全局 `RNG` 经 virtio-rng 种子化（无设备时回退固定种子并告警）
 - 设备模型：`driver/descriptor.rs` 把设备树节点解析为统一描述符（compatible / reg / irq / 属性），`driver/tree.rs` 的设备管理器（`DEVICE_MANAGER`）按描述符登记驱动并分配 Linux 兼容的 `dev_t` 设备号（`Did`：12 位主号 + 20 位次号），`ManagedBlockDevice` 为文件系统提供稳定的块设备句柄
 - MINIX 文件系统：启动时从 virtio-blk 读取 MINIX V1 文件系统（超级块、inode、目录项），按路径查找并执行 `/bin/init`、`/bin/hello_world`、`/bin/quick_sort`、`/bin/panic`、`/bin/sort`、`/bin/add`、`/bin/fork` 等用户程序
@@ -118,7 +118,7 @@ athera/                       # 内核（根 crate）+ 工作区
 ├── build.rs
 └── scripts/
     ├── put_userland.sh      构建并把用户程序复制到 MINIX 镜像 /bin/
-    └── start.sh             QEMU 启动脚本
+    └── start.py            QEMU 启动脚本
 ```
 
 ## 构建与运行
@@ -136,7 +136,7 @@ athera/                       # 内核（根 crate）+ 工作区
 
 # 构建内核并启动
 cargo build --release
-./scripts/start.sh --blk resources/minix.qcow2 --random
+./scripts/start.py --blk resources/minix.qcow2 --random
 ```
 
 可选 feature：
@@ -151,12 +151,12 @@ cargo build --release --features halt_directly
 
 ```bash
 cargo build --release --features smp
-./scripts/start.sh --cpus 2 --blk resources/minix.qcow2 --random
+./scripts/start.py --cpus 2 --blk resources/minix.qcow2 --random
 ```
 
 调试构建（`debug_assertions`）默认日志级别为 `TRACE`，发布构建为 `INFO`。
 
-`scripts/start.sh` 支持长参数和短参数：
+`scripts/start.py` 支持长参数和短参数：
 
 | 选项 | 作用 |
 | ---- | ---- |
@@ -174,17 +174,22 @@ cargo build --release --features smp
 | `-m`, `--mmu-debug` | 输出 MMU 日志 |
 | `-t`, `--trace EVENT` | 添加 QEMU trace 事件，可重复指定 |
 | `--no-trace` | 禁用默认 QEMU trace 事件 |
+| `-T`, `--timeout SECONDS` | 运行超时时间，默认 `30`，到点自动终止 QEMU |
+| `--no-timeout` | 禁用超时，一直运行（`--gdb` 时自动禁用） |
 | `-h`, `--help` | 显示帮助 |
 
 `--blk` 和 `--pci-blk` 互斥；`--random` 必须与其中一个磁盘选项一起使用，保证 virtio-blk 仍是第一个 `virtio,mmio` 节点。也可以在 `--` 后追加任意 QEMU 参数。
 
+脚本默认在 `30` 秒后自动终止 QEMU（退出码 `124`），避免长时间挂起；可用 `-T/--timeout` 调整时长或 `--no-timeout` 禁用。`--gdb` 模式会自动禁用超时。
+
 示例：
 
 ```bash
-./scripts/start.sh --cpus 2 --blk resources/minix.qcow2 --random
-./scripts/start.sh -c 2 -d resources/minix.qcow2 -m -i
-./scripts/start.sh --pci-blk resources/disk.qcow2
-./scripts/start.sh --gdb --no-trace
+./scripts/start.py --cpus 2 --blk resources/minix.qcow2 --random
+./scripts/start.py -c 2 -d resources/minix.qcow2 -m -i
+./scripts/start.py --pci-blk resources/disk.qcow2
+./scripts/start.py --gdb --no-trace
+./scripts/start.py -T 60 -d resources/minix.qcow2
 ```
 
 ## 显示（ramfb）
@@ -199,7 +204,7 @@ QEMU 11 的 ramfb 通过 fw_cfg 下发帧缓冲配置。`driver/ramfb.rs` 的 `R
 
 ```bash
 cargo build --release
-./scripts/start.sh -b -d resources/minix.qcow2
+./scripts/start.py -b -d resources/minix.qcow2
 ```
 
 > 注意：此前“色卡 + 磁盘图片轮播”的启动期死循环演示已不在代码库中（无
