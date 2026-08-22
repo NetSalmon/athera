@@ -367,10 +367,67 @@ macro_rules! array_struct {
     };
 }
 
+/// Define an integer newtype with named constants and optional value ranges.
+///
+/// This macro generates a `#[repr(transparent)]` wrapper struct around an integer type
+/// (e.g. `u8`, `u32`, `u64`, `isize`) and provides named associated constants plus
+/// bidirectional `From` conversions.
+///
+/// Two kinds of entries are supported:
+///
+/// - **Constant** (`NAME = value`): generates `const NAME: Self = Self(value)`.
+/// - **Range** (`NAME = min => max`): generates **no** constant; instead it generates a
+///   predicate `is_<snake>(value) -> bool` that reports whether `value` falls in the
+///   **inclusive** range `min..=max`. Ranges are used to give one name to a group of
+///   consecutive values, e.g. via a `match` guard:
+///   `match v { y if Name::is_my_range(y) => ..., _ => ... }`.
+///
+/// `Debug` prints the entry name for any value that matches a constant or a range
+/// (constants are checked before ranges; ranges are checked in declaration order) and
+/// `"unknown"` for values that match nothing.
+///
+/// # Syntax
+/// ```ignore
+/// numeric! {
+///     pub enum Name : BaseType {
+///         CONST = value,
+///         RANGE = min => max,
+///     }
+/// }
+/// ```
+///
+/// # Example
+/// ```
+/// use my_crate::numeric;
+///
+/// numeric! {
+///     pub enum Signal : u32 {
+///         NONE = 0,
+///         USR1 = 10,
+///         USR2 = 12,
+///         PRIORITY = 1 => 9, // range: values 1..=9
+///     }
+/// }
+///
+/// assert!(Signal::is_priority(5));
+/// assert!(!Signal::is_priority(10));
+/// assert_eq!(format!("{:?}", Signal::from(3)), "Signal::PRIORITY");
+/// assert_eq!(format!("{:?}", Signal::from(10)), "Signal::USR1");
+/// ```
+///
+/// # Note
+/// - Range bounds are **inclusive** on both ends (`1 => 12` covers 1..=12).
+/// - Range entries generate only a predicate (`is_<snake>`); they do **not** generate a
+///   named constant, so they cannot be used as `const` match patterns.
+/// - Constants take priority over ranges in `Debug`: a value equal to a constant is always
+///   rendered as that constant even if it also lies inside a range.
+/// - `From<BaseType>` is always infallible and unconstrained; the macro does not validate
+///   that a value belongs to any declared entry.
+/// - The `with ops` form additionally implements `Add`/`Sub`/`Mul`/`Div` arithmetic.
 #[macro_export]
 macro_rules! numeric {
-    ($v:vis enum $name:ident with ops : $t:ty { $( $item:ident = $value:expr ),*$(,)? }) => {
-        numeric!($v enum $name : $t { $( $item = $value, )* });
+    ($v:vis enum $name:ident with ops : $t:ty { $( $item:ident = $from:expr $(=> $to:expr)? ),*$(,)? }) => {
+        numeric!($v enum $name : $t { $( $item = $from $(=> $to)?, )* });
 
         impl core::ops::Add for $name {
             type Output = $name;
@@ -451,22 +508,21 @@ macro_rules! numeric {
             }
         }
     };
-    ($v:vis enum $name:ident : $t:ty { $( $item:ident = $value:expr ),*$(,)? }) => {
+    ($v:vis enum $name:ident : $t:ty { $( $item:ident = $from:expr $(=> $to:expr)? ),*$(,)? }) => {
         #[repr(transparent)]
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         $v struct $name (pub $t);
 
         impl $name {
-            $( $v const $item : Self = Self($value); )*
+            $(
+                numeric!(@feed $v $name $item ; $t ; ($from $(, $to)?));
+            )*
         }
 
         #[allow(unused)]
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                match *self {
-                    $( Self::$item => f.write_str(concat!( stringify!($name), "::", stringify!($item))), )*
-                    _ => f.write_str("unknown"),
-                }
+                numeric!(@debug $name self f ; [] ; [] ; $($item = ($from $(, $to)?);)*)
             }
         }
 
@@ -481,5 +537,37 @@ macro_rules! numeric {
                 value.0
             }
         }
-    }
+    };
+
+    // Constant entry: emits a named const; a range entry: emits the `is_<snake>` predicate.
+    // The value is forwarded as a single group to sidestep expr-fragment forwarding limits.
+    (@feed $v:vis $name:ident $item:ident ; $t:ty ; ($from:expr)) => {
+        $v const $item : Self = Self($from);
+    };
+    (@feed $v:vis $name:ident $item:ident ; $t:ty ; ($from:expr, $to:expr)) => {
+        paste::paste! {
+            #[inline]
+            #[allow(unused_comparisons)]
+            $v const fn [<is_ $item:lower>](value: $t) -> bool {
+                value >= $from && value <= $to
+            }
+        }
+    };
+
+    // Build the `Debug` match: constants first (priority over ranges), then ranges in
+    // declaration order, then the `unknown` fallback. `self`/`f` are threaded through
+    // explicitly so the generated code can reference them under edition-2024 hygiene.
+    (@debug $name:ident $self:ident $f:ident ; [$($c:tt)*] ; [$($r:tt)*] ; ) => {
+        match *$self {
+            $($c)*
+            $($r)*
+            _ => $f.write_str("unknown"),
+        }
+    };
+    (@debug $name:ident $self:ident $f:ident ; [$($c:tt)*] ; [$($r:tt)*] ; $item:ident = ($from:expr); $($rest:tt)*) => {
+        numeric!(@debug $name $self $f ; [$($c)* Self::$item => $f.write_str(concat!( stringify!($name), "::", stringify!($item))),] ; [$($r)*] ; $($rest)*)
+    };
+    (@debug $name:ident $self:ident $f:ident ; [$($c:tt)*] ; [$($r:tt)*] ; $item:ident = ($from:expr, $to:expr); $($rest:tt)*) => {
+        numeric!(@debug $name $self $f ; [$($c)*] ; [$($r)* x if x.0 >= $from && x.0 <= $to => $f.write_str(concat!( stringify!($name), "::", stringify!($item))),] ; $($rest)*)
+    };
 }

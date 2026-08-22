@@ -17,9 +17,9 @@ use crate::{
         csr::Satp,
         values::{SatpMode, SatpValue},
     },
-    constants::{IDENTITY_MAP_CHUNK, PAGE_SIZE},
+    constants::{FDT_ADDR, IDENTITY_MAP_CHUNK, PAGE_SIZE},
     debug,
-    dev::{SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
+    dev::{fw_cfg::FwCfg, SYSTEM_MEMORY, UART, VIRTIO_BLK, VIRTIO_RNG},
     error::MemError,
     mem::{
         addr::{PhysicalAddr, VirtualAddr},
@@ -47,6 +47,15 @@ pub fn identity_map() -> MemResult<()> {
         .lock()
         .as_ref()
         .map(|rng| rng.device.mmio.start..rng.device.mmio.start + rng.device.mmio.size);
+
+    // fw_cfg MMIO 区间（ramfb 经 fw_cfg 下发配置）；直接从设备树解析，
+    // 避免在此处强制初始化 RAMFB。
+    let fw_cfg_range = match unsafe { fdt::Fdt::from_ptr(FDT_ADDR) } {
+        Ok(fdt) => FwCfg::probe(&fdt).map(|fw| {
+            fw.device.mmio.start..fw.device.mmio.start + fw.device.mmio.size
+        }),
+        Err(_) => None,
+    };
 
     let mem_start = SYSTEM_MEMORY.device.mmio.start;
     let mem_end = mem_start + SYSTEM_MEMORY.device.mmio.size;
@@ -81,6 +90,12 @@ pub fn identity_map() -> MemResult<()> {
     }
 
     if let Some(range) = rng_range {
+        PAGE_TABLE_MANAGER
+            .lock()
+            .identity_map(range.start, range.end)?;
+    }
+
+    if let Some(range) = fw_cfg_range {
         PAGE_TABLE_MANAGER
             .lock()
             .identity_map(range.start, range.end)?;

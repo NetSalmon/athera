@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Netsalmon <netsalmon@disroot.org>"]
 description = "A simple operating system"
-license = "GPL-3"
+license = "GPL-3.0-or-later"
 build = "build.rs"
 
 

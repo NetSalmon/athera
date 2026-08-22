@@ -15,7 +15,7 @@ use athera_rand::{EntropyError, EntropySource};
 
 use crate::{
     dev::{
-        device::Device,
+        device::DeviceInfo,
         virtio_mmio::{
             DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},
@@ -29,14 +29,14 @@ use crate::{
 pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioRng {
-    pub device: Device,
+    pub device: DeviceInfo,
     pub queues: SpinLock<Option<Vec<Virtq>>>,
 }
 
 impl VirtioDevice for VirtioRng {
     const DEVICE_TYPE: DeviceType = DeviceType::ENTROPY_SOURCE;
 
-    fn device(&self) -> Device {
+    fn device(&self) -> DeviceInfo {
         self.device
     }
 
@@ -45,8 +45,8 @@ impl VirtioDevice for VirtioRng {
     }
 }
 
-impl From<Device> for VirtioRng {
-    fn from(dev: Device) -> Self {
+impl From<DeviceInfo> for VirtioRng {
+    fn from(dev: DeviceInfo) -> Self {
         VirtioRng {
             device: dev,
             queues: SpinLock::new(None),
@@ -61,40 +61,16 @@ impl VirtioRng {
     /// 返回设备实际写入的字节数（可能小于 `buf.len()`）。描述符 0 每次
     /// 复用，同一时刻最多一个在途请求。
     fn submit(&self, buf: &mut [u8]) -> DevResult<usize> {
-        let last_used = {
-            let mut queues = self.queue()?;
-            {
-                let q = queues
-                    .as_mut()
-                    .and_then(|queues| queues.first_mut())
-                    .ok_or(DevError::VirtioRngFailed)?;
-
-                let mut flags = Flags::new();
-                flags.set_write(true);
-                q.as_mut().desc[0] = VRingDesc {
-                    addr: buf.as_ptr() as u64,
-                    len: buf.len() as u32,
-                    flags,
-                    next: 0,
-                };
-            }
-            queues
-                .as_mut()
-                .and_then(|queues| queues.first_mut())
-                .ok_or(DevError::VirtioRngFailed)?
-                .post_avail(0)
-        };
-
-        // 通知设备处理队列 0。
-        self.notify();
-
-        // 等待设备产生 used 元素，校验被消费的描述符链头并返回写入长度。
-        let mut queues = self.queue()?;
-        let elem = queues
-            .as_mut()
-            .and_then(|queues| queues.first_mut())
-            .ok_or(DevError::VirtioRngFailed)?
-            .wait_used(last_used)?;
+        let elem = VirtioDevice::submit(self, |q| {
+            let mut flags = Flags::new();
+            flags.set_write(true);
+            q.desc[0] = VRingDesc {
+                addr: buf.as_mut_ptr() as u64,
+                len: buf.len() as u32,
+                flags,
+                next: 0,
+            };
+        })?;
         if elem.id != 0 {
             return Err(DevError::VirtioRngFailed);
         }

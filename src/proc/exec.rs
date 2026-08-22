@@ -3,7 +3,7 @@
 //! [`spawn_buffer`] 解析 ELF 程序头，为每个 `PT_LOAD` 段分配物理页并
 //! 映射进用户地址空间，最后创建用户栈并通过 [`restore_context`] 切换到
 //! 用户态。
-use alloc::{vec, vec::Vec};
+use alloc::vec;
 use core::ptr;
 
 use crate::{
@@ -14,6 +14,7 @@ use crate::{
     constants::{PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
     elf::{Elf64Ehdr, Elf64Phdr, PType},
     error::{Error, MemError, Result},
+    fs::vfs::{File, OpenFlags},
     info,
     mem::{
         allocators::alloc_frame,
@@ -176,7 +177,12 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         trap_context: context.clone(),
         exit_code: 0,
         priority: priority.unwrap_or_default(),
-        fd_table: Vec::new(),
+        // 标准输入、输出和错误输出都连接到同一个串口设备。
+        fd_table: vec![
+            File::uart(OpenFlags::read_only()),
+            File::uart(OpenFlags::write_only()),
+            File::uart(OpenFlags::write_only()),
+        ],
     };
 
     TASKS.force().lock().add(tid, None, tcb);

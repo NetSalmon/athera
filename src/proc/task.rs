@@ -6,7 +6,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::ops::{Bound, Deref, DerefMut};
 
-use athera_id_alloc::IdAllocator;
+use athera_id_alloc::IdAlloc;
 use athera_macros::lazy;
 
 use crate::{
@@ -26,7 +26,8 @@ use crate::{
 };
 
 #[lazy(spin)]
-pub static TID_ALLOCATOR: IdAllocator<Tid> = IdAllocator::from_range(Tid(1)..Tid(TID_MAX));
+pub static TID_ALLOCATOR: IdAlloc<Tid, 0> =
+    IdAlloc::from_range(Tid(1)..Tid(TID_MAX)).expect("tid range");
 
 #[derive(athera_macros::Id)]
 pub struct Tid(pub usize);

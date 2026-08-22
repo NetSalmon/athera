@@ -15,8 +15,8 @@ use crate::{
     bits,
     constants::{SECTOR_SIZE, VIRTIO_BLK_S_OK, VIRTIO_BLK_T_IN, VIRTIO_BLK_T_OUT},
     dev::{
-        device::Device,
-        traits::{BlockDevice, Dev, IoError, IoResult},
+        device::DeviceInfo,
+        traits::{Device, IoError, IoResult, ReadAt, WriteAt},
         virtio_mmio::{
             DeviceType, VirtioDevice,
             queue::{Flags, VRingDesc, Virtq},
@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct VirtioBlk {
-    pub device: Device,
+    pub device: DeviceInfo,
     pub queues: SpinLock<Option<Vec<Virtq>>>,
 }
 
@@ -69,7 +69,7 @@ bits! {
     }
 }
 
-impl Dev for VirtioBlk {
+impl Device for VirtioBlk {
     fn name(&self) -> &'static str {
         "virtio-mmio-blk"
     }
@@ -82,7 +82,7 @@ impl Dev for VirtioBlk {
 impl VirtioDevice for VirtioBlk {
     const DEVICE_TYPE: DeviceType = DeviceType::BLOCK;
 
-    fn device(&self) -> Device {
+    fn device(&self) -> DeviceInfo {
         self.device
     }
 
@@ -100,8 +100,8 @@ impl VirtioDevice for VirtioBlk {
     }
 }
 
-impl From<Device> for VirtioBlk {
-    fn from(dev: Device) -> Self {
+impl From<DeviceInfo> for VirtioBlk {
+    fn from(dev: DeviceInfo) -> Self {
         VirtioBlk {
             device: dev,
             queues: SpinLock::new(None),
@@ -116,7 +116,14 @@ impl VirtioBlk {
     /// （读请求），为假表示设备从 `data` 读取（写请求）。描述符 0/1/2
     /// 分别对应请求头、数据与状态字节，每次请求复用同一组描述符（同一
     /// 时刻最多一个在途请求）。
-    fn submit(&self, req_type: u32, sector: u64, data: &[u8], data_write: bool) -> IoResult<()> {
+    fn submit_request(
+        &self,
+        req_type: u32,
+        sector: u64,
+        data: *const u8,
+        data_len: usize,
+        data_write: bool,
+    ) -> IoResult<()> {
         let req = VirtioBlkReq {
             r#type: req_type,
             reserved: 0,
@@ -124,61 +131,36 @@ impl VirtioBlk {
         };
         let mut status: u8 = !VIRTIO_BLK_S_OK;
 
-        // 组装描述符链并追加到 avail 环，记录设备当前 used 位置。
-        let last_used = {
-            let mut queues = self.queue().map_err(|_| IoError::NotReady)?;
-            {
-                let q = queues
-                    .as_mut()
-                    .and_then(|queues| queues.first_mut())
-                    .ok_or(IoError::NotReady)?;
+        let elem = VirtioDevice::submit(self, |q| {
+            let mut flags = Flags::new();
+            flags.set_next(true);
+            q.desc[0] = VRingDesc {
+                addr: addr_of!(req) as u64,
+                len: size_of::<VirtioBlkReq>() as u32,
+                flags,
+                next: 1,
+            };
 
-                let mut flags = Flags::new();
-                flags.set_next(true);
-                q.as_mut().desc[0] = VRingDesc {
-                    addr: addr_of!(req) as u64,
-                    len: size_of::<VirtioBlkReq>() as u32,
-                    flags,
-                    next: 1,
-                };
+            let mut flags = Flags::new();
+            flags.set_next(true);
+            flags.set_write(data_write);
+            q.desc[1] = VRingDesc {
+                addr: data as u64,
+                len: data_len as u32,
+                flags,
+                next: 2,
+            };
 
-                let mut flags = Flags::new();
-                flags.set_next(true);
-                flags.set_write(data_write);
-                q.as_mut().desc[1] = VRingDesc {
-                    addr: data.as_ptr() as u64,
-                    len: data.len() as u32,
-                    flags,
-                    next: 2,
-                };
-
-                let mut flags = Flags::new();
-                flags.set_write(true);
-                q.as_mut().desc[2] = VRingDesc {
-                    addr: addr_of_mut!(status) as u64,
-                    len: size_of::<u8>() as u32,
-                    flags,
-                    next: 0,
-                };
-            }
-            queues
-                .as_mut()
-                .and_then(|queues| queues.first_mut())
-                .ok_or(IoError::NotReady)?
-                .post_avail(0)
-        };
-
-        // 通知设备处理队列 0。
-        self.notify();
-
-        // 等待设备产生 used 元素，并校验被消费的描述符链头。
-        let mut queues = self.queue().map_err(|_| IoError::NotReady)?;
-        let elem = queues
-            .as_mut()
-            .and_then(|queues| queues.first_mut())
-            .ok_or(IoError::NotReady)?
-            .wait_used(last_used)
-            .map_err(|_| IoError::NotReady)?;
+            let mut flags = Flags::new();
+            flags.set_write(true);
+            q.desc[2] = VRingDesc {
+                addr: addr_of_mut!(status) as u64,
+                len: size_of::<u8>() as u32,
+                flags,
+                next: 0,
+            };
+        })
+        .map_err(|_| IoError::NotReady)?;
         if elem.id != 0 {
             return Err(IoError::Request);
         }
@@ -191,7 +173,7 @@ impl VirtioBlk {
     }
 }
 
-impl BlockDevice for VirtioBlk {
+impl ReadAt for VirtioBlk {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
@@ -199,8 +181,14 @@ impl BlockDevice for VirtioBlk {
             let sector = (pos / SECTOR_SIZE) as u64;
             let shift = pos % SECTOR_SIZE;
 
-            let sector_buf = [0u8; SECTOR_SIZE];
-            self.submit(VIRTIO_BLK_T_IN, sector, &sector_buf, true)?;
+            let mut sector_buf = [0u8; SECTOR_SIZE];
+            self.submit_request(
+                VIRTIO_BLK_T_IN,
+                sector,
+                sector_buf.as_mut_ptr(),
+                sector_buf.len(),
+                true,
+            )?;
 
             let n = core::cmp::min(SECTOR_SIZE - shift, buf.len() - done);
             buf[done..done + n].copy_from_slice(&sector_buf[shift..shift + n]);
@@ -208,7 +196,9 @@ impl BlockDevice for VirtioBlk {
         }
         Ok(done)
     }
+}
 
+impl WriteAt for VirtioBlk {
     fn write_at(&self, buf: &[u8], offset: usize) -> IoResult<usize> {
         let mut done = 0;
         while done < buf.len() {
@@ -218,13 +208,31 @@ impl BlockDevice for VirtioBlk {
             let n = core::cmp::min(SECTOR_SIZE - shift, buf.len() - done);
 
             if shift == 0 && n == SECTOR_SIZE {
-                self.submit(VIRTIO_BLK_T_OUT, sector, &buf[done..done + n], false)?;
+                self.submit_request(
+                    VIRTIO_BLK_T_OUT,
+                    sector,
+                    buf[done..done + n].as_ptr(),
+                    n,
+                    false,
+                )?;
             } else {
                 // 非整扇区写入先读回原扇区，再原地修改（read-modify-write）。
                 let mut sector_buf = [0u8; SECTOR_SIZE];
-                self.submit(VIRTIO_BLK_T_IN, sector, &sector_buf, true)?;
+                self.submit_request(
+                    VIRTIO_BLK_T_IN,
+                    sector,
+                    sector_buf.as_mut_ptr(),
+                    sector_buf.len(),
+                    true,
+                )?;
                 sector_buf[shift..shift + n].copy_from_slice(&buf[done..done + n]);
-                self.submit(VIRTIO_BLK_T_OUT, sector, &sector_buf, false)?;
+                self.submit_request(
+                    VIRTIO_BLK_T_OUT,
+                    sector,
+                    sector_buf.as_ptr(),
+                    sector_buf.len(),
+                    false,
+                )?;
             }
             done += n;
         }

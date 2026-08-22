@@ -14,8 +14,8 @@ use crate::{
     FDT_ADDR,
     constants::MEMORY_RANGE,
     dev::{
-        memory::Memory, ns16550a::Ns16550a, virtio_blk::VirtioBlk, virtio_mmio::VirtioDevice,
-        virtio_rng::VirtioRng,
+        memory::Memory, ns16550a::Ns16550a, ramfb::Ramfb, virtio_blk::VirtioBlk,
+        virtio_mmio::VirtioDevice, virtio_rng::VirtioRng,
     },
     error::{DevError, Error, Result},
     mem::allocators::FRAME_ALLOCATOR,
@@ -23,9 +23,12 @@ use crate::{
     warn,
 };
 
+pub mod descriptor;
 mod device;
+pub(crate) mod fw_cfg;
 mod memory;
 mod ns16550a;
+mod ramfb;
 pub(crate) mod traits;
 mod tree;
 mod virtio_blk;
@@ -71,6 +74,17 @@ pub static VIRTIO_RNG: Option<VirtioRng> = {
         Ok(fdt) => VirtioRng::probe(&fdt),
         Err(err) => {
             warn!("failed to init virtio-rng: {err}");
+            None
+        }
+    }
+};
+
+#[lazy(spin)]
+pub static RAMFB: Option<Arc<RwLock<Ramfb>>> = {
+    match parse_fdt() {
+        Ok(fdt) => Ramfb::probe(&fdt).map(|ramfb| Arc::new(RwLock::new(ramfb))),
+        Err(err) => {
+            warn!("failed to init ramfb: {err}");
             None
         }
     }

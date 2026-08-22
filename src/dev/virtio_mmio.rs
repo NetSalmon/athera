@@ -11,11 +11,14 @@ use core::sync::atomic::{Ordering, fence};
 
 use fdt::Fdt;
 
-use self::{handshake::QueueConfig, queue::Virtq};
+use self::{
+    handshake::QueueConfig,
+    queue::{Queue, Virtq, VirtqUsedElem},
+};
 use crate::{
     bits,
     constants::{RING_SIZE, VIRTIO_VERSION_LEGACY},
-    dev::device::{Device, Resource},
+    dev::device::{DeviceInfo, Resource},
     error::DevError,
     mmio_regs, numeric,
 };
@@ -24,7 +27,7 @@ use crate::{
 pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtqCfg {
-    pub device: Device,
+    pub device: DeviceInfo,
 }
 
 numeric! {
@@ -117,7 +120,7 @@ pub trait VirtioDevice: Sized {
     const DEVICE_TYPE: DeviceType;
 
     /// 返回设备的 MMIO 描述。
-    fn device(&self) -> Device;
+    fn device(&self) -> DeviceInfo;
 
     /// 已配置虚拟队列的可变访问（未握手时为 `None`）。
     fn queues(&self) -> &crate::sync::spin::SpinLock<Option<Vec<Virtq>>>;
@@ -139,7 +142,7 @@ pub trait VirtioDevice: Sized {
     /// 或其它 virtio 设备会被跳过。
     fn probe(fdt: &Fdt) -> Option<Self>
     where
-        Self: From<Device>,
+        Self: From<DeviceInfo>,
     {
         fdt.all_nodes().find_map(|node| {
             let is_mmio = node
@@ -155,7 +158,7 @@ pub trait VirtioDevice: Sized {
             let size = reg.size.unwrap_or(0);
             let interrupts = node.interrupts()?.next()?;
 
-            let device = Device {
+            let device = DeviceInfo {
                 mmio: Resource::new(start, size),
                 irq: Some(interrupts),
             };
@@ -203,7 +206,8 @@ pub trait VirtioDevice: Sized {
 
     /// 队列 0 的可变引用；未配置时先补一次握手。
     fn queue(&self) -> DevResult<crate::sync::spin::SpinLockGuard<'_, Option<Vec<Virtq>>>> {
-        if self.queues().lock().is_none() {
+        let ready = self.queues().lock().is_some();
+        if !ready {
             self.handshake()?;
         }
         let queues = self.queues().lock();
@@ -212,6 +216,26 @@ pub trait VirtioDevice: Sized {
         } else {
             Err(DevError::VirtioHandshakeFailed)
         }
+    }
+
+    /// 提交一个队列请求并等待设备完成。
+    ///
+    /// 描述符配置、发布、通知和等待必须由同一个队列锁保护。virtio 驱动
+    /// 只负责填写协议相关的描述符，避免各驱动重复实现容易出错的锁边界。
+    fn submit<F>(&self, configure: F) -> DevResult<VirtqUsedElem>
+    where
+        F: FnOnce(&mut Queue),
+    {
+        let mut queues = self.queue()?;
+        let queue = queues
+            .as_mut()
+            .and_then(|queues| queues.first_mut())
+            .ok_or(DevError::VirtioHandshakeFailed)?;
+
+        configure(queue.as_mut());
+        let last_used = queue.post_avail(0);
+        self.notify();
+        queue.wait_used(last_used)
     }
 
     /// 通知设备处理队列 0。

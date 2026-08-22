@@ -1,13 +1,13 @@
 //! 系统内存探测。
 //!
 //! 从设备树 `/memory` 节点解析物理内存起始地址与大小，包装成
-//! [`Device`]。
+//! [`DeviceInfo`]。
 use fdt::Fdt;
 
-use crate::dev::device::{Device, Resource};
+use crate::dev::device::{DeviceInfo, Resource};
 
 pub struct Memory {
-    pub device: Device,
+    pub device: DeviceInfo,
 }
 
 impl Memory {
@@ -18,7 +18,7 @@ impl Memory {
         let size = range.size?;
 
         let result = Self {
-            device: Device {
+            device: DeviceInfo {
                 mmio: Resource { start, size },
                 irq: None,
             },

@@ -66,3 +66,10 @@ path = "src/bin/heap.rs"
 test = false
 doctest = false
 bench = false
+
+[[bin]]
+name = "conway"
+path = "src/bin/conway.rs"
+test = false
+doctest = false
+bench = false

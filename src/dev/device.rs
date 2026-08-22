@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! 设备抽象。
 //!
-//! [`Resource`] 描述一段 MMIO 区间（易失读写），[`Device`] 附加可选
+//! [`Resource`] 描述一段 MMIO 区间（易失读写），[`DeviceInfo`] 附加可选
 //! 中断号；`mmio_regs!` 宏根据偏移量为设备生成寄存器读写方法。
 #[derive(Copy, Clone)]
 pub struct Resource {
@@ -36,12 +36,12 @@ impl Resource {
 }
 
 #[derive(Copy, Clone)]
-pub struct Device {
+pub struct DeviceInfo {
     pub mmio: Resource,
     pub irq: Option<usize>,
 }
 
-impl Device {
+impl DeviceInfo {
     pub const fn new(mmio: Resource, irq: Option<usize>) -> Self {
         Self { mmio, irq }
     }

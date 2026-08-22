@@ -187,7 +187,7 @@ if ((${#LOG_FLAGS[@]} > 0)); then
 fi
 
 if [[ "$DISPLAY_MODE" == gui ]]; then
-    QEMU_ARGS+=(-display gtk -device ramfb)
+    QEMU_ARGS+=(-display gtk -device ramfb -serial stdio)
 else
     QEMU_ARGS+=(-nographic)
 fi

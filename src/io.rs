@@ -5,7 +5,10 @@
 //! `Ns16550a` 对 `core::fmt::Write` 的实现见 `dev::ns16550a`。
 use core::fmt;
 
-use crate::dev::{UART, traits::CharDevice};
+use crate::dev::{
+    UART,
+    traits::{Read, Write},
+};
 
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;

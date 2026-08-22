@@ -32,6 +32,7 @@ use crate::{
     dev::traits::IoError,
     fs::{
         FileType, Mode, Path, PathBuf,
+        dev_fs::uart,
         vfs::file_ops::{FileOps, Whence},
     },
     numeric,
@@ -262,7 +263,7 @@ pub struct File {
     /// 对应目录项（元数据 / 挂载信息）。
     pub dentry: Arc<Dentry>,
     /// 当前读写位置。
-    pub offset: AtomicU64,
+    pub offset: Arc<AtomicU64>,
     pub flags: OpenFlags,
 }
 
@@ -271,7 +272,7 @@ impl Clone for File {
         Self {
             ops: self.ops.clone(),
             dentry: self.dentry.clone(),
-            offset: AtomicU64::new(self.offset.load(Ordering::Relaxed)),
+            offset: self.offset.clone(),
             flags: self.flags,
         }
     }
@@ -289,23 +290,81 @@ impl Debug for File {
 }
 
 impl File {
+    /// 创建一个由文件系统提供操作实现的打开文件。
+    pub(crate) fn from_ops(
+        name: &str,
+        ino: u64,
+        mode: Mode,
+        ops: Arc<dyn FileOps>,
+        flags: OpenFlags,
+    ) -> Self {
+        let inode = Arc::new(INode {
+            ino,
+            mode,
+            uid: 0,
+            gid: 0,
+            size: 0,
+            mtime: 0,
+            nlinks: 1,
+            superblock: Weak::new(),
+            dentries: Vec::new(),
+        });
+        let dentry = Arc::new(Dentry {
+            name: String::from(name),
+            inode,
+            parent: Weak::new(),
+            children: BTreeMap::new(),
+        });
+
+        Self {
+            ops,
+            dentry,
+            offset: Arc::new(AtomicU64::new(0)),
+            flags,
+        }
+    }
+
+    /// 创建连接到内核串口的文件描述符。
+    pub(crate) fn uart(flags: OpenFlags) -> Self {
+        Self::from_ops(
+            "console",
+            0,
+            Mode::from((FileType::CHR.0 << 12) | 0o666),
+            Arc::new(uart::Uart),
+            flags,
+        )
+    }
+
     /// 从当前偏移读取，到文件末尾返回 0；推进内部偏移。
     pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
-        let n = self.ops.read(buf)?;
+        let offset = self.offset.load(Ordering::Acquire);
+        let n = self.ops.read_at(buf, offset)?;
         self.offset.fetch_add(n as u64, Ordering::Relaxed);
         Ok(n)
     }
 
     /// 从当前偏移写入；`append` 模式下无视偏移、总是写到文件末尾。
     pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
-        let n = self.ops.write(buf)?;
+        let offset = self.offset.load(Ordering::Acquire);
+        let n = self.ops.write_at(buf, offset)?;
         self.offset.fetch_add(n as u64, Ordering::Relaxed);
         Ok(n)
     }
 
+    /// 从指定偏移读取，不改变当前文件偏移。
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+        self.ops.read_at(buf, offset)
+    }
+
+    /// 从指定偏移写入，不改变当前文件偏移。
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+        self.ops.write_at(buf, offset)
+    }
+
     /// 移动读写位置，返回新的偏移。
     pub fn seek(&self, offset: i64, whence: Whence) -> FsResult<i64> {
-        let new_offset = self.ops.seek(offset, whence)?;
+        let current = self.offset.load(Ordering::Acquire);
+        let new_offset = self.ops.seek(current, offset, whence)?;
         if new_offset >= 0 {
             self.offset.store(new_offset as u64, Ordering::Relaxed);
         }
@@ -348,58 +407,196 @@ pub struct MountEntry {
     pub superblock: Arc<SuperBlock>,
 }
 
-/// 已挂载的全部超级块。
-#[lazy(spin)]
-pub static SUPER_BLOCKS: Vec<Arc<SuperBlock>> = Vec::new();
-
-/// 挂载表：挂载点路径 → 挂载项。
-#[lazy(spin)]
-pub static MOUNT_TABLE: BTreeMap<Path, MountEntry> = BTreeMap::new();
-
 /// 内核统一文件系统入口：基于全局挂载表做路径前缀分发。
 ///
 /// 逻辑尚未实现：各方法只是占位，后续会按路径最长前缀在 [`MOUNT_TABLE`]
 /// 中查找挂载点，再把剩余路径交给对应 [`SuperBlock`] 的 [`FileSystem`]。
-pub struct Vfs;
+pub struct Vfs {
+    mount_table: RwLock<BTreeMap<String, Arc<MountEntry>>>,
+    super_blocks: RwLock<Vec<Arc<SuperBlock>>>,
+}
 
 impl Vfs {
-    pub fn open(path: &Path, flags: OpenFlags, mode: Mode) -> FsResult<File> {
-        todo!()
+    /// 创建一个空的 VFS。
+    pub const fn new() -> Self {
+        Self {
+            mount_table: RwLock::new(BTreeMap::new()),
+            super_blocks: RwLock::new(Vec::new()),
+        }
     }
 
-    pub fn stat(path: &Path) -> FsResult<Stat> {
-        todo!()
+    /// 把文件系统挂载到指定路径。
+    ///
+    /// 挂载点必须是绝对路径；同一路径只能存在一个挂载。文件系统根目录的
+    /// 元数据在挂载时读取一次，用于建立挂载表中的内存目录项。
+    pub fn mount(&self, path: &Path, fs: Arc<dyn FileSystem>) -> FsResult<()> {
+        let mount_path = Self::mount_path(path)?;
+        let stat = fs.stat(&Path::from("/"))?;
+        let mut mounts = self.mount_table.write();
+        if mounts.contains_key(&mount_path) {
+            return Err(FsError::AlreadyExists);
+        }
+
+        let root = Self::root_dentry(&mount_path, &stat);
+        let superblock = Arc::new(SuperBlock {
+            fs,
+            root: root.clone(),
+        });
+
+        let entry = Arc::new(MountEntry {
+            dentry: root,
+            superblock: superblock.clone(),
+        });
+
+        mounts.insert(mount_path, entry);
+        drop(mounts);
+        self.super_blocks.write().push(superblock);
+        Ok(())
     }
 
-    pub fn mkdir(path: &Path, mode: Mode) -> FsResult<()> {
-        todo!()
+    fn mount_path(path: &Path) -> FsResult<String> {
+        if !path.is_absolute() {
+            return Err(FsError::Invalid);
+        }
+        let path = path.as_str().trim_end_matches('/');
+        Ok(if path.is_empty() {
+            String::from("/")
+        } else {
+            String::from(path)
+        })
     }
 
-    pub fn unlink(path: &Path) -> FsResult<()> {
-        todo!()
+    fn root_dentry(path: &str, stat: &Stat) -> Arc<Dentry> {
+        let name = if path == "/" {
+            "/"
+        } else {
+            path.rsplit('/').next().unwrap_or(path)
+        };
+        Arc::new(Dentry {
+            name: String::from(name),
+            inode: Arc::new(INode {
+                ino: stat.ino,
+                mode: stat.mode,
+                uid: stat.uid,
+                gid: stat.gid,
+                size: stat.size,
+                mtime: stat.mtime,
+                nlinks: stat.nlinks,
+                superblock: Weak::new(),
+                dentries: Vec::new(),
+            }),
+            parent: Weak::new(),
+            children: BTreeMap::new(),
+        })
     }
 
-    pub fn rmdir(path: &Path) -> FsResult<()> {
-        todo!()
+    /// 解析路径，返回最长匹配挂载点、文件系统和文件系统内路径。
+    fn resolve(&self, path: &Path) -> FsResult<(Arc<dyn FileSystem>, PathBuf)> {
+        if !path.is_absolute() {
+            return Err(FsError::Invalid);
+        }
+
+        let mounts = self.mount_table.read();
+        let Some((mount_path, mount)) = mounts
+            .iter()
+            .filter(|(mount_path, _)| Self::mount_matches(mount_path, path.as_str()))
+            .max_by_key(|(mount_path, _)| mount_path.len())
+        else {
+            return Err(FsError::NotFound);
+        };
+
+        let relative = Self::relative_path(mount_path, path.as_str());
+        Ok((mount.superblock.fs.clone(), relative))
     }
 
-    pub fn rename(old: &Path, new: &Path) -> FsResult<()> {
-        todo!()
+    fn mount_matches(mount: &str, path: &str) -> bool {
+        if mount == "/" {
+            return path.starts_with('/');
+        }
+        let mount = mount.trim_end_matches('/');
+        path == mount
+            || path
+                .strip_prefix(mount)
+                .is_some_and(|rest| rest.starts_with('/'))
     }
 
-    pub fn link(old: &Path, new: &Path) -> FsResult<()> {
-        todo!()
+    fn relative_path(mount: &str, path: &str) -> PathBuf {
+        if mount == "/" {
+            return PathBuf::from(path);
+        }
+
+        let mount = mount.trim_end_matches('/');
+        let rest = path.strip_prefix(mount).unwrap_or("");
+        if rest.is_empty() {
+            PathBuf::from("/")
+        } else {
+            PathBuf::from(rest)
+        }
     }
 
-    pub fn symlink(target: &str, linkpath: &Path) -> FsResult<()> {
-        todo!()
+    /// 在两个路径属于同一文件系统时执行操作，否则返回 `EXDEV`。
+    fn same_filesystem<T, F>(&self, old: &Path, new: &Path, operation: F) -> FsResult<T>
+    where
+        F: FnOnce(&dyn FileSystem, &Path, &Path) -> FsResult<T>,
+    {
+        let (old_fs, old_path) = self.resolve(old)?;
+        let (new_fs, new_path) = self.resolve(new)?;
+        if !Arc::ptr_eq(&old_fs, &new_fs) {
+            return Err(FsError::CrossDevice);
+        }
+        operation(old_fs.as_ref(), &old_path, &new_path)
+    }
+}
+
+impl FileSystem for Vfs {
+    fn open(&self, path: &Path, flags: OpenFlags, mode: Mode) -> FsResult<File> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.open(&relative, flags, mode)
     }
 
-    pub fn readlink(path: &Path) -> FsResult<PathBuf> {
-        todo!()
+    fn stat(&self, path: &Path) -> FsResult<Stat> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.stat(&relative)
     }
 
-    pub fn sync() -> FsResult<()> {
-        todo!()
+    fn mkdir(&self, path: &Path, mode: Mode) -> FsResult<()> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.mkdir(&relative, mode)
+    }
+
+    fn unlink(&self, path: &Path) -> FsResult<()> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.unlink(&relative)
+    }
+
+    fn rmdir(&self, path: &Path) -> FsResult<()> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.rmdir(&relative)
+    }
+
+    fn rename(&self, old: &Path, new: &Path) -> FsResult<()> {
+        self.same_filesystem(old, new, |fs, old, new| fs.rename(old, new))
+    }
+
+    fn link(&self, old: &Path, new: &Path) -> FsResult<()> {
+        self.same_filesystem(old, new, |fs, old, new| fs.link(old, new))
+    }
+
+    fn symlink(&self, target: &str, linkpath: &Path) -> FsResult<()> {
+        let (fs, relative) = self.resolve(linkpath)?;
+        fs.symlink(target, &relative)
+    }
+
+    fn readlink(&self, path: &Path) -> FsResult<PathBuf> {
+        let (fs, relative) = self.resolve(path)?;
+        fs.readlink(&relative)
+    }
+
+    fn sync(&self) -> FsResult<()> {
+        let super_blocks = self.super_blocks.read().clone();
+        for superblock in super_blocks {
+            superblock.fs.sync()?;
+        }
+        Ok(())
     }
 }

@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![recursion_limit = "512"]
 mod arch;
 mod boot;
 mod constants;
@@ -74,13 +75,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
     info!("page table setup ok");
 
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
-    boot::spawn_from_disk("/bin/init");
-    boot::spawn_from_disk("/bin/hello_world");
-    boot::spawn_from_disk("/bin/quick_sort");
-    boot::spawn_from_disk("/bin/panic");
-    boot::spawn_from_disk("/bin/sort");
-    boot::spawn_from_disk("/bin/add");
-    boot::spawn_from_disk("/bin/fork");
+    boot::spawn_default_programs();
 
     // 只有在初始任务创建完成后才启动时钟，避免定时器中断进入空调度器。
     trap::set_next_timer(None);

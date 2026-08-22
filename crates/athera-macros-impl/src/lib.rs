@@ -233,21 +233,22 @@ pub fn spin(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 为单字段结构体自动实现 [`athera_id_alloc::Id`]，并顺带自动实现
 /// `Debug`、`Clone`、`Copy`、`PartialEq`、`Eq`、`PartialOrd`、`Ord`。
 ///
-/// 生成的 `Id` 方法（`MIN` / `MAX` / `next` / `prev` / `distance_to`）与
-/// 其余 trait 全部委托给唯一字段，因此只需 `#[derive(Id)]` 一行即可，
-/// 无需再手动派生其余 trait。要求：
+/// 生成的 `Id` 方法（`MIN` / `MAX` / `BITS` / `next` / `prev` /
+/// `distance_to` / `to_bits` / `from_bits`）与其余 trait 全部委托给唯一
+/// 字段，因此只需 `#[derive(Id)]` 一行即可，无需再手动派生其余 trait。
+/// 要求：
 /// - 结构体恰好一个字段，内部类型自身实现了 `athera_id_alloc::Id`
 ///   （如 `usize`、`u32`）以及上述被自动实现 trait 对应的能力；
 /// - 不支持泛型与其余数据类型（`Id` 派生仅面向包装类型）。
 ///
 /// ```ignore
-/// use athera_id_alloc::{Id, IdAllocator};
+/// use athera_id_alloc::{Id, IdAlloc};
 ///
 /// #[derive(Id)]
 /// pub struct Wrap(pub u32);
 ///
 /// // 自动获得：Debug、Clone、Copy、PartialEq、Eq、PartialOrd、Ord、Id
-/// let mut a = IdAllocator::<Wrap>::from_range(Wrap(0)..Wrap(3));
+/// let mut a = IdAlloc::<Wrap, 0>::from_range(Wrap(0)..Wrap(3)).unwrap();
 /// assert_eq!(a.alloc(), Some(Wrap(0)));
 /// assert_eq!(format!("{:?}", Wrap(1)), "Wrap(1)");
 /// ```
@@ -285,20 +286,47 @@ pub fn derive_id(input: TokenStream) -> TokenStream {
         }
     };
 
-    let (min_expr, max_expr, next_expr, prev_expr, clone_expr, debug_body) = match &field {
+    let (
+        min_expr,
+        max_expr,
+        bits_expr,
+        next_expr,
+        prev_expr,
+        distance_expr,
+        to_bits_expr,
+        from_bits_expr,
+        clone_expr,
+        debug_body,
+    ) = match &field {
         syn::Member::Unnamed(_) => (
             quote::quote!(#name(<#field_ty>::MIN)),
             quote::quote!(#name(<#field_ty>::MAX)),
+            quote::quote!(<#field_ty as ::athera_id_alloc::Id>::BITS),
             quote::quote!(self.#field.next().map(Self)),
             quote::quote!(self.#field.prev().map(Self)),
+            quote::quote!(self.#field.distance_to(&other.#field)),
+            quote::quote!(<#field_ty as ::athera_id_alloc::Id>::to_bits(&self.#field)),
+            quote::quote! {
+                let __inner: #field_ty =
+                    <#field_ty as ::athera_id_alloc::Id>::from_bits(__bits);
+                Self(__inner)
+            },
             quote::quote!(Self(self.#field.clone())),
             quote::quote!(f.debug_tuple(stringify!(#name)).field(&self.#field).finish()),
         ),
         syn::Member::Named(ident) => (
             quote::quote!(#name { #ident: <#field_ty>::MIN }),
             quote::quote!(#name { #ident: <#field_ty>::MAX }),
+            quote::quote!(<#field_ty as ::athera_id_alloc::Id>::BITS),
             quote::quote!(self.#field.next().map(|v| Self { #ident: v })),
             quote::quote!(self.#field.prev().map(|v| Self { #ident: v })),
+            quote::quote!(self.#field.distance_to(&other.#field)),
+            quote::quote!(<#field_ty as ::athera_id_alloc::Id>::to_bits(&self.#field)),
+            quote::quote! {
+                let __inner: #field_ty =
+                    <#field_ty as ::athera_id_alloc::Id>::from_bits(__bits);
+                Self { #ident: __inner }
+            },
             quote::quote!(Self { #ident: self.#field.clone() }),
             quote::quote!(f.debug_struct(stringify!(#name)).field(stringify!(#ident), &self.#field).finish()),
         ),
@@ -342,6 +370,7 @@ pub fn derive_id(input: TokenStream) -> TokenStream {
         impl ::athera_id_alloc::Id for #name {
             const MIN: Self = #min_expr;
             const MAX: Self = #max_expr;
+            const BITS: u32 = #bits_expr;
 
             fn next(&self) -> Option<Self> {
                 #next_expr
@@ -352,7 +381,15 @@ pub fn derive_id(input: TokenStream) -> TokenStream {
             }
 
             fn distance_to(&self, other: &Self) -> usize {
-                self.#field.distance_to(&other.#field)
+                #distance_expr
+            }
+
+            fn to_bits(&self) -> u128 {
+                #to_bits_expr
+            }
+
+            fn from_bits(__bits: u128) -> Self {
+                #from_bits_expr
             }
         }
     };

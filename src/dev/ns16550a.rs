@@ -10,13 +10,13 @@ use fdt::Fdt;
 use crate::{
     bits,
     dev::{
-        device::{Device, Resource},
-        traits::{CharDevice, Dev, IoResult},
+        device::{DeviceInfo, Resource},
+        traits::{Device, IoResult, Read, Write},
     },
     mmio_regs,
 };
 
-impl Dev for Ns16550a {
+impl Device for Ns16550a {
     fn name(&self) -> &'static str {
         "ns16550a"
     }
@@ -26,7 +26,7 @@ impl Dev for Ns16550a {
     }
 }
 
-impl CharDevice for Ns16550a {
+impl Read for Ns16550a {
     fn read(&self, buf: &mut [u8]) -> IoResult<usize> {
         let mut read = 0;
         for byte in buf {
@@ -38,7 +38,9 @@ impl CharDevice for Ns16550a {
         }
         Ok(read)
     }
+}
 
+impl Write for Ns16550a {
     fn write(&self, buf: &[u8]) -> IoResult<usize> {
         for &byte in buf {
             while !self.lsr().thre() {}
@@ -51,13 +53,13 @@ impl CharDevice for Ns16550a {
 /// 让 UART 满足 `core::fmt::Write`，供 `print!` / `println!` 输出。
 impl fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let _ = CharDevice::write(self, s.as_bytes());
+        let _ = Write::write(self, s.as_bytes());
         Ok(())
     }
 }
 
 pub struct Ns16550a {
-    pub device: Device,
+    pub device: DeviceInfo,
 }
 
 mmio_regs! {
@@ -129,7 +131,7 @@ impl Ns16550a {
         let size = reg.size.unwrap_or(0);
 
         Some(Self {
-            device: Device {
+            device: DeviceInfo {
                 mmio: Resource { start, size },
                 irq: Some(irq),
             },

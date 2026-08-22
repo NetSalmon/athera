@@ -69,3 +69,19 @@ pub(crate) fn spawn_from_disk(path: &str) {
         error!("failed to execute user program: {err}");
     }
 }
+
+/// 启动系统内置的用户程序。
+pub(crate) fn spawn_default_programs() {
+    for path in [
+        "/bin/init",
+        "/bin/hello_world",
+        "/bin/quick_sort",
+        "/bin/panic",
+        "/bin/sort",
+        "/bin/add",
+        "/bin/fork",
+        // "/bin/conway"
+    ] {
+        spawn_from_disk(path);
+    }
+}

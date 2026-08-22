@@ -36,6 +36,10 @@ pub(crate) use super::{
 use crate::{
     constants::SUPERBLOCK_OFFSET,
     dev::traits::{BlockDevice, IoResult},
+    fs::vfs::{
+        File as VfsFile, FileSystem, FsError, FsResult, OpenFlags, Stat,
+        file_ops::{FileOps, Whence},
+    },
     sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -374,5 +378,140 @@ impl<T> fmt::Debug for MinixFs<T> {
         f.debug_struct("MinixFs")
             .field("superblock", &self.superblock)
             .finish()
+    }
+}
+
+/// 把 MINIX 的路径文件接口适配为 VFS 文件系统接口。
+///
+/// MINIX 的打开文件借用 `MinixFs`，而 VFS 文件句柄要求可独立保存，因此
+/// 适配器按路径重新打开文件，并在 `FileOps` 内维护当前偏移。
+pub(crate) struct MinixVfs<T> {
+    fs: Arc<MinixFs<T>>,
+}
+
+impl<T> MinixVfs<T> {
+    pub(crate) fn new(fs: Arc<MinixFs<T>>) -> Self {
+        Self { fs }
+    }
+}
+
+impl<T> FileSystem for MinixVfs<T>
+where
+    T: BlockDevice + 'static,
+{
+    fn open(&self, path: &Path, flags: OpenFlags, _mode: Mode) -> FsResult<VfsFile> {
+        let file = self
+            .fs
+            .open(path)
+            .map_err(FsError::from)?
+            .ok_or(FsError::NotFound)?;
+        let mode = Mode::from((file.r#type().0 << 12) | 0o644);
+        Ok(VfsFile::from_ops(
+            path.file_name().unwrap_or("/"),
+            file.ino() as u64,
+            mode,
+            Arc::new(MinixFileOps {
+                fs: self.fs.clone(),
+                path: path.to_path_buf(),
+            }),
+            flags,
+        ))
+    }
+
+    fn stat(&self, path: &Path) -> FsResult<Stat> {
+        let file = self
+            .fs
+            .open(path)
+            .map_err(FsError::from)?
+            .ok_or(FsError::NotFound)?;
+        Ok(Stat {
+            ino: file.ino() as u64,
+            mode: Mode::from((file.r#type().0 << 12) | 0o644),
+            size: file.size() as u64,
+            nlinks: 1,
+            mtime: 0,
+            uid: 0,
+            gid: 0,
+        })
+    }
+
+    fn mkdir(&self, _: &Path, _: Mode) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn unlink(&self, _: &Path) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn rmdir(&self, _: &Path) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn rename(&self, _: &Path, _: &Path) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn link(&self, _: &Path, _: &Path) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn symlink(&self, _: &str, _: &Path) -> FsResult<()> {
+        Err(FsError::Unsupported)
+    }
+
+    fn readlink(&self, _: &Path) -> FsResult<PathBuf> {
+        Err(FsError::Unsupported)
+    }
+
+    fn sync(&self) -> FsResult<()> {
+        Ok(())
+    }
+}
+
+struct MinixFileOps<T> {
+    fs: Arc<MinixFs<T>>,
+    path: PathBuf,
+}
+
+impl<T> MinixFileOps<T>
+where
+    T: BlockDevice,
+{
+    fn open(&self) -> FsResult<File<'_, T>> {
+        self.fs
+            .open(&self.path)
+            .map_err(FsError::from)?
+            .ok_or(FsError::NotFound)
+    }
+}
+
+impl<T> FileOps for MinixFileOps<T>
+where
+    T: BlockDevice + 'static,
+{
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+        let file = self.open()?;
+        file.read_at(buf, offset as usize).map_err(FsError::from)
+    }
+
+    fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+        let mut file = self.open()?;
+        file.write_at(buf, offset as usize).map_err(FsError::from)
+    }
+
+    fn seek(&self, current: u64, offset: i64, whence: Whence) -> FsResult<i64> {
+        let file = self.open()?;
+        let current = current as i64;
+        let size = file.size() as i64;
+        let new = match whence {
+            Whence::SEEK_SET => offset,
+            Whence::SEEK_CUR => current.saturating_add(offset),
+            Whence::SEEK_END => size.saturating_add(offset),
+            _ => return Err(FsError::Invalid),
+        };
+        if new < 0 {
+            return Err(FsError::Invalid);
+        }
+        Ok(new)
     }
 }
