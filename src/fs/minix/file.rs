@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use super::{FileType, MinixFs, types::DINode};
+use super::{FileType, MinixFs, types::DiskInode};
 use crate::{
     driver::traits::{BlockDevice, IoResult},
     fs::{
@@ -32,7 +32,7 @@ where
     /// inode 号。
     ino: u16,
     /// 磁盘 inode（含 size / mode / zone 等信息）。
-    inode: DINode,
+    inode: DiskInode,
     /// 单个数据块的大小（字节）。
     zone_size: usize,
     /// 数据块号：7 个直接块 + 一级/二级间接块展开后的全部数据块。
@@ -57,7 +57,7 @@ where
         fs: &'a MinixFs<T>,
         path: PathBuf,
         ino: u16,
-        inode: DINode,
+        inode: DiskInode,
         zone_size: usize,
         zones: Vec<u16>,
     ) -> Self {
@@ -214,7 +214,7 @@ where
         if new_size > self.inode.size as usize {
             self.inode.size = new_size as u32;
             let mut dev = self.fs.lock();
-            self.fs.write_d_inode(self.ino, &self.inode, &dev)?;
+            self.fs.write_inode(self.ino, &self.inode, &dev)?;
         }
 
         Ok(done)
@@ -228,7 +228,7 @@ where
     }
 
     /// 文件类型（普通文件 / 目录 / 符号链接 / 设备等）。
-    pub fn r#type(&self) -> FileType {
+    pub fn file_type(&self) -> FileType {
         self.inode.mode.file_type()
     }
 }

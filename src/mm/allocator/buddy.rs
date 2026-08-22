@@ -70,7 +70,7 @@ impl BuddyAllocator {
         let mut current_order = order;
 
         for i in order..BUDDY_MAX_ORDER {
-            let buddy = get_buddy(current_ptr, current_order);
+            let buddy = buddy_address(current_ptr, current_order);
             if self.free_list[current_order].remove(buddy) {
                 current_ptr = if buddy < current_ptr {
                     buddy
@@ -114,7 +114,7 @@ pub fn size_to_order(size: usize) -> usize {
 }
 
 #[inline]
-pub fn get_buddy(base: usize, order: usize) -> usize {
+pub fn buddy_address(base: usize, order: usize) -> usize {
     base ^ order_size(order)
 }
 

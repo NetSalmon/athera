@@ -4,7 +4,7 @@
 use alloc::{vec, vec::Vec};
 
 use super::{
-    DINode, File, FileType, MinixFs, Mode,
+    DiskInode, File, FileType, MinixFs, Mode,
     types::{DirEntryRaw, MinixFsMagic},
 };
 use crate::{
@@ -17,13 +17,13 @@ impl<T> MinixFs<T> {
     /// 把展开后的数据块号列表 `zones` 写回 inode 的 zone 数组与间接块表。
     ///
     /// `zones[0..7]` 对应直接块，`zones[7..7+per]` 走一级间接块，
-    /// 其余走二级间接块；必要时会分配间接块并更新 `d_inode.zone[7]` /
+    /// 其余走二级间接块；必要时会分配间接块并更新 `inode.zone[7]` /
     /// `zone[8]`。磁盘空间不足时提前返回（已分配的块不会回收）。
     ///
     /// 需要调用方已持锁（`device` 为块设备守卫）。
     pub(crate) fn write_file_zones(
         &self,
-        d_inode: &mut DINode,
+        inode: &mut DiskInode,
         zones: &[u16],
         device: &T,
     ) -> IoResult<()>
@@ -34,7 +34,7 @@ impl<T> MinixFs<T> {
         let per = zone_size / size_of::<u16>(); // 每个间接块可容纳的块号数
 
         // 直接块：zone[0..7]。
-        for (i, slot) in d_inode.zone[..MINIX_DIRECT_ZONES].iter_mut().enumerate() {
+        for (i, slot) in inode.zone[..MINIX_DIRECT_ZONES].iter_mut().enumerate() {
             *slot = zones.get(i).copied().unwrap_or(0);
         }
 
@@ -42,32 +42,32 @@ impl<T> MinixFs<T> {
         let single_start = MINIX_DIRECT_ZONES;
         let single_end = MINIX_DIRECT_ZONES + per;
         if zones.len() <= single_start {
-            d_inode.zone[MINIX_DIRECT_ZONES] = 0;
+            inode.zone[MINIX_DIRECT_ZONES] = 0;
         } else {
             let mut table = zones[single_start..zones.len().min(single_end)].to_vec();
             table.resize(per, 0);
-            if d_inode.zone[MINIX_DIRECT_ZONES] == 0 {
+            if inode.zone[MINIX_DIRECT_ZONES] == 0 {
                 let Some(ind) = self.alloc_zone(device)? else {
                     return Ok(()); // 磁盘已满，无法建立间接块
                 };
-                d_inode.zone[MINIX_DIRECT_ZONES] = ind;
+                inode.zone[MINIX_DIRECT_ZONES] = ind;
             }
-            self.write_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES], &table)?;
+            self.write_zone_table(device, inode.zone[MINIX_DIRECT_ZONES], &table)?;
         }
 
         // 二级间接：zone[8]。
         let double_start = single_end;
         if zones.len() <= double_start {
-            d_inode.zone[MINIX_DIRECT_ZONES + 1] = 0;
+            inode.zone[MINIX_DIRECT_ZONES + 1] = 0;
         } else {
-            if d_inode.zone[MINIX_DIRECT_ZONES + 1] == 0 {
+            if inode.zone[MINIX_DIRECT_ZONES + 1] == 0 {
                 let Some(ind) = self.alloc_zone(device)? else {
                     return Ok(());
                 };
-                d_inode.zone[MINIX_DIRECT_ZONES + 1] = ind;
+                inode.zone[MINIX_DIRECT_ZONES + 1] = ind;
                 self.write_zone_table(device, ind, &vec![0u16; per])?;
             }
-            let mut dbl = self.read_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES + 1])?;
+            let mut dbl = self.read_zone_table(device, inode.zone[MINIX_DIRECT_ZONES + 1])?;
             for (i, group) in zones[double_start..].chunks(per).enumerate() {
                 if i >= per {
                     break; // 超出二级间接容量
@@ -85,7 +85,7 @@ impl<T> MinixFs<T> {
                 table.resize(per, 0);
                 self.write_zone_table(device, ind, &table)?;
             }
-            self.write_zone_table(device, d_inode.zone[MINIX_DIRECT_ZONES + 1], &dbl)?;
+            self.write_zone_table(device, inode.zone[MINIX_DIRECT_ZONES + 1], &dbl)?;
         }
 
         Ok(())
@@ -131,19 +131,19 @@ impl<T> MinixFs<T> {
         }
 
         let mut dev = self.lock();
-        let d_inode = self.d_inode(old_ino, &dev)?;
-        if d_inode.nlinks == 0 || d_inode.nlinks == u8::MAX {
+        let inode = self.read_inode(old_ino, &dev)?;
+        if inode.nlinks == 0 || inode.nlinks == u8::MAX {
             return Ok(false); // inode 未分配，或链接数已达上限
         }
-        if d_inode.mode.file_type() == FileType::DIR {
+        if inode.mode.file_type() == FileType::DIR {
             return Ok(false); // 目录不能硬链接
         }
 
         self.add_dir_entry_at(dir_ino, name, old_ino, &dev)?;
 
-        let mut updated = d_inode;
+        let mut updated = inode;
         updated.nlinks += 1;
-        self.write_d_inode(old_ino, &updated, &dev)?;
+        self.write_inode(old_ino, &updated, &dev)?;
         Ok(true)
     }
 
@@ -166,8 +166,8 @@ impl<T> MinixFs<T> {
         let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
             return Ok(false);
         };
-        let d_inode = self.d_inode(ino, &dev)?;
-        if d_inode.mode.file_type() == FileType::DIR {
+        let inode = self.read_inode(ino, &dev)?;
+        if inode.mode.file_type() == FileType::DIR {
             return Ok(false);
         }
 
@@ -175,13 +175,13 @@ impl<T> MinixFs<T> {
             return Ok(false);
         }
 
-        let nlinks = d_inode.nlinks.saturating_sub(1);
+        let nlinks = inode.nlinks.saturating_sub(1);
         if nlinks == 0 {
             self.free_inode_blocks_at(ino, &dev)?;
         } else {
-            let mut updated = d_inode;
+            let mut updated = inode;
             updated.nlinks = nlinks;
-            self.write_d_inode(ino, &updated, &dev)?;
+            self.write_inode(ino, &updated, &dev)?;
         }
         Ok(true)
     }
@@ -205,7 +205,7 @@ impl<T> MinixFs<T> {
             let Some(ino) = self.alloc_empty_inode(mode, &dev)? else {
                 return Ok(None);
             };
-            (ino, self.d_inode(ino, &dev)?)
+            (ino, self.read_inode(ino, &dev)?)
         };
 
         // Phase 2：把目标路径作为符号链接内容写入（`File` 内部自行持锁）。
@@ -240,7 +240,7 @@ impl<T> MinixFs<T> {
     /// 名字是否合法：非空、长度不超限、不含路径分隔符。
     fn valid_name(&self, name: &str) -> bool {
         let max_name = match self.superblock.magic {
-            MinixFsMagic::MAGIC_2 => 30,
+            MinixFsMagic::V1_30 => 30,
             _ => 14,
         };
         !name.is_empty() && name.len() <= max_name && !name.contains(PATH_SEPARATOR)
@@ -249,7 +249,7 @@ impl<T> MinixFs<T> {
     /// 单个目录项的字节数（2 + 文件名长度）。
     fn entry_size(&self) -> usize {
         match self.superblock.magic {
-            MinixFsMagic::MAGIC_2 => size_of::<DirEntryRaw<30>>(),
+            MinixFsMagic::V1_30 => size_of::<DirEntryRaw<30>>(),
             _ => size_of::<DirEntryRaw<14>>(),
         }
     }
@@ -262,7 +262,7 @@ impl<T> MinixFs<T> {
         let Some(ino) = self.alloc_inode(device)? else {
             return Ok(None);
         };
-        let d_inode = DINode {
+        let inode = DiskInode {
             mode,
             uid: 0,
             size: 0,
@@ -271,7 +271,7 @@ impl<T> MinixFs<T> {
             nlinks: 1,
             zone: [0; 9],
         };
-        self.write_d_inode(ino, &d_inode, device)?;
+        self.write_inode(ino, &inode, device)?;
         Ok(Some(ino))
     }
 
@@ -282,7 +282,7 @@ impl<T> MinixFs<T> {
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        let dir = self.d_inode(dir_ino, device)?;
+        let dir = self.read_inode(dir_ino, device)?;
 
         for zone in self.data_zones(&dir, device)? {
             let mut block = vec![0u8; zone_size];
@@ -307,7 +307,7 @@ impl<T> MinixFs<T> {
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        let dir = self.d_inode(dir_ino, device)?;
+        let dir = self.read_inode(dir_ino, device)?;
 
         for zone in self.data_zones(&dir, device)? {
             let mut block = vec![0u8; zone_size];
@@ -333,22 +333,22 @@ impl<T> MinixFs<T> {
     where
         T: BlockDevice,
     {
-        let d_inode = self.d_inode(ino, device)?;
+        let inode = self.read_inode(ino, device)?;
 
-        for zone in self.data_zones(&d_inode, device)? {
+        for zone in self.data_zones(&inode, device)? {
             self.free_zone(zone, device)?;
         }
-        if d_inode.zone[7] != 0 {
-            self.free_zone(d_inode.zone[7], device)?; // 一级间接块
+        if inode.zone[7] != 0 {
+            self.free_zone(inode.zone[7], device)?; // 一级间接块
         }
-        if d_inode.zone[8] != 0 {
-            for ind in self.zone_table(device, d_inode.zone[8])? {
+        if inode.zone[8] != 0 {
+            for ind in self.zone_table(device, inode.zone[8])? {
                 self.free_zone(ind, device)?; // 二级间接块指向的一级间接块
             }
-            self.free_zone(d_inode.zone[8], device)?; // 二级间接块
+            self.free_zone(inode.zone[8], device)?; // 二级间接块
         }
 
-        let zero = DINode {
+        let zero = DiskInode {
             mode: Mode::from(0),
             uid: 0,
             size: 0,
@@ -357,7 +357,7 @@ impl<T> MinixFs<T> {
             nlinks: 0,
             zone: [0; 9],
         };
-        self.write_d_inode(ino, &zero, device)?;
+        self.write_inode(ino, &zero, device)?;
         self.free_inode(ino, device)?;
         Ok(())
     }
@@ -388,7 +388,7 @@ impl<T> MinixFs<T> {
     {
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        let mut dir = self.d_inode(dir_ino, device)?;
+        let mut dir = self.read_inode(dir_ino, device)?;
         let mut zones = self.data_zones(&dir, device)?;
 
         let mut block_index = 0;
@@ -417,7 +417,7 @@ impl<T> MinixFs<T> {
                     let end = block_index * zone_size + slot + entry_size;
                     if (dir.size as usize) < end {
                         dir.size = end as u32;
-                        self.write_d_inode(dir_ino, &dir, device)?;
+                        self.write_inode(dir_ino, &dir, device)?;
                     }
                     return Ok(());
                 }
@@ -477,11 +477,11 @@ impl<T> MinixFs<T> {
         self.write_zone(zone, &block, &dev)?;
 
         // 新目录 inode：zone[0] = 数据块，size = 两个目录项，nlinks = 2（`.` 与 `..`）。
-        let mut d_inode = self.d_inode(ino, &dev)?;
-        d_inode.nlinks = 2;
-        d_inode.zone[0] = zone;
-        d_inode.size = (2 * entry_size) as u32;
-        self.write_d_inode(ino, &d_inode, &dev)?;
+        let mut inode = self.read_inode(ino, &dev)?;
+        inode.nlinks = 2;
+        inode.zone[0] = zone;
+        inode.size = (2 * entry_size) as u32;
+        self.write_inode(ino, &inode, &dev)?;
 
         // 父目录追加目录项；失败时回滚数据块与 inode。
         if let Err(err) = self.add_dir_entry_at(dir_ino, name, ino, &dev) {
@@ -491,9 +491,9 @@ impl<T> MinixFs<T> {
         }
 
         // 父目录链接数 +1（新子目录的 `..` 引用）。
-        let mut parent = self.d_inode(dir_ino, &dev)?;
+        let mut parent = self.read_inode(dir_ino, &dev)?;
         parent.nlinks = parent.nlinks.saturating_add(1);
-        self.write_d_inode(dir_ino, &parent, &dev)?;
+        self.write_inode(dir_ino, &parent, &dev)?;
         Ok(Some(ino))
     }
 
@@ -513,15 +513,15 @@ impl<T> MinixFs<T> {
         let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
             return Ok(false);
         };
-        let d_inode = self.d_inode(ino, &dev)?;
-        if d_inode.mode.file_type() != FileType::DIR {
+        let inode = self.read_inode(ino, &dev)?;
+        if inode.mode.file_type() != FileType::DIR {
             return Ok(false);
         }
 
         // 只能删除空目录：除 `.` 与 `..` 外不得有其他目录项。
         let entry_size = self.entry_size();
         let zone_size = self.superblock.zone_size();
-        for zone in self.data_zones(&d_inode, &dev)? {
+        for zone in self.data_zones(&inode, &dev)? {
             let mut block = vec![0u8; zone_size];
             self.read_zone_into(&dev, zone, &mut block)?;
             for slot in (0..zone_size).step_by(entry_size) {
@@ -541,9 +541,9 @@ impl<T> MinixFs<T> {
         }
 
         // 父目录链接数 -1（该子目录的 `..` 引用消失）。
-        let mut parent = self.d_inode(dir_ino, &dev)?;
+        let mut parent = self.read_inode(dir_ino, &dev)?;
         parent.nlinks = parent.nlinks.saturating_sub(1);
-        self.write_d_inode(dir_ino, &parent, &dev)?;
+        self.write_inode(dir_ino, &parent, &dev)?;
 
         // 释放子目录的数据块与 inode。
         self.free_inode_blocks_at(ino, &dev)?;
@@ -564,7 +564,7 @@ impl<T> MinixFs<T> {
             let Some(ino) = self.find_dir_entry_ino(dir_ino, name, &dev)? else {
                 return Ok(false);
             };
-            self.d_inode(ino, &dev)?.mode.file_type() == FileType::DIR
+            self.read_inode(ino, &dev)?.mode.file_type() == FileType::DIR
         };
 
         if is_dir {

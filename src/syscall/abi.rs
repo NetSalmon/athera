@@ -13,7 +13,7 @@ pub struct TimeVal {
 /// `wait4` 返回的资源使用统计，布局与 riscv64 用户态 ABI 一致。
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-pub struct RUsage {
+pub struct ResourceUsage {
     pub ru_utime: TimeVal,
     pub ru_stime: TimeVal,
     pub ru_maxrss: i64,

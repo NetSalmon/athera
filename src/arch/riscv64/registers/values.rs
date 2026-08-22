@@ -23,7 +23,7 @@ numeric! {
 }
 
 bits! {
-    pub type SStatusBits: u64 {
+    pub type SstatusBits: u64 {
         spp: 8,
         spie: 5,
         sie: 1

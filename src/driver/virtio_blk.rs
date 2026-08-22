@@ -20,7 +20,7 @@ use crate::{
         traits::{Device, IoError, IoResult, ReadAt, WriteAt},
         virtio_mmio::{
             DeviceType, VirtioDevice, is_device,
-            queue::{Flags, VRingDesc, Virtq},
+            queue::{Flags, VirtQueue, VirtQueueDescriptor},
         },
     },
     sync::spin::SpinLock,
@@ -28,7 +28,7 @@ use crate::{
 
 pub struct VirtioBlk {
     pub device: DeviceInfo,
-    pub queues: SpinLock<Option<Vec<Virtq>>>,
+    pub queues: SpinLock<Option<Vec<VirtQueue>>>,
 }
 
 bits! {
@@ -87,7 +87,7 @@ impl VirtioDevice for VirtioBlk {
         self.device
     }
 
-    fn queues(&self) -> &SpinLock<Option<Vec<Virtq>>> {
+    fn queues(&self) -> &SpinLock<Option<Vec<VirtQueue>>> {
         &self.queues
     }
 
@@ -131,7 +131,7 @@ impl VirtioBlk {
         data_write: bool,
     ) -> IoResult<()> {
         let req = VirtioBlkReq {
-            r#type: req_type,
+            request_type: req_type,
             reserved: 0,
             sector,
         };
@@ -140,7 +140,7 @@ impl VirtioBlk {
         let elem = VirtioDevice::submit(self, |q| {
             let mut flags = Flags::new();
             flags.set_next(true);
-            q.desc[0] = VRingDesc {
+            q.desc[0] = VirtQueueDescriptor {
                 addr: addr_of!(req) as u64,
                 len: size_of::<VirtioBlkReq>() as u32,
                 flags,
@@ -150,7 +150,7 @@ impl VirtioBlk {
             let mut flags = Flags::new();
             flags.set_next(true);
             flags.set_write(data_write);
-            q.desc[1] = VRingDesc {
+            q.desc[1] = VirtQueueDescriptor {
                 addr: data as u64,
                 len: data_len as u32,
                 flags,
@@ -159,7 +159,7 @@ impl VirtioBlk {
 
             let mut flags = Flags::new();
             flags.set_write(true);
-            q.desc[2] = VRingDesc {
+            q.desc[2] = VirtQueueDescriptor {
                 addr: addr_of_mut!(status) as u64,
                 len: size_of::<u8>() as u32,
                 flags,
@@ -249,7 +249,7 @@ impl WriteAt for VirtioBlk {
 #[repr(C)]
 #[derive(Default)]
 struct VirtioBlkReq {
-    r#type: u32,
+    request_type: u32,
     reserved: u32,
     sector: u64,
 }

@@ -8,7 +8,7 @@ mod abi;
 
 use abi::{ErrorCode, Syscall};
 #[allow(unused_imports)]
-pub use abi::{RUsage, TimeVal, WaitOptions, WaitSignal, WaitStatus};
+pub use abi::{ResourceUsage, TimeVal, WaitOptions, WaitSignal, WaitStatus};
 
 use crate::{
     arch::riscv64::trap::A0_INDEX,
@@ -72,7 +72,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let tid = trap_context[A0_INDEX] as isize;
             let wait_status = trap_context[A0_INDEX + 1] as *mut WaitStatus;
             let options = WaitOptions::from(trap_context[A0_INDEX + 2] as u32);
-            let r_usage = trap_context[A0_INDEX + 3] as *mut RUsage;
+            let resource_usage = trap_context[A0_INDEX + 3] as *mut ResourceUsage;
 
             match process::wait4(tid, options.nohang()) {
                 Some(result) => {
@@ -80,8 +80,8 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
                         let status = WaitStatus::from(((result.exit_code as u32) & 0xff) << 8);
                         unsafe { wait_status.write(status) };
                     }
-                    if result.tid != 0 && !r_usage.is_null() {
-                        unsafe { r_usage.write(RUsage::default()) };
+                    if result.tid != 0 && !resource_usage.is_null() {
+                        unsafe { resource_usage.write(ResourceUsage::default()) };
                     }
                     SyscallResult::Return(result.tid as u64, sepc + 4)
                 }

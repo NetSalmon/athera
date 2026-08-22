@@ -4,7 +4,7 @@
 //! - 统一错误 [`FsError`]（可映射为 POSIX errno，供系统调用层直接返回）；
 //! - 元数据与打开标志（[`Stat`]、[`OpenFlags`]、[`DirEntry`]、[`SeekFrom`]）；
 //! - 操作 trait：路径级 [`FileSystem`]、文件对象级 [`FileOps`]；
-//! - 通用结构：内存超级块 [`SuperBlock`]、内存 inode [`INode`]、目录项缓存
+//! - 通用结构：内存超级块 [`SuperBlock`]、内存 inode [`Inode`]、目录项缓存
 //!   [`Dentry`]、打开的文件 [`File`]，以及挂载表（[`MOUNT_TABLE`]）。
 //!
 //! 目前只完成类型与接口设计，具体逻辑（挂载分发、路径解析、dentry 缓存、
@@ -233,7 +233,7 @@ pub struct SuperBlock {
 
 /// 内存 inode：文件 / 目录在内存中的元数据缓存。
 #[derive(Debug)]
-pub struct INode {
+pub struct Inode {
     pub ino: u64,
     pub mode: Mode,
     pub uid: u32,
@@ -241,7 +241,7 @@ pub struct INode {
     pub size: u64,
     pub mtime: i64,
     pub nlinks: u32,
-    /// 所属超级块（弱引用，避免 `SuperBlock → Dentry → INode` 成环泄漏）。
+    /// 所属超级块（弱引用，避免 `SuperBlock → Dentry → Inode` 成环泄漏）。
     pub superblock: Weak<SuperBlock>,
     /// 指向该 inode 的目录项（别名的弱引用，对应 Linux 的 `i_dentry`）。
     pub dentries: Vec<Weak<Dentry>>,
@@ -251,7 +251,7 @@ pub struct INode {
 #[derive(Debug)]
 pub struct Dentry {
     pub name: String,
-    pub inode: Arc<INode>,
+    pub inode: Arc<Inode>,
     pub parent: Weak<Dentry>,
     /// 子目录项（按名字索引）。
     pub children: BTreeMap<String, Arc<Dentry>>,
@@ -298,7 +298,7 @@ impl File {
         ops: Arc<dyn FileOps>,
         flags: OpenFlags,
     ) -> Self {
-        let inode = Arc::new(INode {
+        let inode = Arc::new(Inode {
             ino,
             mode,
             uid: 0,
@@ -474,7 +474,7 @@ impl Vfs {
         };
         Arc::new(Dentry {
             name: String::from(name),
-            inode: Arc::new(INode {
+            inode: Arc::new(Inode {
                 ino: stat.ino,
                 mode: stat.mode,
                 uid: stat.uid,

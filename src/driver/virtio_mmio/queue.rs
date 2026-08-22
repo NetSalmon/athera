@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 //! virtio 虚拟队列。
 //!
-//! 包含描述符表（`VRingDesc`）、avail/used 环（`VirtqAvail` /
-//! `VirtqUsed`）与对齐到页的 [`Queue`] 布局，以及队列初始化逻辑。
+//! 包含描述符表、avail/used 环与对齐到页的 [`Queue`] 布局，以及队列初始化逻辑。
 use core::{
     alloc::Layout,
     ptr::addr_of,
@@ -21,7 +20,7 @@ pub type DevResult<T> = core::result::Result<T, DevError>;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct VRingDesc {
+pub struct VirtQueueDescriptor {
     pub addr: u64,
     pub len: u32,
     pub flags: Flags,
@@ -38,35 +37,35 @@ bits! {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct VirtqAvail {
+pub struct AvailableRing {
     pub flags: u16,
     pub idx: u16,
-    pub ring: VirtqRing<u16>,
+    pub ring: Ring<u16>,
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct VirtqUsedElem {
+pub struct UsedElement {
     pub id: u32,
     pub len: u32,
 }
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct VirtqUsed {
+pub struct UsedRing {
     pub flags: u16,
     pub idx: u16,
-    pub ring: VirtqRing<VirtqUsedElem>,
+    pub ring: Ring<UsedElement>,
 }
 
 #[repr(C, align(4096))]
 pub struct Queue {
-    pub desc: [VRingDesc; RING_SIZE],
-    pub avail: VirtqAvail,
+    pub desc: [VirtQueueDescriptor; RING_SIZE],
+    pub avail: AvailableRing,
     // 把 used 环对齐到下一页：legacy virtio 要求 used 环落在页边界上
     // （avail 紧跟 desc 表，offset = 16 * RING_SIZE = 4096）。
-    _pad: [u8; 4096 - size_of::<VirtqAvail>()],
-    pub used: VirtqUsed,
+    _pad: [u8; 4096 - size_of::<AvailableRing>()],
+    pub used: UsedRing,
 }
 
 impl Queue {
@@ -75,11 +74,11 @@ impl Queue {
     }
 }
 
-pub struct Virtq {
+pub struct VirtQueue {
     _mem: Frame,
 }
 
-impl Virtq {
+impl VirtQueue {
     pub fn new() -> DevResult<Self> {
         let layout = Layout::new::<Queue>();
         let start = FRAME_ALLOCATOR
@@ -90,7 +89,7 @@ impl Virtq {
         unsafe {
             core::ptr::write_bytes(start as *mut u8, 0, layout.size());
         }
-        Ok(Virtq {
+        Ok(VirtQueue {
             _mem: Frame {
                 start,
                 size: layout.size(),
@@ -110,7 +109,7 @@ impl Virtq {
         self._mem.start as u64 + core::mem::offset_of!(Queue, used) as u64
     }
 
-    pub fn queue_ptr(&self) -> u64 {
+    pub fn address(&self) -> u64 {
         self._mem.start as u64
     }
 
@@ -138,7 +137,7 @@ impl Virtq {
 
     /// 轮询等待设备产生新的 used 元素（`last_used` 之后第一个），
     /// 返回被消费的描述符链信息。
-    pub fn wait_used(&mut self, last_used: u16) -> DevResult<VirtqUsedElem> {
+    pub fn wait_used(&mut self, last_used: u16) -> DevResult<UsedElement> {
         loop {
             let queue = self.as_mut();
             let used_idx = unsafe { addr_of!(queue.used.idx).read_volatile() };
@@ -153,4 +152,4 @@ impl Virtq {
     }
 }
 
-pub type VirtqRing<T> = [T; RING_SIZE];
+pub type Ring<T> = [T; RING_SIZE];

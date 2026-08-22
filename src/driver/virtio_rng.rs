@@ -19,7 +19,7 @@ use crate::{
         device::DeviceInfo,
         virtio_mmio::{
             DeviceType, VirtioDevice,
-            queue::{Flags, VRingDesc, Virtq},
+            queue::{Flags, VirtQueue, VirtQueueDescriptor},
         },
     },
     error::DevError,
@@ -31,7 +31,7 @@ pub type DevResult<T> = core::result::Result<T, DevError>;
 
 pub struct VirtioRng {
     pub device: DeviceInfo,
-    pub queues: SpinLock<Option<Vec<Virtq>>>,
+    pub queues: SpinLock<Option<Vec<VirtQueue>>>,
 }
 
 impl VirtioDevice for VirtioRng {
@@ -41,7 +41,7 @@ impl VirtioDevice for VirtioRng {
         self.device
     }
 
-    fn queues(&self) -> &SpinLock<Option<Vec<Virtq>>> {
+    fn queues(&self) -> &SpinLock<Option<Vec<VirtQueue>>> {
         &self.queues
     }
 }
@@ -70,7 +70,7 @@ impl VirtioRng {
         let elem = VirtioDevice::submit(self, |q| {
             let mut flags = Flags::new();
             flags.set_write(true);
-            q.desc[0] = VRingDesc {
+            q.desc[0] = VirtQueueDescriptor {
                 addr: buf.as_mut_ptr() as u64,
                 len: buf.len() as u32,
                 flags,

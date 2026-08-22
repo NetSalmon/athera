@@ -67,7 +67,7 @@ impl TaskStatus {
 
 #[derive(Debug)]
 pub struct MemorySet {
-    pub used_page: Vec<Frame>,
+    pub used_pages: Vec<Frame>,
     pub user_root_page_table: PhysicalAddr,
 }
 
@@ -84,15 +84,15 @@ impl MemorySet {
             .clone(AddressSpaceId::User(owner), new_tid)?;
         let user_root_page_table = PAGE_TABLE_MANAGER.force().lock().user_root_addr(new_tid)?;
 
-        let mut used_page = Vec::with_capacity(self.used_page.len());
-        for frame in &self.used_page {
-            used_page.push(frame.try_clone().ok_or(MemError::OutOfMemory)?);
+        let mut used_pages = Vec::with_capacity(self.used_pages.len());
+        for frame in &self.used_pages {
+            used_pages.push(frame.try_clone().ok_or(MemError::OutOfMemory)?);
         }
 
         info!("memory set cloned: {owner:?} -> {new_tid:?}");
 
         Ok(Self {
-            used_page,
+            used_pages,
             user_root_page_table,
         })
     }

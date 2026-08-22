@@ -1,18 +1,18 @@
 #![allow(dead_code)]
 //! ELF64 结构定义。
 //!
-//! 仅定义加载用户程序所需的最小集合：文件头 [`Elf64Ehdr`]、程序头
-//! `Elf64Phdr` 与类型枚举（`EType` / `EMachine` / `PType` 等）。
+//! 仅定义加载用户程序所需的最小集合：文件头 [`ElfHeader`]、程序头
+//! [`ProgramHeader`] 与相关 ELF 类型。
 use core::fmt::{Display, Formatter};
 
 use crate::{array_struct, bits, error::ElfError, numeric};
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct Elf64Ehdr {
-    pub e_ident: EIdent,
-    pub e_type: EType,
-    pub e_machine: EMachine,
+pub struct ElfHeader {
+    pub e_ident: ElfIdent,
+    pub e_type: ElfType,
+    pub e_machine: ElfMachine,
     pub e_version: u32,
     pub e_entry: u64,
     pub e_phoff: u64,
@@ -26,8 +26,8 @@ pub struct Elf64Ehdr {
     pub e_shstrndx: u16,
 }
 
-impl Elf64Ehdr {
-    pub fn avail(&self) -> Result<(), ElfError> {
+impl ElfHeader {
+    pub fn validate(&self) -> Result<(), ElfError> {
         if !self.e_ident.is_elf() {
             return Err(ElfError::NotElf);
         }
@@ -36,7 +36,7 @@ impl Elf64Ehdr {
             return Err(ElfError::NotLsb);
         }
 
-        if self.e_ident.class() != Class::CLASS64 {
+        if self.e_ident.class() != ElfClass::CLASS64 {
             return Err(ElfError::Not64Bit);
         }
 
@@ -44,21 +44,21 @@ impl Elf64Ehdr {
     }
 }
 
-impl<T: AsRef<[u8]>> From<T> for Elf64Ehdr {
+impl<T: AsRef<[u8]>> From<T> for ElfHeader {
     /// 把 ELF 文件头按字节直读为结构体。
     ///
     /// # Safety
     ///
-    /// 调用方必须保证 `value` 至少包含一个完整的 `Elf64Ehdr`（64 字节），
-    /// 且起始地址按 `align_of::<Elf64Ehdr>()` 对齐。
+    /// 调用方必须保证 `value` 至少包含一个完整的 `ElfHeader`（64 字节），
+    /// 且起始地址按 `align_of::<ElfHeader>()` 对齐。
     fn from(value: T) -> Self {
-        let ptr = value.as_ref().as_ptr() as *const Elf64Ehdr;
+        let ptr = value.as_ref().as_ptr() as *const ElfHeader;
         unsafe { ptr.read() }
     }
 }
 
 numeric! {
-    pub enum EType : u16 {
+    pub enum ElfType : u16 {
         NONE = 0,
         REL = 1,
         EXEC = 2,
@@ -72,7 +72,7 @@ numeric! {
 }
 
 numeric! {
-    pub enum EMachine : u16 {
+    pub enum ElfMachine : u16 {
         NONE          = 0x0000,
         M32           = 0x0001,
         SPARC         = 0x0002,
@@ -260,15 +260,15 @@ numeric! {
 }
 
 numeric! {
-    pub enum EVersion : u32 {
+    pub enum ElfVersion : u32 {
         NONE = 0,         // Invalid version
         CURRENT = 1,         // Current version
     }
 }
 
 array_struct! {
-    pub struct EIdent : [u8; 16] {
-        class: Class => 4,
+    pub struct ElfIdent : [u8; 16] {
+        class: ElfClass => 4,
         data: Endianness => 5,
         version => 6,
         os_abi: OsAbi => 7,
@@ -278,14 +278,14 @@ array_struct! {
     }
 }
 
-impl EIdent {
+impl ElfIdent {
     pub fn is_elf(&self) -> bool {
         self.0[0] == 0x7F && self.0[1] == b'E' && self.0[2] == b'L' && self.0[3] == b'F'
     }
 }
 
 numeric! {
-    pub enum Class : u8 {
+    pub enum ElfClass : u8 {
         NONE = 0,            // Invalid class
         CLASS32 = 1,         // 32-bit objects
         CLASS64 = 2,         // 64-bit objects
@@ -320,9 +320,9 @@ numeric! {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct Elf64Phdr {
-    pub p_type: PType,
-    pub p_flags: PFlags,
+pub struct ProgramHeader {
+    pub p_type: ProgramType,
+    pub p_flags: ProgramFlags,
     pub p_offset: u64,
     pub p_vaddr: u64,
     pub p_paddr: u64,
@@ -332,7 +332,7 @@ pub struct Elf64Phdr {
 }
 
 numeric! {
-    pub enum PType : u32 {
+    pub enum ProgramType : u32 {
         NULL         = 0x00,
         LOAD         = 0x01,
         DYNAMIC      = 0x02,
@@ -355,14 +355,14 @@ numeric! {
 }
 
 bits! {
-    pub type PFlags : u32 {
+    pub type ProgramFlags : u32 {
         execute: 0,
         write: 1,
         read: 2,
     }
 }
 
-impl Display for PFlags {
+impl Display for ProgramFlags {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         if self.read() {
             f.write_str("R")?

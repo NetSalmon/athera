@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use crate::{
     constants::VIRTIO_VERSION_LEGACY,
-    driver::virtio_mmio::{DeviceStatus, VirtqCfg, queue::Virtq},
+    driver::virtio_mmio::{DeviceStatus, VirtQueueConfig, queue::VirtQueue},
     error::DevError,
     mm::address::PhysicalAddr,
 };
@@ -22,21 +22,21 @@ pub struct QueueConfig {
 
 #[must_use]
 pub struct HandshakeBegin<'a> {
-    cfg: &'a mut VirtqCfg,
+    cfg: &'a mut VirtQueueConfig,
 }
 
 #[must_use]
 pub struct FeaturesNegotiated<'a> {
-    cfg: &'a mut VirtqCfg,
+    cfg: &'a mut VirtQueueConfig,
 }
 
 #[must_use]
 pub struct QueuesReady<'a> {
-    cfg: &'a mut VirtqCfg,
-    queues: Vec<Virtq>,
+    cfg: &'a mut VirtQueueConfig,
+    queues: Vec<VirtQueue>,
 }
 
-impl VirtqCfg {
+impl VirtQueueConfig {
     pub fn handshake(&mut self) -> HandshakeBegin<'_> {
         let mut status: DeviceStatus = 0.into();
         self.write_status(status.into());
@@ -85,7 +85,7 @@ impl<'a> HandshakeBegin<'a> {
         Self::commit_features(self.cfg)
     }
 
-    fn commit_features(cfg: &mut VirtqCfg) -> DevResult<FeaturesNegotiated<'_>> {
+    fn commit_features(cfg: &mut VirtQueueConfig) -> DevResult<FeaturesNegotiated<'_>> {
         let mut status: DeviceStatus = cfg.status().into();
         status.set_features_ok(true);
         cfg.write_status(status.into());
@@ -119,14 +119,14 @@ impl<'a> FeaturesNegotiated<'a> {
             }
             self.cfg.write_queue_num(qcfg.size);
 
-            let virtq = Virtq::new()?;
+            let virtq = VirtQueue::new()?;
 
             if version == VIRTIO_VERSION_LEGACY {
                 self.cfg.write_guest_page_size(4096);
                 // used 环按页对齐，与 Queue 布局保持一致。
                 self.cfg.write_queue_align(4096);
 
-                let pa: PhysicalAddr = (virtq.queue_ptr() as usize).into();
+                let pa: PhysicalAddr = (virtq.address() as usize).into();
                 self.cfg.write_queue_pfn(pa.ppn() as u32);
             } else {
                 self.cfg.write_queue_desc_low(virtq.desc_addr() as u32);
@@ -175,14 +175,14 @@ impl<'a> QueuesReady<'a> {
             }
             self.cfg.write_queue_num(qcfg.size);
 
-            let virtq = Virtq::new()?;
+            let virtq = VirtQueue::new()?;
 
             if version == VIRTIO_VERSION_LEGACY {
                 self.cfg.write_guest_page_size(4096);
                 // used 环按页对齐，与 Queue 布局保持一致。
                 self.cfg.write_queue_align(4096);
 
-                let pa: PhysicalAddr = (virtq.queue_ptr() as usize).into();
+                let pa: PhysicalAddr = (virtq.address() as usize).into();
                 self.cfg.write_queue_pfn(pa.ppn() as u32);
             } else {
                 self.cfg.write_queue_desc_low(virtq.desc_addr() as u32);
@@ -203,7 +203,7 @@ impl<'a> QueuesReady<'a> {
         Ok(())
     }
 
-    pub fn finish(self) -> Vec<Virtq> {
+    pub fn finish(self) -> Vec<VirtQueue> {
         let mut status: DeviceStatus = self.cfg.status().into();
         status.set_driver_ok(true);
         self.cfg.write_status(status.into());

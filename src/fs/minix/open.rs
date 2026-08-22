@@ -9,7 +9,7 @@ use alloc::{
 use super::{
     File, FileType, MinixFs,
     dir::{DirEntries, DirEntry, EntryFormat},
-    types::{DINode, DirEntryRaw, MinixFsMagic},
+    types::{DirEntryRaw, DiskInode, MinixFsMagic},
 };
 use crate::{
     constants::{MAX_SYMLINK_HOPS, PATH_SEPARATOR},
@@ -22,29 +22,29 @@ impl<T> MinixFs<T> {
     ///
     /// 需要按需逐项读取、避免一次读完整目录时，请使用 [`Self::dir_entries_iter`]。
     /// `device` 为一次持读锁得到的块设备守卫（见 [`MinixFs::read_lock`]）。
-    pub fn dir_entries(&self, d_inode: &DINode, device: &T) -> IoResult<Vec<DirEntry>>
+    pub fn dir_entries(&self, inode: &DiskInode, device: &T) -> IoResult<Vec<DirEntry>>
     where
         T: BlockDevice,
     {
-        self.dir_entries_iter(d_inode, device)?.collect()
+        self.dir_entries_iter(inode, device)?.collect()
     }
 
     /// 创建按需读取的目录项迭代器：每次 [`Iterator::next`] 只解析一个目录项，
     /// 数据块按需从设备读取，不会一次性把整个目录读进内存。
     pub fn dir_entries_iter<'a, 'd>(
         &'a self,
-        d_inode: &DINode,
+        inode: &DiskInode,
         device: &'d T,
     ) -> IoResult<DirEntries<'a, 'd, T>>
     where
         T: BlockDevice,
     {
-        let zones = self.data_zones(d_inode, device)?;
+        let zones = self.data_zones(inode, device)?;
 
         // 根据 superblock 的 magic 决定文件名长度：
-        // MAGIC_2 → 30 字节，其余（MAGIC）→ 14 字节。
+        // V1_30 → 30 字节，其余（V1_14）→ 14 字节。
         let (entry_size, format) = match self.superblock.magic {
-            MinixFsMagic::MAGIC_2 => (size_of::<DirEntryRaw<30>>(), EntryFormat::V1_30),
+            MinixFsMagic::V1_30 => (size_of::<DirEntryRaw<30>>(), EntryFormat::V1_30),
             _ => (size_of::<DirEntryRaw<14>>(), EntryFormat::V1_14),
         };
 
@@ -53,7 +53,7 @@ impl<T> MinixFs<T> {
             device,
             self.superblock.zone_size(),
             zones,
-            d_inode.size as usize,
+            inode.size as usize,
             entry_size,
             format,
         ))
@@ -97,7 +97,7 @@ impl<T> MinixFs<T> {
         // 当前目录（在其中查找下一个分量）；相对链接目标以此为基准，
         // 绝对链接目标会重置为根目录。
         let mut dir_ino: u16 = 1;
-        let mut dir: DINode = self.d_inode(dir_ino, device)?;
+        let mut dir: DiskInode = self.read_inode(dir_ino, device)?;
 
         while let Some(name) = components.pop_front() {
             // 在当前目录里查找名为 `name` 的目录项。
@@ -113,7 +113,7 @@ impl<T> MinixFs<T> {
                 return Ok(None); // 路径分量不存在
             };
 
-            let next = self.d_inode(next_ino, device)?;
+            let next = self.read_inode(next_ino, device)?;
 
             // 符号链接：读取目标路径，把它的分量插回队首继续解析。
             if next.mode.file_type() == FileType::LNK {
@@ -127,7 +127,7 @@ impl<T> MinixFs<T> {
                 if target.starts_with(PATH_SEPARATOR) {
                     // 绝对目标：从根目录重新开始。
                     dir_ino = 1;
-                    dir = self.d_inode(1, device)?;
+                    dir = self.read_inode(1, device)?;
                 }
                 for part in target.split('/').filter(|s| !s.is_empty()).rev() {
                     components.push_front(part.to_string());

@@ -20,9 +20,9 @@ pub struct DirEntry {
 /// 磁盘目录项的两种格式（决定文件名占用的字节数）。
 #[derive(Clone, Copy)]
 pub(crate) enum EntryFormat {
-    /// 旧版 MINIX v1（`MAGIC`）：文件名 14 字节。
+    /// 旧版 MINIX v1（`V1_14`）：文件名 14 字节。
     V1_14,
-    /// 新版 MINIX v1（`MAGIC_2`）：文件名 30 字节。
+    /// 新版 MINIX v1（`V1_30`）：文件名 30 字节。
     V1_30,
 }
 
@@ -40,7 +40,7 @@ pub struct DirEntries<'a, 'd, T> {
     zones: Vec<u16>,
     /// 下一个要读取的数据块在 `zones` 中的下标。
     next_zone: usize,
-    /// 目录数据剩余未解析的字节数（按 `d_inode.size` 限制，避免读到尺寸之外的脏数据）。
+    /// 目录数据剩余未解析的字节数（按磁盘 inode 的 size 限制，避免读到尺寸之外的脏数据）。
     remaining: usize,
     /// 当前数据块的内容（最多 `zone_size` 字节）。
     buffer: Vec<u8>,

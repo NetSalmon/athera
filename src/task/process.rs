@@ -54,7 +54,7 @@ pub(crate) fn wait4(tid: isize, nohang: bool) -> Option<WaitResult> {
     };
 
     if nohang {
-        let Some(tid) = get_zombie_child(current, target_tid) else {
+        let Some(tid) = find_zombie_child(current, target_tid) else {
             return Some(WaitResult {
                 tid: 0,
                 exit_code: 0,
@@ -105,7 +105,7 @@ fn file_for_fd(fd: u64) -> Result<File, FdError> {
         .ok_or(FdError::BadFd)
 }
 
-fn get_zombie_child(parent: Tid, target: Option<Tid>) -> Option<usize> {
+fn find_zombie_child(parent: Tid, target: Option<Tid>) -> Option<usize> {
     let children = TASKS
         .force()
         .lock()

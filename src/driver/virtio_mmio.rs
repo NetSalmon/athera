@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! virtio-mmio 传输层。
 //!
-//! 定义 MMIO 寄存器布局（`VirtqCfg`）、设备状态/类型枚举与虚拟队列
+//! 定义 MMIO 寄存器布局（`VirtQueueConfig`）、设备状态/类型枚举与虚拟队列
 //! 结构；设备初始化流程见 [`handshake`]，队列实现见 [`queue`]。
 mod handshake;
 pub(crate) mod queue;
@@ -11,7 +11,7 @@ use core::sync::atomic::{Ordering, fence};
 
 use self::{
     handshake::QueueConfig,
-    queue::{Queue, Virtq, VirtqUsedElem},
+    queue::{Queue, UsedElement, VirtQueue},
 };
 use crate::{
     bits,
@@ -24,12 +24,12 @@ use crate::{
 /// 本模块统一结果类型。
 pub type DevResult<T> = core::result::Result<T, DevError>;
 
-pub struct VirtqCfg {
+pub struct VirtQueueConfig {
     pub device: DeviceInfo,
 }
 
 pub(crate) fn is_device(device: DeviceInfo, expected: DeviceType) -> bool {
-    VirtqCfg { device }.device_id() == expected.0
+    VirtQueueConfig { device }.device_id() == expected.0
 }
 
 numeric! {
@@ -61,7 +61,7 @@ bits! {
 }
 
 numeric! {
-    pub enum VirtqVersion : u32 {
+    pub enum VirtQueueVersion : u32 {
         LEGACY = 1,
         MODERN = 2,
     }
@@ -78,7 +78,7 @@ numeric! {
 // }
 // ...
 mmio_regs! {
-    VirtqCfg: [
+    VirtQueueConfig: [
         magic_value: u32 => 0x000,
         version: u32 => 0x004,
         device_id: u32 => 0x008,
@@ -112,7 +112,7 @@ mmio_regs! {
 ///
 /// 提供与具体设备类型无关的探测（[`Self::probe`]）、特征协商与队列
 /// 配置握手（[`Self::handshake`]）以及队列 0 的收发原语（[`Self::queue`] /
-/// [`Self::notify`]，配合 [`queue::Virtq`] 的 `post_avail` / `wait_used`）。
+/// [`Self::notify`]，配合 [`queue::VirtQueue`] 的 `post_avail` / `wait_used`）。
 ///
 /// 新设备驱动只需实现 [`Self::DEVICE_TYPE`] 与 `device` / `queues`
 /// 两个访问器，并按需覆写 [`Self::negotiate`] / [`Self::negotiate_legacy`]，
@@ -125,7 +125,7 @@ pub trait VirtioDevice: Sized {
     fn device(&self) -> DeviceInfo;
 
     /// 已配置虚拟队列的可变访问（未握手时为 `None`）。
-    fn queues(&self) -> &crate::sync::spin::SpinLock<Option<Vec<Virtq>>>;
+    fn queues(&self) -> &crate::sync::spin::SpinLock<Option<Vec<VirtQueue>>>;
 
     /// modern 特性协商：输入设备特性（低 / 高 32 位），返回驱动协商值。
     ///
@@ -143,7 +143,7 @@ pub trait VirtioDevice: Sized {
     ///
     /// 队列尚未配置时，[`Self::queue`] 与提交流程会自动补一次握手。
     fn handshake(&self) -> DevResult<()> {
-        let mut cfg = VirtqCfg {
+        let mut cfg = VirtQueueConfig {
             device: self.device(),
         };
         let is_modern = cfg.version() != VIRTIO_VERSION_LEGACY;
@@ -171,7 +171,7 @@ pub trait VirtioDevice: Sized {
     }
 
     /// 队列 0 的可变引用；未配置时先补一次握手。
-    fn queue(&self) -> DevResult<crate::sync::spin::SpinLockGuard<'_, Option<Vec<Virtq>>>> {
+    fn queue(&self) -> DevResult<crate::sync::spin::SpinLockGuard<'_, Option<Vec<VirtQueue>>>> {
         let ready = self.queues().lock().is_some();
         if !ready {
             self.handshake()?;
@@ -188,7 +188,7 @@ pub trait VirtioDevice: Sized {
     ///
     /// 描述符配置、发布、通知和等待必须由同一个队列锁保护。virtio 驱动
     /// 只负责填写协议相关的描述符，避免各驱动重复实现容易出错的锁边界。
-    fn submit<F>(&self, configure: F) -> DevResult<VirtqUsedElem>
+    fn submit<F>(&self, configure: F) -> DevResult<UsedElement>
     where
         F: FnOnce(&mut Queue),
     {

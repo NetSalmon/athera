@@ -1,8 +1,8 @@
 #![allow(unused)]
 //! MINIX V1 文件系统驱动。
 //!
-//! 从 virtio-blk 块设备读写 MINIX V1 文件系统：超级块（[`SuperBlock`]）、
-//! 磁盘 inode（[`DINode`]）与目录项（[`DirEntryRaw`]）；inode/zone 位图
+//! 从 virtio-blk 块设备读写 MINIX V1 文件系统：超级块（[`DiskSuperBlock`]）、
+//! 磁盘 inode（[`DiskInode`]）与目录项（[`DirEntryRaw`]）；inode/zone 位图
 //! 用 [`BitMapView`] 零拷贝维护，支持按路径查找、顺序读写文件、创建文件，
 //! 以及分配/释放 inode 与数据块。
 //!
@@ -26,7 +26,7 @@ use athera_bitmap::BitMapView;
 pub(crate) use dir::{DirEntries, DirEntry};
 pub(crate) use file::File;
 pub(crate) use types::{
-    DINode, DirEntryRaw, DirEntryV1_14, DirEntryV1_30, MinixFsMagic, MinixString, SuperBlock,
+    DirEntryRaw, DirEntryV1_14, DirEntryV1_30, DiskInode, DiskSuperBlock, MinixFsMagic, MinixString,
 };
 
 pub(crate) use super::{
@@ -49,7 +49,7 @@ use crate::{
 /// 因此 `MinixFs` 可被多个打开的 [`File`] 共享（为未来的 fd 表 / VFS 铺路），
 /// 不需要独占设备引用。
 pub struct MinixFs<T> {
-    pub(crate) superblock: SuperBlock,
+    pub(crate) superblock: DiskSuperBlock,
     device: Arc<RwLock<T>>,
 }
 
@@ -66,13 +66,13 @@ impl<T> MinixFs<T> {
     {
         let dev = device.read();
 
-        let mut buffer = vec![0u8; size_of::<SuperBlock>()];
+        let mut buffer = vec![0u8; size_of::<DiskSuperBlock>()];
         dev.read_at(&mut buffer, SUPERBLOCK_OFFSET)?;
 
         // SAFETY: `read_unaligned` 不要求对齐，可安全读取 u8 缓冲中的结构体。
-        let superblock = unsafe { (buffer.as_ptr() as *const SuperBlock).read_unaligned() };
+        let superblock = unsafe { (buffer.as_ptr() as *const DiskSuperBlock).read_unaligned() };
 
-        if superblock.magic == MinixFsMagic::MAGIC || superblock.magic == MinixFsMagic::MAGIC_2 {
+        if superblock.magic == MinixFsMagic::V1_14 || superblock.magic == MinixFsMagic::V1_30 {
             Ok(Some(Self {
                 superblock,
                 device: device.clone(),
@@ -91,49 +91,49 @@ impl<T> MinixFs<T> {
         self.device.read()
     }
 
-    pub fn d_inode(&self, ino: u16, device: &T) -> IoResult<DINode>
+    pub fn read_inode(&self, ino: u16, device: &T) -> IoResult<DiskInode>
     where
         T: BlockDevice,
     {
-        let offset = (ino - 1) as usize * size_of::<DINode>();
+        let offset = (ino - 1) as usize * size_of::<DiskInode>();
 
-        let mut buffer = vec![0u8; size_of::<DINode>()];
+        let mut buffer = vec![0u8; size_of::<DiskInode>()];
 
-        device.read_at(&mut buffer, self.superblock.d_inode_start() + offset)?;
+        device.read_at(&mut buffer, self.superblock.inode_table_offset() + offset)?;
 
-        let d_inode: DINode = unsafe { (buffer.as_ptr() as *const DINode).read_unaligned() };
+        let inode: DiskInode = unsafe { (buffer.as_ptr() as *const DiskInode).read_unaligned() };
 
-        Ok(d_inode)
+        Ok(inode)
     }
 
-    /// 读取 inode 指向的全部数据块，返回文件内容（末尾按 `d_inode.size` 截断）。
-    pub fn data(&self, d_inode: &DINode, device: &T) -> IoResult<Vec<u8>>
+    /// 读取 inode 指向的全部数据块，返回文件内容（末尾按 `inode.size` 截断）。
+    pub fn data(&self, inode: &DiskInode, device: &T) -> IoResult<Vec<u8>>
     where
         T: BlockDevice,
     {
-        if d_inode.size == 0 {
+        if inode.size == 0 {
             return Ok(Vec::new());
         }
 
-        let mut out = Vec::with_capacity(d_inode.size as usize);
-        for zone in self.data_zones(d_inode, device)? {
+        let mut out = Vec::with_capacity(inode.size as usize);
+        for zone in self.data_zones(inode, device)? {
             self.read_zone(device, zone, &mut out)?;
         }
 
-        out.truncate(d_inode.size as usize);
+        out.truncate(inode.size as usize);
         Ok(out)
     }
 
     /// 依次收集 inode 引用的数据块号：7 个直接块 → 一级间接块 → 二级间接块。
     /// 块号为 0 表示“没有更多块”，遇到即停止。
-    pub(crate) fn data_zones(&self, d_inode: &DINode, device: &T) -> IoResult<Vec<u16>>
+    pub(crate) fn data_zones(&self, inode: &DiskInode, device: &T) -> IoResult<Vec<u16>>
     where
         T: BlockDevice,
     {
         let mut zones = Vec::new();
 
         // zone[0..7]：7 个直接数据块。
-        for &zone in &d_inode.zone[..7] {
+        for &zone in &inode.zone[..7] {
             if zone == 0 {
                 return Ok(zones);
             }
@@ -141,12 +141,12 @@ impl<T> MinixFs<T> {
         }
 
         // zone[7]：一级间接块，里面存放数据块号。
-        for zone in self.zone_table(device, d_inode.zone[7])? {
+        for zone in self.zone_table(device, inode.zone[7])? {
             zones.push(zone);
         }
 
         // zone[8]：二级间接块，里面存放“一级间接块”的块号。
-        for indirect_zone in self.zone_table(device, d_inode.zone[8])? {
+        for indirect_zone in self.zone_table(device, inode.zone[8])? {
             for zone in self.zone_table(device, indirect_zone)? {
                 zones.push(zone);
             }
@@ -226,16 +226,20 @@ impl<T> MinixFs<T> {
     }
 
     /// 把 inode 写回磁盘（`ino` 从 1 起）。
-    pub fn write_d_inode(&self, ino: u16, d_inode: &DINode, device: &T) -> IoResult<()>
+    pub fn write_inode(&self, ino: u16, inode: &DiskInode, device: &T) -> IoResult<()>
     where
         T: BlockDevice,
     {
-        let offset = self.superblock.d_inode_start() + (ino - 1) as usize * size_of::<DINode>();
+        let offset =
+            self.superblock.inode_table_offset() + (ino - 1) as usize * size_of::<DiskInode>();
 
-        // SAFETY: `DINode` 是 `#[repr(C)]` 的纯数据（无 padding），按原样写盘，
+        // SAFETY: `DiskInode` 是 `#[repr(C)]` 的纯数据（无 padding），按原样写盘，
         // 与读取路径 `read_unaligned` 对称。
         let bytes = unsafe {
-            slice::from_raw_parts((d_inode as *const DINode).cast::<u8>(), size_of::<DINode>())
+            slice::from_raw_parts(
+                (inode as *const DiskInode).cast::<u8>(),
+                size_of::<DiskInode>(),
+            )
         };
         device.write_at(bytes, offset)?;
         Ok(())
@@ -405,7 +409,7 @@ where
             .open(path)
             .map_err(FsError::from)?
             .ok_or(FsError::NotFound)?;
-        let mode = Mode::from((file.r#type().0 << 12) | 0o644);
+        let mode = Mode::from((file.file_type().0 << 12) | 0o644);
         Ok(VfsFile::from_ops(
             path.file_name().unwrap_or("/"),
             file.ino() as u64,
@@ -426,7 +430,7 @@ where
             .ok_or(FsError::NotFound)?;
         Ok(Stat {
             ino: file.ino() as u64,
-            mode: Mode::from((file.r#type().0 << 12) | 0o644),
+            mode: Mode::from((file.file_type().0 << 12) | 0o644),
             size: file.size() as u64,
             nlinks: 1,
             mtime: 0,

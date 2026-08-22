@@ -30,16 +30,16 @@ static GLOBAL_ALLOCATOR: StaticAllocator = StaticAllocator;
 /// 返回的地址按 `u128` 对齐，适合放置普通 Rust 类型。返回空指针表示
 /// 请求大小为零或静态堆空间不足。分配出的内存不会被自动初始化，也不能
 /// 通过释放函数回收；调用者必须保证不越过请求的大小访问它。
-pub fn smalloc(size: usize) -> *mut u8 {
+pub fn allocate(size: usize) -> *mut u8 {
     if size == 0 {
         return core::ptr::null_mut();
     }
 
     let layout = Layout::from_size_align(size, core::mem::align_of::<u128>()).unwrap();
-    allocate(layout)
+    allocate_layout(layout)
 }
 
-fn allocate(layout: Layout) -> *mut u8 {
+fn allocate_layout(layout: Layout) -> *mut u8 {
     if layout.align() > HEAP_ALIGNMENT {
         return core::ptr::null_mut();
     }
@@ -61,7 +61,7 @@ fn allocate(layout: Layout) -> *mut u8 {
 
 unsafe impl GlobalAlloc for StaticAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = allocate(layout);
+        let ptr = allocate_layout(layout);
         if ptr.is_null() {
             panic!("user heap exhausted");
         }

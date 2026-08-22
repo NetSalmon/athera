@@ -10,12 +10,12 @@ use crate::{
     arch::riscv64::{
         registers::{
             csr::Sstatus,
-            values::{SStatusBits, SatpMode, SatpValue},
+            values::{SatpMode, SatpValue, SstatusBits},
         },
         trap::TrapContext,
     },
     constants::{PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE, USER_STACK_TOP},
-    elf::{Elf64Ehdr, Elf64Phdr, PType},
+    elf::{ElfHeader, ProgramHeader, ProgramType},
     error::{Error, MemError, Result},
     fs::vfs::{File, OpenFlags},
     info,
@@ -33,9 +33,9 @@ use crate::{
 /// 清零并拷贝段数据、映射到用户虚拟地址），最后建立用户栈并切换到
 /// 用户态。
 pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
-    let elf_header = Elf64Ehdr::from(buffer);
+    let elf_header = ElfHeader::from(buffer);
 
-    elf_header.avail()?;
+    elf_header.validate()?;
 
     let entry = elf_header.e_entry as usize;
 
@@ -61,12 +61,12 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
     let page_table_address = PAGE_TABLE_MANAGER.force().lock().user_root_addr(tid)?;
 
     let mut memory_set = MemorySet {
-        used_page: vec![],
+        used_pages: vec![],
         user_root_page_table: page_table_address,
     };
 
     let mut ph_ptr =
-        unsafe { buffer.as_ptr().add(elf_header.e_phoff as usize) as *const Elf64Phdr };
+        unsafe { buffer.as_ptr().add(elf_header.e_phoff as usize) as *const ProgramHeader };
 
     for i in 0..ph_num as usize {
         ph_ptr = unsafe { ph_ptr.add(i) };
@@ -80,7 +80,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         let memsz = ph.p_memsz as usize;
         let align = ph.p_align;
 
-        if ph.p_type != PType::LOAD {
+        if ph.p_type != ProgramType::LOAD {
             continue;
         }
 
@@ -110,7 +110,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
 
         let start = frame.start as *mut u8;
 
-        memory_set.used_page.push(frame);
+        memory_set.used_pages.push(frame);
 
         // clean
         unsafe { ptr::write_bytes(start, 0, memsz) };
@@ -148,7 +148,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         )?
     }
 
-    memory_set.used_page.push(user_stack);
+    memory_set.used_pages.push(user_stack);
 
     let root_page_table_addr = PAGE_TABLE_MANAGER.force().lock().user_root_addr(tid)?;
 
@@ -157,7 +157,7 @@ pub fn spawn_buffer(buffer: &[u8], priority: Option<i8>) -> Result<()> {
         .set_mode(SatpMode::SV39.into())
         .build();
 
-    let mut sstatus = SStatusBits::from(Sstatus::read());
+    let mut sstatus = SstatusBits::from(Sstatus::read());
     sstatus.set_spp(false);
     sstatus.set_spie(true);
 

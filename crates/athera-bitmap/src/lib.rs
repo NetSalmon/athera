@@ -86,7 +86,7 @@ type WordBytes = [u8; size_of::<usize>()];
 
 /// 读取 `index` 位是否为 1（调用方须保证 `index < bits`）。
 #[inline]
-fn get_bit(words: &[usize], index: usize) -> bool {
+fn is_bit_set(words: &[usize], index: usize) -> bool {
     words[index / WORD_BITS] & (1 << (index % WORD_BITS)) != 0
 }
 
@@ -149,7 +149,7 @@ fn alloc_range_in(words: &mut [usize], bits: usize, n: usize) -> Option<usize> {
     let mut run_start = 0;
     let mut run_len = 0;
     for i in 0..bits {
-        if get_bit(words, i) {
+        if is_bit_set(words, i) {
             run_len = 0;
         } else {
             if run_len == 0 {
@@ -174,7 +174,7 @@ fn free_range_in(words: &mut [usize], bits: usize, range: Range<usize>) -> Resul
         return Err(BitMapError::OutOfRange);
     }
     for i in range.clone() {
-        if !get_bit(words, i) {
+        if !is_bit_set(words, i) {
             return Err(BitMapError::AlreadyFree);
         }
     }
@@ -279,13 +279,13 @@ impl<const WORDS: usize> BitMap<WORDS> {
         if !self.contains(index) {
             return Err(BitMapError::OutOfRange);
         }
-        Ok(get_bit(&self.words[..], index))
+        Ok(is_bit_set(&self.words[..], index))
     }
 
     /// 某位是否已占用；越界视为未占用（`false`）。
     #[must_use]
     pub fn is_allocated(&self, index: usize) -> bool {
-        self.contains(index) && get_bit(&self.words[..], index)
+        self.contains(index) && is_bit_set(&self.words[..], index)
     }
 
     /// 某位是否空闲；越界视为未占用（`false`）。
@@ -673,13 +673,13 @@ impl<'a> BitMapView<'a> {
         if !self.contains(index) {
             return Err(BitMapError::OutOfRange);
         }
-        Ok(get_bit(&*self.words, index))
+        Ok(is_bit_set(&*self.words, index))
     }
 
     /// 某位是否已占用；越界视为未占用（`false`）。
     #[must_use]
     pub fn is_allocated(&self, index: usize) -> bool {
-        self.contains(index) && get_bit(&*self.words, index)
+        self.contains(index) && is_bit_set(&*self.words, index)
     }
 
     /// 某位是否空闲；越界视为未占用（`false`）。

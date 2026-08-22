@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::iter::Iterator;
 
-use athera_userland::{alloc::smalloc, println};
+use athera_userland::{alloc::allocate, println};
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -19,6 +19,6 @@ fn main() {
     println!("heap array: {numbers:?}");
     println!("heap array sum: {sum}");
 
-    let too_large = smalloc(athera_userland::alloc::HEAP_SIZE + 1);
+    let too_large = allocate(athera_userland::alloc::HEAP_SIZE + 1);
     println!("oversized allocation is null: {}", too_large.is_null());
 }

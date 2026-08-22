@@ -4,7 +4,7 @@ use crate::{println, syscall};
 
 /// 用户程序 panic 时以 Rust 风格打印信息，然后通过 `exit` 系统调用退出。
 #[panic_handler]
-pub fn panic_handle(info: &PanicInfo) -> ! {
+pub fn handle_panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
         println!(
             "thread 'main' panicked at {}:{}:{}:",

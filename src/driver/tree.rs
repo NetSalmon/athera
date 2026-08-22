@@ -77,12 +77,12 @@ impl IdTrait for Did {
 const MINOR_BITS_USIZE: usize = MINOR_BITS as usize;
 
 /// 设备号分配器类型。
-pub type DidAlloc = IdAlloc<Did, MINOR_BITS_USIZE>;
+pub type DeviceIdAllocator = IdAlloc<Did, MINOR_BITS_USIZE>;
 /// Linux 设备驱动常用的静态主号，初始化时预先划入主号表。
 pub const PRESET_MAJORS: &[u32] = &[1, 4, 8, 10, 252];
 
 pub struct DeviceManager {
-    pub id_alloc: DidAlloc,
+    pub id_alloc: DeviceIdAllocator,
     pub alloc_majors: Vec<Did>,
 
     pub by_id: BTreeMap<Did, Arc<DeviceNode>>,
@@ -92,8 +92,8 @@ pub struct DeviceManager {
 impl DeviceManager {
     pub fn new() -> Self {
         // `IdAlloc::new()` 没有可分配范围，必须先初始化完整 dev_t 空间。
-        let mut id_alloc =
-            DidAlloc::from_range(Did::MIN..Did::MAX).expect("dev_t allocator range must be valid");
+        let mut id_alloc = DeviceIdAllocator::from_range(Did::MIN..Did::MAX)
+            .expect("dev_t allocator range must be valid");
         let mut alloc_majors = Vec::new();
 
         for i in PRESET_MAJORS.iter() {

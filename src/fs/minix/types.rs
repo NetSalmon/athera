@@ -43,7 +43,7 @@ impl<const T: usize> Display for MinixString<T> {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct DINode {
+pub struct DiskInode {
     pub mode: Mode, // 文件类型和 RWX 访问控制位
     pub uid: u16,   // 文件属主的用户 ID
     pub size: u32,  // 文件大小, 以 byte 计数
@@ -71,7 +71,7 @@ pub type DirEntryV1_30 = DirEntryRaw<30>;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct SuperBlock {
+pub struct DiskSuperBlock {
     pub ninodes: u16,         // number of inodes
     pub nzones: u16,          // number of zones
     pub imap_blocks: u16,     // i 节点位图 占用块的数目
@@ -84,24 +84,24 @@ pub struct SuperBlock {
     pub state: u16,
 }
 
-impl SuperBlock {
+impl DiskSuperBlock {
     #[inline]
     pub fn zone_size(&self) -> usize {
         1024 << self.log_zone_size
     }
 
     #[inline]
-    pub fn d_inode_start(&self) -> usize {
+    pub fn inode_table_offset(&self) -> usize {
         (2 + self.imap_blocks + self.zmap_blocks) as usize * self.zone_size()
     }
 }
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct INode {
-    pub dev: u16,   // i 节点所在的磁盘
-    pub ino: u16,   // i 节点号码
-    pub r#ref: u16, // 内存引用计数
+pub struct Inode {
+    pub dev: u16,       // i 节点所在的磁盘
+    pub ino: u16,       // i 节点号码
+    pub ref_count: u16, // 内存引用计数
     pub flags: u16,
     pub atime: u16,
     pub ctime: u16,
@@ -116,7 +116,7 @@ pub struct INode {
 
 numeric! {
     pub enum MinixFsMagic : u16 {
-        MAGIC = 0x137F,     // MINIX_SUPER_MAGIC, NAME_LEN 14
-        MAGIC_2 = 0x138F,   // MINIX_SUPER_MAGIC2, NAME_LEN 30
+        V1_14 = 0x137F,     // MINIX_SUPER_MAGIC, NAME_LEN 14
+        V1_30 = 0x138F,     // MINIX_SUPER_MAGIC2, NAME_LEN 30
     }
 }
