@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+"""usr.py - 管理 athera-userland 的用户程序（bin）。
+
+用法:
+  ./usr.py add <name>     添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码
+  ./usr.py rm <name>      删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码
+  ./usr.py rm 与 ./usr.py remove 等价
+"""
+
+import re
+import sys
+from pathlib import Path
+
+MANIFEST = Path("athera-userland/Cargo.toml")
+BIN_DIR = Path("athera-userland/src/bin")
+
+NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+BIN_TABLE = """[[bin]]
+name = "{name}"
+path = "src/bin/{name}.rs"
+test = false
+doctest = false
+bench = false
+"""
+
+TEMPLATE = """#![no_std]
+#![no_main]
+
+use athera_userland::*;
+
+#[unsafe(no_mangle)]
+fn main() {
+    println!("Hello world!!!");
+}
+
+"""
+
+
+def usage():
+    print(__doc__, end="")
+
+
+def normalize(text):
+    return text.rstrip() + "\n"
+
+
+def find_bin_sections(text):
+    lines = text.splitlines()
+    sections = []
+    start = None
+    current_name = None
+    for i, line in enumerate(lines):
+        if re.match(r"^\[\[bin\]\]\s*$", line):
+            if start is not None:
+                sections.append((start, i - 1, current_name))
+            start = i
+            current_name = None
+        elif re.match(r"^\s*\[", line):
+            if start is not None:
+                sections.append((start, i - 1, current_name))
+                start = None
+                current_name = None
+        elif start is not None and current_name is None:
+            m = re.match(r"^\s*name\s*=\s*[\"']([^\"']+)[\"']\s*$", line)
+            if m:
+                current_name = m.group(1)
+    if start is not None:
+        sections.append((start, len(lines) - 1, current_name))
+    return sections
+
+
+def add_program(name):
+    text = MANIFEST.read_text()
+    for _, _, existing in find_bin_sections(text):
+        if existing == name:
+            print(f"error: 程序 '{name}' 已存在于 {MANIFEST}", file=sys.stderr)
+            sys.exit(1)
+    MANIFEST.write_text(
+        normalize(text.rstrip("\n") + "\n\n" + BIN_TABLE.format(name=name))
+    )
+    src = BIN_DIR / f"{name}.rs"
+    src.write_text(TEMPLATE)
+    print(f"已添加程序 '{name}':")
+    print(f"  - 注册 bin: {MANIFEST}")
+    print(f"  - 生成源码: {src}")
+
+
+def remove_program(name):
+    text = MANIFEST.read_text()
+    target = None
+    for start, end, existing in find_bin_sections(text):
+        if existing == name:
+            target = (start, end)
+            break
+    if target is None:
+        print(f"error: 未找到程序 '{name}'（{MANIFEST} 中没有该 bin）", file=sys.stderr)
+        sys.exit(1)
+    start, end = target
+    lines = text.splitlines()
+    new_lines = lines[:start] + lines[end + 1:]
+    if start < len(new_lines) and new_lines[start] == "":
+        del new_lines[start]
+    MANIFEST.write_text(normalize("\n".join(new_lines)))
+    src = BIN_DIR / f"{name}.rs"
+    if src.exists():
+        src.unlink()
+        print(f"  - 删除源码: {src}")
+    print(f"已从 {MANIFEST} 移除 bin '{name}'")
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 2 or args[0] not in ("add", "rm", "remove"):
+        usage()
+        sys.exit(1)
+    cmd, name = args[0], args[1]
+    if not NAME_RE.match(name):
+        print(
+            f"error: 无效的程序名 '{name}'（仅允许字母/数字/下划线，且不能以数字开头）",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if cmd == "add":
+        add_program(name)
+    else:
+        remove_program(name)
+
+
+if __name__ == "__main__":
+    main()

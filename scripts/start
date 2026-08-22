@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""start.py - 启动 Athera 内核的 QEMU 运行脚本。
+
+默认在 30 秒后自动终止 QEMU，避免脚本长时间挂起；
+可用 -T/--timeout 调整时长，或 --no-timeout 完全禁用。
+
+用法:
+  ./start.py [选项] [-- QEMU参数...]
+"""
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SCRIPT_DIR.parent
+
+DEFAULT_QEMU = "qemu-system-riscv64"
+DEFAULT_KERNEL = ROOT_DIR / "target" / "riscv64gc-unknown-none-elf" / "release" / "athera"
+DEFAULT_TIMEOUT = 30.0
+KILL_GRACE = 5.0
+TIMEOUT_EXIT = 124
+
+DEFAULT_TRACE_EVENTS = [
+    "virtio_blk_handle_read",
+    "virtio_blk_handle_write",
+    "virtio_blk_submit_multireq",
+    "virtio_blk_rw_complete",
+    "virtio_blk_req_complete",
+]
+
+EXAMPLES = """\
+示例:
+  ./start.py --cpus 2 --blk resources/minix.qcow2 --random
+  ./start.py -c 2 -d resources/minix.qcow2 -m -i
+  ./start.py -T 60 -d resources/minix.qcow2           # 超时改为 60 秒
+  ./start.py --no-timeout -b -d resources/minix.qcow2 # 禁用超时
+  ./start.py --kernel target/.../athera -- --serial mon:stdio
+"""
+
+
+def positive_int(value):
+    try:
+        v = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"必须是整数: {value!r}")
+    if v <= 0:
+        raise argparse.ArgumentTypeError(f"必须大于 0: {value!r}")
+    return v
+
+
+def positive_number(value):
+    try:
+        v = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"必须是数字: {value!r}")
+    if v <= 0:
+        raise argparse.ArgumentTypeError(f"必须大于 0: {value!r}")
+    return v
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="start.py",
+        description="启动 Athera 内核的 QEMU 运行脚本。默认 30 秒后自动终止 QEMU；"
+                    "--gdb 模式会自动禁用超时。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXAMPLES,
+    )
+
+    startup = parser.add_argument_group("QEMU 与启动")
+    startup.add_argument("-c", "--cpus", type=positive_int, default=1, metavar="NUM",
+                         help="CPU 核数（默认: 1）")
+    startup.add_argument("-k", "--kernel", type=Path, default=DEFAULT_KERNEL, metavar="FILE",
+                         help="内核 ELF 路径（默认: target/.../release/athera）")
+    startup.add_argument("-M", "--machine", default="virt", metavar="NAME",
+                         help="QEMU machine（默认: virt）")
+    startup.add_argument("-q", "--qemu", default=DEFAULT_QEMU, metavar="FILE",
+                         help="QEMU 程序（默认: qemu-system-riscv64）")
+    startup.add_argument("--disk-format", default="qcow2", metavar="FMT",
+                         help="磁盘格式（默认: qcow2）")
+
+    disk = startup.add_mutually_exclusive_group()
+    disk.add_argument("-d", "--blk", metavar="FILE",
+                      help="挂载 virtio-blk MMIO 磁盘")
+    disk.add_argument("-p", "--pci-blk", metavar="FILE",
+                      help="挂载 virtio-blk PCI 磁盘")
+
+    startup.add_argument("-r", "--random", action="store_true",
+                         help="添加 virtio-rng（MMIO 熵源）设备")
+    startup.add_argument("-b", "--gui", action="store_true",
+                         help="使用 GTK 显示（-display gtk + ramfb）")
+
+    debug = parser.add_argument_group("调试")
+    debug.add_argument("-s", "--gdb", action="store_true",
+                       help="启用 GDB 调试（-s -S，并自动禁用超时）")
+    debug.add_argument("-m", "--mmu-debug", action="store_true",
+                       help="输出 MMU 日志")
+    debug.add_argument("-i", "--int-debug", action="store_true",
+                       help="输出中断日志")
+    debug.add_argument("-t", "--trace", action="append", metavar="EVENT",
+                       help="添加 QEMU trace 事件（可重复，覆盖默认事件）")
+    debug.add_argument("--no-trace", action="store_true",
+                       help="禁用默认 QEMU trace 事件（优先于 -t）")
+
+    timing = parser.add_argument_group("超时控制")
+    timing.add_argument("-T", "--timeout", type=positive_number, default=DEFAULT_TIMEOUT,
+                        metavar="SECONDS",
+                        help=f"运行超时时间（默认: {DEFAULT_TIMEOUT:g} 秒，到点自动终止 QEMU）")
+    timing.add_argument("--no-timeout", dest="timeout", action="store_const", const=None,
+                        help="不设超时，一直运行（同 -T 0）")
+
+    parser.add_argument("qemu_args", nargs=argparse.REMAINDER, metavar="[-- QEMU参数...]",
+                        help="在 -- 之后追加任意 QEMU 参数")
+
+    return parser
+
+
+def run_qemu(cmd, timeout):
+    proc = subprocess.Popen(cmd)
+    try:
+        if timeout is None:
+            return proc.wait()
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        try:
+            proc.wait(timeout=KILL_GRACE)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        print(f"[start] 已到 {timeout:g} 秒超时，已终止 QEMU（退出码 {TIMEOUT_EXIT}）",
+              file=sys.stderr)
+        return TIMEOUT_EXIT
+    except KeyboardInterrupt:
+        proc.terminate()
+        try:
+            proc.wait(timeout=KILL_GRACE)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        return 130
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+
+    qemu_extra = args.qemu_args
+    if qemu_extra:
+        if qemu_extra[0] == "--":
+            qemu_extra = qemu_extra[1:]
+        else:
+            parser.error(f"不支持的位置参数: {qemu_extra[0]}（请放在 -- 之后作为 QEMU 参数）")
+
+    if not args.kernel.is_file():
+        parser.error(f"找不到内核 ELF: {args.kernel}")
+    if shutil.which(args.qemu) is None:
+        parser.error(f"找不到 QEMU: {args.qemu}（请安装或使用 -q 指定）")
+    if args.random and not (args.blk or args.pci_blk):
+        parser.error("--random 需要同时指定 --blk 或 --pci-blk")
+
+    timeout = args.timeout
+    if args.gdb and timeout is not None:
+        print(f"[start] --gdb 模式下自动禁用超时（原为 {timeout:g}s）", file=sys.stderr)
+        timeout = None
+
+    trace_events = args.trace if args.trace else DEFAULT_TRACE_EVENTS
+    if args.no_trace:
+        trace_events = []
+
+    cmd = [args.qemu, "-machine", args.machine, "-smp", str(args.cpus),
+           "-kernel", str(args.kernel)]
+    for ev in trace_events:
+        cmd += ["-trace", ev]
+
+    log_flags = []
+    if args.mmu_debug:
+        log_flags.append("mmu")
+    if args.int_debug:
+        log_flags.append("int")
+    if log_flags:
+        cmd += ["-d", ",".join(log_flags)]
+
+    if args.gui:
+        cmd += ["-display", "gtk", "-device", "ramfb", "-serial", "stdio"]
+    else:
+        cmd += ["-nographic"]
+
+    if args.blk:
+        cmd += ["-drive", f"file={args.blk},format={args.disk_format},id=hd0,if=none",
+                "-device", "virtio-blk-device,drive=hd0"]
+    elif args.pci_blk:
+        cmd += ["-drive", f"file={args.pci_blk},format={args.disk_format},id=hd0,if=none",
+                "-device", "virtio-blk-pci,drive=hd0,disable-legacy=on"]
+
+    if args.random:
+        cmd += ["-device", "virtio-rng-device"]
+    if args.gdb:
+        cmd += ["-s", "-S"]
+
+    cmd += qemu_extra
+
+    if timeout is not None:
+        print(f"[start] 运行 QEMU（{timeout:g} 秒后自动终止）", file=sys.stderr)
+    sys.exit(run_qemu(cmd, timeout))
+
+
+if __name__ == "__main__":
+    main()
