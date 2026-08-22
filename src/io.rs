@@ -1,13 +1,16 @@
 #![allow(dead_code)]
 //! 控制台输出层。
 //!
-//! 基于 `dev::UART`（ns16550a）提供 `print!` / `println!` 宏与字符读取；
-//! `Ns16550a` 对 `core::fmt::Write` 的实现见 `dev::ns16550a`。
+//! 启动早期通过 SBI 提供 `print!` / `println!` 宏；VFS 初始化后切换到
+//! `/dev/console`，设备访问由设备管理器负责。
 use core::fmt;
 
-use crate::dev::{
-    UART,
-    traits::{Read, Write},
+use crate::{
+    arch::riscv64::sbi::legacy,
+    fs::{
+        self, Path, VFS,
+        vfs::{FileSystem, OpenFlags},
+    },
 };
 
 pub fn _print(args: fmt::Arguments) {
@@ -19,11 +22,20 @@ struct ConsoleWriter;
 
 impl fmt::Write for ConsoleWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for chunk in s.as_bytes().chunks(64) {
-            let Some(uart) = UART.force().as_ref() else {
-                return Err(fmt::Error);
-            };
-            uart.lock().write(chunk).map_err(|_| fmt::Error)?;
+        if fs::VFS_CONSOLE_READY.load(core::sync::atomic::Ordering::Acquire) {
+            let file = VFS
+                .force()
+                .open(
+                    &Path::from("/dev/console"),
+                    OpenFlags::write_only(),
+                    fs::Mode::from(0),
+                )
+                .map_err(|_| fmt::Error)?;
+            file.write(s.as_bytes()).map_err(|_| fmt::Error)?;
+        } else {
+            for byte in s.bytes() {
+                legacy::console_putchar(byte);
+            }
         }
         Ok(())
     }
@@ -43,7 +55,18 @@ macro_rules! println {
 }
 
 pub fn getchar() -> Option<u8> {
-    let uart = UART.force().as_ref()?;
-    let mut byte = [0u8; 1];
-    (uart.lock().read(&mut byte).ok()? == 1).then_some(byte[0])
+    if fs::VFS_CONSOLE_READY.load(core::sync::atomic::Ordering::Acquire) {
+        let file = VFS
+            .force()
+            .open(
+                &Path::from("/dev/console"),
+                OpenFlags::read_only(),
+                fs::Mode::from(0),
+            )
+            .ok()?;
+        let mut byte = [0u8; 1];
+        (file.read(&mut byte).ok()? == 1).then_some(byte[0])
+    } else {
+        legacy::console_getchar()
+    }
 }

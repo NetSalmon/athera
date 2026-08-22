@@ -29,10 +29,10 @@ use athera_macros::lazy;
 
 use crate::{
     bits,
-    dev::traits::IoError,
+    driver::traits::IoError,
     fs::{
         FileType, Mode, Path, PathBuf,
-        dev_fs::uart,
+        devfs::uart,
         vfs::file_ops::{FileOps, Whence},
     },
     numeric,

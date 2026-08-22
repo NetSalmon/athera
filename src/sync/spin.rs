@@ -18,7 +18,7 @@ use core::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crate::arch::registers::csr::Sie;
+use crate::arch::riscv64::registers::csr::Sie;
 
 /// 关中断自旋锁。
 ///

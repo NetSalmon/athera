@@ -12,7 +12,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::arch::registers::csr::Sie;
+use crate::arch::riscv64::registers::csr::Sie;
 
 const WRITER: usize = 1;
 const READER: usize = 2;

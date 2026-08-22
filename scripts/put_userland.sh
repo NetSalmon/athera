@@ -24,16 +24,16 @@ while getopts "i:nh" opt; do
 done
 
 # 从 Cargo.toml 提取 [[bin]] 的 name（按顺序）
-BINS=$(awk '/^\[\[bin\]\]/{inbin=1; next} inbin && /^name *=/ {gsub(/[ "]/,"",$0); split($0,a,"="); print a[2]; inbin=0}' crates/athera-userland/Cargo.toml)
+BINS=$(awk '/^\[\[bin\]\]/{inbin=1; next} inbin && /^name *=/ {gsub(/[ "]/,"",$0); split($0,a,"="); print a[2]; inbin=0}' athera-userland/Cargo.toml)
 
 if [ -z "$BINS" ]; then
-    echo "error: 未从 crates/athera-userland/Cargo.toml 解析到任何 bin" >&2
+    echo "error: 未从 userland/Cargo.toml 解析到任何 bin" >&2
     exit 1
 fi
 
 if [ "$BUILD" = 1 ]; then
     echo "==> 构建用户程序"
-    cargo build -p athera-userland --release
+    cargo build -p athera-athera-userland --release
 fi
 
 for bin in $BINS; do

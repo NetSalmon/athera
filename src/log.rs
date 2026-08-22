@@ -56,7 +56,7 @@ fn label(level: Level) -> &'static str {
     }
 }
 
-/// Show only the last segment of a `module_path!()` (e.g. `athera::dev::virtio_blk`
+/// Show only the last segment of a `module_path!()` (e.g. `athera::driver::virtio_blk`
 /// becomes `virtio_blk`) so log lines stay short and aligned.
 fn short_module(module: &str) -> &str {
     match module.rsplit_once("::") {

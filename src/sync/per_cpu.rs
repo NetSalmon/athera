@@ -17,7 +17,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::arch::registers::gpr::Tp;
+use crate::arch::riscv64::registers::gpr::Tp;
 
 /// 当前 hart 槽位的守卫，由 [`PerCpu::current`] 返回。
 ///

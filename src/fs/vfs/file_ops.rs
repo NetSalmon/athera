@@ -1,4 +1,4 @@
-pub use crate::dev::traits::Whence;
+pub use crate::driver::traits::Whence;
 use crate::fs::{
     FsError, FsResult, Path,
     vfs::{DirEntry, Stat, Vec},

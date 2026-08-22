@@ -5,22 +5,19 @@
 //! 经 `a7` 传入，返回值经 `a0` 传回，出错时返回 `-errno`。
 
 mod abi;
-mod io;
-mod process;
-mod reboot;
 
 use abi::{ErrorCode, Syscall};
 #[allow(unused_imports)]
 pub use abi::{RUsage, TimeVal, WaitOptions, WaitSignal, WaitStatus};
-use io::{read, write};
-use process::{exit, wait4};
-use reboot::reboot;
 
 use crate::{
-    error,
+    arch::riscv64::trap::A0_INDEX,
+    debug, error,
     error::{Error, MemError},
-    proc::task::clone_task,
-    trap::A0_INDEX,
+    task::{
+        process::{self, FdError},
+        task::clone_task,
+    },
 };
 
 /// 把内核错误映射为 Linux errno。
@@ -50,19 +47,25 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
         Syscall::READ => {
             let ptr = trap_context[A0_INDEX + 1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
-            let ret = read(trap_context[A0_INDEX], unsafe { &mut *buf });
+            let ret = match process::read_fd(trap_context[A0_INDEX], unsafe { &mut *buf }) {
+                Ok(size) => size as u64,
+                Err(err) => fd_errno(err),
+            };
             SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::WRITE => {
             let ptr = trap_context[A0_INDEX + 1] as *mut u8;
             let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
             let buf = unsafe { &*buf };
-            let ret = write(trap_context[A0_INDEX], buf);
+            let ret = match process::write_fd(trap_context[A0_INDEX], buf) {
+                Ok(size) => size as u64,
+                Err(err) => fd_errno(err),
+            };
             SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::EXIT => {
             let code = trap_context[A0_INDEX] as i32;
-            exit(code);
+            process::exit(code);
             SyscallResult::Yield
         }
         Syscall::WAIT4 => {
@@ -71,19 +74,33 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let options = WaitOptions::from(trap_context[A0_INDEX + 2] as u32);
             let r_usage = trap_context[A0_INDEX + 3] as *mut RUsage;
 
-            match wait4(tid, wait_status, options, r_usage) {
-                Some(ret) => SyscallResult::Return(ret, sepc + 4),
+            match process::wait4(tid, options.nohang()) {
+                Some(result) => {
+                    if result.tid != 0 && !wait_status.is_null() {
+                        let status = WaitStatus::from(((result.exit_code as u32) & 0xff) << 8);
+                        unsafe { wait_status.write(status) };
+                    }
+                    if result.tid != 0 && !r_usage.is_null() {
+                        unsafe { r_usage.write(RUsage::default()) };
+                    }
+                    SyscallResult::Return(result.tid as u64, sepc + 4)
+                }
                 None => SyscallResult::Yield,
             }
         }
         Syscall::REBOOT => {
-            let ret = reboot(
-                trap_context[A0_INDEX],
-                trap_context[A0_INDEX + 1],
-                trap_context[A0_INDEX + 2],
-            );
-
-            SyscallResult::Return(ret as u64, sepc + 4)
+            let magic = trap_context[A0_INDEX];
+            let magic2 = trap_context[A0_INDEX + 1];
+            let command = trap_context[A0_INDEX + 2];
+            if magic != 0xfee1_dead || magic2 != 0x2812_1969 {
+                debug!("reboot: invalid magic (magic = {magic:#x}, magic2 = {magic2:#x})");
+                return SyscallResult::Return(ErrorCode::EINVAL.0 as u64, sepc + 4);
+            }
+            if !crate::driver::reboot::reboot(command) {
+                debug!("reboot: unsupported command {command:#x}");
+                return SyscallResult::Return(ErrorCode::EINVAL.0 as u64, sepc + 4);
+            }
+            SyscallResult::Return(ErrorCode::EINVAL.0 as u64, sepc + 4)
         }
         Syscall::MMAP => {
             todo!()
@@ -106,5 +123,13 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             }
         }
         _ => SyscallResult::Return(ErrorCode::ENOSYS.0 as u64, sepc + 4),
+    }
+}
+
+fn fd_errno(error: FdError) -> u64 {
+    match error {
+        FdError::NoTask => ErrorCode::ESRCH.0 as u64,
+        FdError::BadFd | FdError::NotReadable | FdError::NotWritable => ErrorCode::EBADF.0 as u64,
+        FdError::Io(error) => (-(error.errno())) as u64,
     }
 }

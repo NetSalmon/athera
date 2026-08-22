@@ -2,33 +2,33 @@
 #![no_main]
 #![recursion_limit = "512"]
 mod arch;
-mod boot;
 mod constants;
-mod dev;
+mod driver;
 mod elf;
 mod error;
 mod fs;
 mod io;
 mod log;
 mod macros;
-mod mem;
-mod proc;
+mod mm;
 mod rand;
 mod sync;
 mod syscall;
-mod trap;
+mod task;
 
 extern crate alloc;
 
+use alloc::{format, vec::Vec};
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{
-    arch::sbi::srst::{ResetReason, ResetType, system_reset},
+    arch::riscv64::sbi::srst::{ResetReason, ResetType, system_reset},
     constants::*,
     log::Level,
-    mem::page_table::identity_map,
+    mm::page_table::identity_map,
 };
 
+#[cfg(target_arch = "riscv64")]
 global_asm!(include_str!("entry.asm"));
 
 #[unsafe(no_mangle)]
@@ -43,8 +43,8 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     #[cfg(feature = "smp")]
     {
-        arch::sbi::hsm::hart_start(1, hart_entry as *const () as u64, 0);
-        let r = arch::sbi::hsm::hart_get_status(1);
+        arch::riscv64::sbi::hsm::hart_start(1, hart_entry as *const () as u64, 0);
+        let r = arch::riscv64::sbi::hsm::hart_get_status(1);
         info!("hart 1 status: {:#?}", r);
     }
 
@@ -74,13 +74,19 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     info!("page table setup ok");
 
+    if let Err(err) = fs::init() {
+        error!("filesystem initialization failed: {err}");
+        kernel_halt()
+    }
+    fs::enable_vfs_console();
+
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
-    boot::spawn_default_programs();
+    arch::riscv64::boot::spawn_default_programs();
 
     // 只有在初始任务创建完成后才启动时钟，避免定时器中断进入空调度器。
-    trap::set_next_timer(None);
-    arch::registers::csr::Sstatus::set_bits(1 << 1);
-    proc::sched::switch();
+    arch::riscv64::trap::set_next_timer(None);
+    arch::riscv64::registers::csr::Sstatus::set_bits(1 << 1);
+    task::scheduler::switch();
 
     kernel_halt()
 }

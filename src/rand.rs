@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! 内核每 hart 随机源。
 //!
-//! 首次访问（`RNG.force()` / `random_u64()` 等）时用 virtio-rng 熵源
+//! 首次访问（`random_u64()` 等）时用设备管理器中的 virtio-rng 熵源
 //! 种子化一个 ChaCha20 CSPRNG（密码学安全），之后内核各处直接获取
 //! 随机数即可；没有 virtio-rng 时回退到固定种子（此时**不是**密码学
 //! 安全的，会打印警告）。
@@ -10,23 +10,20 @@
 //! 种子化发生在设备 MMIO 映射完成之后。
 
 use athera_macros::lazy;
-use athera_rand::{EntropySource, SecureRng};
+use athera_rand::SecureRng;
 
-use crate::{constants::MAX_CPU, dev::VIRTIO_RNG, sync::per_cpu::PerCpu, warn};
+use crate::{constants::MAX_CPU, driver::tree::DEVICE_MANAGER, sync::per_cpu::PerCpu, warn};
 
 /// 每 hart 独立的密码学安全随机数生成器（ChaCha20 CSPRNG）。
 #[lazy]
 pub static RNG: PerCpu<SecureRng, MAX_CPU> = {
     let mut master_seed = [0u8; 32];
-    let seeded = match VIRTIO_RNG.lock().as_mut() {
-        Some(source) => match source.fill_bytes(&mut master_seed) {
-            Ok(()) => true,
-            Err(err) => {
-                warn!("failed to seed per-CPU RNGs from virtio-rng: {err}");
-                false
-            }
-        },
-        None => false,
+    let seeded = match DEVICE_MANAGER.force().read().fill_entropy(&mut master_seed) {
+        Ok(()) => true,
+        Err(err) => {
+            warn!("failed to seed per-CPU RNGs from virtio-rng: {err}");
+            false
+        }
     };
 
     if !seeded {

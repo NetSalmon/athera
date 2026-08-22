@@ -9,7 +9,7 @@ use alloc::{format, string::String};
 use athera_rand::EntropyError;
 use fdt::FdtError;
 
-use crate::dev::traits::IoError;
+use crate::driver::traits::IoError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ProcError {
