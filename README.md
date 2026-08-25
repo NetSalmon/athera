@@ -35,7 +35,7 @@ athera/                       # 内核（根 crate）+ 工作区
 │   ├── arch.rs               架构模块根
 │   ├── arch/riscv64.rs       RISC-V 模块根（wfi / fence.i / sfence.vma / hart_id / ebreak）
 │   ├── arch/riscv64/
-│   │   ├── boot.rs           启动编排（spawn_default_programs：从 VFS 加载并执行用户程序）
+│   │   ├── boot.rs           启动编排（start_default_programs：从 VFS 加载并执行用户程序）
 │   │   ├── registers.rs      寄存器抽象根
 │   │   │   └── registers/    csr.rs / gpr.rs / values.rs
 │   │   ├── sbi.rs            SBI 封装（base / time / ipi / rfence / hsm / srst / legacy / dbcn）
@@ -86,7 +86,7 @@ athera/                       # 内核（根 crate）+ 工作区
 │   ├── task.rs               进程管理模块根（CURRENT_TASK）
 │   ├── task/
 │   │   ├── task.rs           任务控制块、TID 分配器、任务表（TASKS / clone_task）
-│   │   ├── exec.rs           ELF 用户程序加载执行（spawn_buffer，含 fd_table 初始化）
+│   │   ├── exec.rs           ELF 用户程序加载执行（exec_buffer，含 fd_table 初始化）
 │   │   ├── process.rs        进程生命周期与 fd 服务（exit / wait4 / read_fd / write_fd）
 │   │   └── scheduler.rs      任务切换（save_current / switch）
 │   ├── syscall.rs            系统调用处理（handle）
@@ -215,7 +215,7 @@ cargo build --release
 内核启动时通过 VFS 从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix.rs`）：解析
 超级块（`DiskSuperBlock`）、磁盘 inode（`DiskInode`）与目录项（`DirEntryV1_14` /
 `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过
-`MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `task::exec::spawn_buffer`
+`MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `task::exec::exec_buffer`
 加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，
 自动分配数据块并维护直接/一级/二级间接块），inode 与数据块位图用 `athera-bitmap`
 的 `BitMapView` 零拷贝维护（`alloc_inode` / `free_inode` / `alloc_zone` /
@@ -260,14 +260,16 @@ cargo build --release
 | 64   | write    | 向当前进程 fd 写入（fd 1/2 为串口） |
 | 93   | exit     | 退出用户程序；`pid 1` 退出会触发内核 panic |
 | 142  | reboot   | 重启/关机/停机（`RebootCmd::RESTART` / `POWER_OFF` / `HALT`，经 `driver::reboot` 走 SBI）|
-| 215  | munmap   | 解除映射（`todo!()`，尚未实现）|
-| 216  | mremap   | 重映射（`todo!()`，尚未实现）|
+| 215  | munmap   | 解除 `[addr, addr + length)` 的匿名映射（`src/mm/mmap.rs`，`addr` 需页对齐）|
+| 216  | mremap   | 重映射（`src/mm/mmap.rs`：原地收缩/扩张，无法原地扩张时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）|
 | 220  | clone    | 创建子进程（当前仅实现 fork 语义：深拷贝地址空间与陷阱上下文）|
 | 221  | execve   | 执行新程序（未实现，返回 `ENOSYS`）|
-| 222  | mmap     | 映射内存（`todo!()`，尚未实现）|
+| 222  | mmap     | 匿名内存映射（`src/mm/mmap.rs`，仅支持 `MAP_ANONYMOUS`，`fd` 须为 `-1`）|
 | 260  | wait4    | 等待子进程（基础实现：支持 `WNOHANG`，非 `WNOHANG` 时让出 CPU）|
 
-> asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`PageTableManager::clone`（页表）、`MemorySet::try_clone`（内存集）、`TrapContext::clone_child`（子进程现场）与 `TaskControlBlock::try_clone`，由 `task::task::clone_task` 组合并登记子任务。子进程退出后由 `exit` 将其移交给 `init`（pid 1）收养。`execve` / `mmap` / `munmap` / `mremap` 尚未实现，返回 `ENOSYS`。
+> asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`PageTableManager::clone`（页表）、`MemorySet::try_clone`（内存集）、`TrapContext::clone_child`（子进程现场）与 `TaskControlBlock::try_clone`，由 `task::task::clone_task` 组合并登记子任务。子进程退出后由 `exit` 将其移交给 `init`（pid 1）收养。`execve` 尚未实现，返回 `ENOSYS`。
+>
+> `mmap` / `munmap` / `mremap` 由 `src/mm/mmap.rs` 实现，仅支持匿名映射：`mmap` 从用户栈下方按页查找空闲区间（`MAP_FIXED` 替换重叠映射、`MAP_FIXED_NOREPLACE` 冲突返回 `EEXIST`），`munmap` 对部分重叠的映射按页拆分重建，`mremap` 任意尺寸变化都会重建物理帧并保留内容（收缩保持起始地址，扩张无法原地进行时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）；`PROT_NONE` 不建立页表项、仅在映射表中登记（访问时按缺页异常处理），与 Linux riscv 一致地给所有可访问映射置读位（RISC-V 硬件要求叶项 `R=1` 或 `X=1`）。
 >
 > `read` / `write` 通过每进程的 `fd_table`（`Vec<File>`）查表，再经 VFS 的 `File`（`/dev/console` → 设备管理器 → UART）读写；`wait4` 的 `WNOHANG` 分支已实现；非 `WNOHANG` 分支会把父进程置为 `Waiting` 并让出 CPU，但当前缺少子进程退出时唤醒父进程的逻辑，阻塞等待并不完整。另外，文件系统的创建/删除/链接/目录等操作目前只在 MINIX 库层实现，尚未提供对应的系统调用。
 
@@ -304,7 +306,7 @@ graph TD
         page_table_mgr --> identity_map["identity_map()"]
         dev_mgr --> identity_map
         identity_map --> vfs
-        caches --> exec["task::exec::spawn_buffer<br/>（用户程序加载）"]
+        caches --> exec["task::exec::exec_buffer<br/>（用户程序加载）"]
         vfs --> exec
         tasks --> syscall["read / write / wait4 / clone 系统调用"]
     end
@@ -314,10 +316,10 @@ graph TD
 - `MEMORY_RANGE` 与 `driver.rs` 中的 `RAMFB` / `SYSTEM_MEMORY` 均依赖启动时由汇编写入的 `FDT_ADDR`（设备树地址）。`FDT` 初始化完成后会把设备树拷贝进堆中并把 `FDT_ADDR` 指向新副本，同时把原设备树所占物理内存归还给伙伴系统。
 - `DEVICE_DESCRIPTORS` 基于 `FDT` 副本解析全部设备树节点为统一描述符（`Descriptor`）；`DEVICE_MANAGER` 据此登记 UART / virtio-blk / virtio-rng 驱动并分配 Linux 兼容的 `dev_t` 设备号。
 - `FRAME_ALLOCATOR`（伙伴系统）以 `AVAIL_RANGE`（内核末尾 `_end` 到 `FDT_ADDR`）作为可用物理页范围。
-- `PAGE_TABLE_MANAGER` 与 `CACHES`（SLUB 全局分配器）均需先分配物理页帧，故依赖 `FRAME_ALLOCATOR`。
+- `ADDRESS_SPACE_MANAGER` 与 `CACHES`（SLUB 全局分配器）均需先分配物理页帧，故依赖 `FRAME_ALLOCATOR`。
 - 一旦 `CACHES` 就绪，`Vec` / `String` / `BTreeMap` 等 `alloc` 结构以及基于它们的 `TASKS` 进程表、`TID_ALLOCATOR` 方可使用。
 - `RNG`（`rand.rs`）首次访问时用 `DEVICE_MANAGER` 中登记的熵源（virtio-rng）提供的真随机字节种子化 ChaCha20 CSPRNG；若没有 virtio-rng 设备则回退固定种子并打印警告。
-- VFS 与文件系统：`identity_map()` 完成后，`main` 调用 `fs::init()`——从 `DEVICE_MANAGER` 取得块设备句柄（`ManagedBlockDevice`），读 MINIX 超级块（偏移 1024）、根 inode 与目录项，把 `MinixVfs` 挂载到 `/`、`DevFs` 挂载到 `/dev`。随后 `fs::enable_vfs_console()` 让 `io.rs` 的控制台输出从 SBI legacy 切换到 `/dev/console`，最后 `arch::riscv64::boot::spawn_default_programs()` 从磁盘加载并执行用户程序。
+- VFS 与文件系统：`identity_map()` 完成后，`main` 调用 `fs::init()`——从 `DEVICE_MANAGER` 取得块设备句柄（`ManagedBlockDevice`），读 MINIX 超级块（偏移 1024）、根 inode 与目录项，把 `MinixVfs` 挂载到 `/`、`DevFs` 挂载到 `/dev`。随后 `fs::enable_vfs_console()` 让 `io.rs` 的控制台输出从 SBI legacy 切换到 `/dev/console`，最后 `arch::riscv64::boot::start_default_programs()` 从磁盘加载并执行用户程序。
 - 定时器：`main` 启动时以及每次 S 模式定时器中断都会调用 `set_next_timer()` 重设 `stimecmp`（10 Hz），实现周期性的定时器中断。
 - 多核：启用 `smp` feature 时，`main` 会调用 `hart_start` 启动 hart 1（实验性）。
 

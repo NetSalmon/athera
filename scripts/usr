@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""usr.py - 管理 athera-userland 的用户程序（bin）。
+"""usr - 管理 athera-userland 的用户程序（bin）。
 
 用法:
-  ./usr.py add <name>     添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码
-  ./usr.py rm <name>      删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码
-  ./usr.py rm 与 ./usr.py remove 等价
+  ./usr add <name>     添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码
+  ./usr rm <name>      删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码
+  ./usr rm 与 ./usr remove 等价
 """
 
 import re

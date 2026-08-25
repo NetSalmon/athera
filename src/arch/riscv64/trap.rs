@@ -145,7 +145,9 @@ fn trap_handler(
             | Exception::STORE_ACCESS_FAULT
             | Exception::INSTRUCTION_ACCESS_FAULT,
         ) => {
-            error!("memory access fault: {trap:?}, sepc = {sepc:#x}");
+            error!(
+                "memory access fault: {trap:?}, sepc = {sepc:#x}, stval = {_stval:#x}, satp = {_satp:#x}"
+            );
             system_reset(ResetType::SHUTDOWN, ResetReason::SYS_FAIL);
         }
         other => {

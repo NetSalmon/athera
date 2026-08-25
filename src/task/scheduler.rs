@@ -33,7 +33,7 @@ pub fn switch() {
                 continue;
             }
 
-            tasks.spawn_current().unwrap()
+            tasks.select_next().unwrap()
         };
 
         *CURRENT_TASK.current() = Some(tid);

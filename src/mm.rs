@@ -7,4 +7,5 @@
 pub(crate) mod address;
 pub(crate) mod allocator;
 pub(crate) mod frame;
+pub(crate) mod mmap;
 pub(crate) mod page_table;

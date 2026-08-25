@@ -2,6 +2,7 @@
 #![no_main]
 
 use athera_userland::{println, syscall::fork};
+use athera_userland::syscall::exit;
 
 #[unsafe(no_mangle)]
 fn main() {
@@ -10,8 +11,10 @@ fn main() {
     let tid = fork();
 
     if tid == 0 {
-        println!("[child]")
+        println!("[child]");
+        exit(0);
     } else {
-        println!("[parent] child task tid: {tid}")
+        println!("[parent] child task tid: {tid}");
+        exit(0);
     }
 }

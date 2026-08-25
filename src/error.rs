@@ -15,6 +15,9 @@ use crate::driver::traits::IoError;
 pub enum ProcError {
     #[error("no other task")]
     NoOtherTask,
+    /// 参数或环境变量超出用户栈容量（对应 Linux 的 `E2BIG`）。
+    #[error("argument list too long")]
+    ArgsTooLong,
 }
 
 /// ELF 加载错误。

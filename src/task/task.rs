@@ -14,15 +14,15 @@ use crate::{
         registers::values::{SatpMode, SatpValue},
         trap::TrapContext,
     },
-    constants::TID_MAX,
+    constants::{PAGE_SIZE, TID_MAX},
     error,
     error::{Error, MemError, ProcError},
     fs::vfs::File,
     info,
     mm::{
-        address::PhysicalAddr,
+        address::{PhysicalAddr, VirtualAddr},
         frame::Frame,
-        page_table::{AddressSpaceId, PAGE_TABLE_MANAGER},
+        page_table::{AddressSpaceId, PageTableEntryFlags, ADDRESS_SPACE_MANAGER},
     },
     task::CURRENT_TASK,
 };
@@ -66,8 +66,15 @@ impl TaskStatus {
 }
 
 #[derive(Debug)]
+pub struct UserMapping {
+    pub va: VirtualAddr,
+    pub frame: Frame,
+    pub flags: PageTableEntryFlags,
+}
+
+#[derive(Debug)]
 pub struct MemorySet {
-    pub used_pages: Vec<Frame>,
+    pub mappings: Vec<UserMapping>,
     pub user_root_page_table: PhysicalAddr,
 }
 
@@ -78,21 +85,53 @@ impl MemorySet {
     /// [`Frame::try_clone`] 分配并拷贝内容；失败时已分配的帧随 `Drop`
     /// 自动归还。`owner` 为本内存集所属任务的 TID。
     pub fn try_clone(&self, owner: Tid, new_tid: Tid) -> Result<Self, Error> {
-        PAGE_TABLE_MANAGER
+        ADDRESS_SPACE_MANAGER
             .force()
             .lock()
             .clone(AddressSpaceId::User(owner), new_tid)?;
-        let user_root_page_table = PAGE_TABLE_MANAGER.force().lock().user_root_addr(new_tid)?;
+        let user_root_page_table = ADDRESS_SPACE_MANAGER.force().lock().user_root_addr(new_tid)?;
 
-        let mut used_pages = Vec::with_capacity(self.used_pages.len());
-        for frame in &self.used_pages {
-            used_pages.push(frame.try_clone().ok_or(MemError::OutOfMemory)?);
+        // 先为所有映射分配好子进程帧，再统一改写子进程页表；这样即使
+        // 中途分配失败，已分配帧随 `Vec` 的 `Drop` 归还，不会出现页表
+        // 指向已释放帧的情况。
+        let mut frames = Vec::with_capacity(self.mappings.len());
+        for mapping in &self.mappings {
+            frames.push((
+                mapping,
+                mapping.frame.try_clone().ok_or(MemError::OutOfMemory)?,
+            ));
+        }
+
+        let mut mappings = Vec::with_capacity(self.mappings.len());
+        let mut manager = ADDRESS_SPACE_MANAGER.force().lock();
+        for (mapping, frame) in frames {
+            // 把子进程页表里对应虚拟地址的叶映射从父进程帧改写为刚
+            // 分配的子进程帧，否则子进程仍会读写父进程的物理页。
+            // `PROT_NONE`（rwx 全 0）的映射在父进程页表中不占条目，克隆时
+            // 同样跳过，保持两进程行为一致（访问时均按缺页异常处理）。
+            if mapping.flags.r() || mapping.flags.w() || mapping.flags.x() {
+                for step in (0..frame.size).step_by(PAGE_SIZE) {
+                    manager.user_map(
+                        new_tid,
+                        (*mapping.va + step).into(),
+                        (frame.start + step).into(),
+                        mapping.flags,
+                        false,
+                    )?;
+                }
+            }
+
+            mappings.push(UserMapping {
+                va: mapping.va,
+                frame,
+                flags: mapping.flags,
+            });
         }
 
         info!("memory set cloned: {owner:?} -> {new_tid:?}");
 
         Ok(Self {
-            used_pages,
+            mappings,
             user_root_page_table,
         })
     }
@@ -106,12 +145,12 @@ pub struct TaskControlBlock {
     pub memory_set: MemorySet,
     pub trap_context: TrapContext,
     pub exit_code: i32,
-    pub priority: i8,
     pub fd_table: Vec<File>,
 }
 
 impl TaskControlBlock {
-    pub fn spawn(&mut self) {
+    /// 把本任务标记为可运行，使其可被调度器选中执行。
+    pub fn mark_runnable(&mut self) {
         self.status = TaskStatus::Running;
     }
 
@@ -146,7 +185,6 @@ impl TaskControlBlock {
             trap_context: self.trap_context.clone_child(frame, sepc, satp.into()),
             memory_set,
             exit_code: 0,
-            priority: 0,
             fd_table: self.fd_table.clone(),
         })
     }
@@ -208,12 +246,12 @@ impl Tasks {
         }
     }
 
-    pub fn spawn_first(&mut self) -> Result<TrapContext, Error> {
+    pub fn select_first(&mut self) -> Result<TrapContext, Error> {
         if let Some((tid, tcb)) = self.map.iter_mut().next() {
             self.cursor = Some(*tid);
             *CURRENT_TASK.current() = Some(*tid);
 
-            tcb.spawn();
+            tcb.mark_runnable();
 
             Ok(tcb.trap_context.clone())
         } else {
@@ -240,8 +278,8 @@ impl Tasks {
         }
     }
 
-    /// 运行循环游标指向的下一个任务，并将游标向后移动。
-    pub fn spawn_current(&mut self) -> Result<TaskContext, Error> {
+    /// 选出一个可运行的任务（循环游标向后移动），作为下一次调度的目标。
+    pub fn select_next(&mut self) -> Result<TaskContext, Error> {
         let next = |tasks: &BTreeMap<Tid, TaskControlBlock>, start| {
             tasks
                 .range(start)
@@ -259,7 +297,7 @@ impl Tasks {
         self.cursor = Some(tid);
         let tcb = self.map.get_mut(&tid).ok_or(ProcError::NoOtherTask)?;
         *CURRENT_TASK.current() = Some(tid);
-        tcb.spawn();
+        tcb.mark_runnable();
         Ok(TaskContext {
             tid,
             context: tcb.trap_context.clone(),

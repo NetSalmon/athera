@@ -5,7 +5,7 @@
 可用 -T/--timeout 调整时长，或 --no-timeout 完全禁用。
 
 用法:
-  ./start.py [选项] [-- QEMU参数...]
+  ./start [选项] [-- QEMU参数...]
 """
 
 import argparse
@@ -33,11 +33,11 @@ DEFAULT_TRACE_EVENTS = [
 
 EXAMPLES = """\
 示例:
-  ./start.py --cpus 2 --blk resources/minix.qcow2 --random
-  ./start.py -c 2 -d resources/minix.qcow2 -m -i
-  ./start.py -T 60 -d resources/minix.qcow2           # 超时改为 60 秒
-  ./start.py --no-timeout -b -d resources/minix.qcow2 # 禁用超时
-  ./start.py --kernel target/.../athera -- --serial mon:stdio
+  ./start --cpus 2 --blk resources/minix.qcow2 --random
+  ./start -c 2 -d resources/minix.qcow2 -m -i
+  ./start -T 60 -d resources/minix.qcow2           # 超时改为 60 秒
+  ./start --no-timeout -b -d resources/minix.qcow2 # 禁用超时
+  ./start --kernel target/.../athera -- --serial mon:stdio
 """
 
 

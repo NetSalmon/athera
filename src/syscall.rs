@@ -4,8 +4,12 @@
 //! 系统调用号与返回值约定对齐 Linux asm-generic（riscv64）ABI：调用号
 //! 经 `a7` 传入，返回值经 `a0` 传回，出错时返回 `-errno`。
 
-mod abi;
+pub(crate) mod abi;
 
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use crate::info;
 use abi::{ErrorCode, Syscall};
 #[allow(unused_imports)]
 pub use abi::{ResourceUsage, TimeVal, WaitOptions, WaitSignal, WaitStatus};
@@ -14,11 +18,18 @@ use crate::{
     arch::riscv64::trap::A0_INDEX,
     debug, error,
     error::{Error, MemError},
+    mm::mmap,
     task::{
+        CURRENT_TASK,
         process::{self, FdError},
-        task::clone_task,
+        task::{Tid, clone_task},
     },
 };
+
+/// 当前任务的 TID；无任务上下文时返回 `ESRCH`。
+fn current_tid() -> Result<Tid, ErrorCode> {
+    (*CURRENT_TASK.current()).ok_or(ErrorCode::ESRCH)
+}
 
 /// 把内核错误映射为 Linux errno。
 fn errno_of(err: &Error) -> ErrorCode {
@@ -28,6 +39,50 @@ fn errno_of(err: &Error) -> ErrorCode {
         Error::Proc(_) => ErrorCode::ESRCH,
         _ => ErrorCode::EINVAL,
     }
+}
+
+/// 单个用户参数字符串的最大长度（避免野指针导致无界扫描）。
+const MAX_ARG_LEN: usize = 4096;
+
+/// 从用户地址空间拷贝一个 NUL 结尾字符串。
+///
+/// # Safety
+///
+/// `ptr` 必须指向当前任务用户地址空间内的合法映射。
+unsafe fn read_user_cstr(ptr: *const u8) -> Result<String, ErrorCode> {
+    let mut len = 0usize;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+        if len > MAX_ARG_LEN {
+            return Err(ErrorCode::E2BIG);
+        }
+    }
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len) };
+    core::str::from_utf8(bytes)
+        .map(ToOwned::to_owned)
+        .map_err(|_| ErrorCode::EINVAL)
+}
+
+/// 从用户地址空间拷贝一个 NULL 结尾的字符串指针数组（argv / envp）。
+///
+/// # Safety
+///
+/// `ptr` 必须指向当前任务用户地址空间内的合法映射，且数组以 NULL 指针
+/// 结尾。
+unsafe fn read_user_string_array(
+    ptr: *const *const u8,
+) -> Result<Vec<String>, ErrorCode> {
+    let mut out = Vec::new();
+    let mut cur = ptr;
+    loop {
+        let item = unsafe { cur.read() };
+        if item.is_null() {
+            break;
+        }
+        out.push(unsafe { read_user_cstr(item) }?);
+        cur = unsafe { cur.add(1) };
+    }
+    Ok(out)
 }
 
 /// 系统调用处理结果。
@@ -103,15 +158,51 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             SyscallResult::Return(ErrorCode::EINVAL.0 as u64, sepc + 4)
         }
         Syscall::MMAP => {
-            todo!()
+            // Linux riscv64 ABI：a0..a5 = addr / length / prot / flags / fd / offset。
+            let addr = trap_context[A0_INDEX] as usize;
+            let length = trap_context[A0_INDEX + 1] as usize;
+            let prot = trap_context[A0_INDEX + 2] as usize;
+            let flags = trap_context[A0_INDEX + 3] as usize;
+            let fd = trap_context[A0_INDEX + 4] as isize;
+            let offset = trap_context[A0_INDEX + 5] as usize;
+
+            let ret = match current_tid().and_then(|tid| {
+                mmap::mmap(tid, addr, length, prot, flags, fd, offset)
+            }) {
+                Ok(va) => va as u64,
+                Err(errno) => errno.0 as u64,
+            };
+            SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::MUNMAP => {
-            todo!()
+            // Linux riscv64 ABI：a0 = addr、a1 = length。
+            let addr = trap_context[A0_INDEX] as usize;
+            let length = trap_context[A0_INDEX + 1] as usize;
+
+            let ret = match current_tid().and_then(|tid| mmap::munmap(tid, addr, length)) {
+                Ok(()) => 0,
+                Err(errno) => errno.0 as u64,
+            };
+            SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::MREMAP => {
-            todo!()
+            // Linux riscv64 ABI：a0..a4 = old_address / old_size / new_size / flags / new_address。
+            let old_address = trap_context[A0_INDEX] as usize;
+            let old_size = trap_context[A0_INDEX + 1] as usize;
+            let new_size = trap_context[A0_INDEX + 2] as usize;
+            let flags = trap_context[A0_INDEX + 3] as usize;
+            let new_address = trap_context[A0_INDEX + 4] as usize;
+
+            let ret = match current_tid().and_then(|tid| {
+                mmap::mremap(tid, old_address, old_size, new_size, flags, new_address)
+            }) {
+                Ok(va) => va as u64,
+                Err(errno) => errno.0 as u64,
+            };
+            SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::CLONE => {
+            info!("sepc: {:#p}", sepc as *const u8);
             // 目前仅实现 fork 语义：忽略 flags / stack 等参数，子进程
             // 获得父进程地址空间的深拷贝，并从 `sepc + 4` 返回 0。
             match clone_task(trap_context, sepc) {
@@ -120,6 +211,36 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
                     error!("clone failed: {err}");
                     SyscallResult::Return(errno_of(&err).0 as u64, sepc + 4)
                 }
+            }
+        }
+        Syscall::EXECVE => {
+            // Linux riscv64 ABI：a0 = pathname、a1 = argv、a2 = envp。
+            let path_ptr = trap_context[A0_INDEX] as *const u8;
+            let argv_ptr = trap_context[A0_INDEX + 1] as *const *const u8;
+            let envp_ptr = trap_context[A0_INDEX + 2] as *const *const u8;
+
+            let path = match unsafe { read_user_cstr(path_ptr) } {
+                Ok(path) => path,
+                Err(err) => return SyscallResult::Return(err.0 as u64, sepc + 4),
+            };
+            let argv = match unsafe { read_user_string_array(argv_ptr) } {
+                Ok(argv) => argv,
+                Err(err) => return SyscallResult::Return(err.0 as u64, sepc + 4),
+            };
+            let envp = match unsafe { read_user_string_array(envp_ptr) } {
+                Ok(envp) => envp,
+                Err(err) => return SyscallResult::Return(err.0 as u64, sepc + 4),
+            };
+
+            let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+            let envp: Vec<&str> = envp.iter().map(String::as_str).collect();
+
+            match process::user_execve(&path, &argv, &envp) {
+                // execve 成功不返回调用者：让出 CPU，由调度器按替换后的
+                // `memory_set` / `trap_context` 在入口处恢复新程序。
+                Some(()) => SyscallResult::Yield,
+                // `user_execve` 未透传具体错误，默认按 ENOENT 返回 -errno。
+                None => SyscallResult::Return(ErrorCode::ENOENT.0 as u64, sepc + 4),
             }
         }
         _ => SyscallResult::Return(ErrorCode::ENOSYS.0 as u64, sepc + 4),

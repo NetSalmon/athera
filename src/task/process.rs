@@ -1,12 +1,16 @@
 //! Process lifecycle and file-descriptor services.
 
-use crate::{
-    fs::{FsError, vfs::File},
-    task::{
-        CURRENT_TASK,
-        task::{TASKS, TaskStatus, Tid},
-    },
-};
+use crate::fs::vfs::FileSystem;
+use alloc::vec;
+use alloc::vec::Vec;
+use crate::task::exec::{load_elf, Load};
+use crate::mm::page_table::{AddressSpaceId, ADDRESS_SPACE_MANAGER};
+use crate::{error, fs::{FsError, vfs::File}, task::{
+    CURRENT_TASK,
+    task::{TASKS, TaskStatus, Tid},
+}};
+use crate::fs::{Path, VFS};
+use crate::fs::vfs::OpenFlags;
 
 pub(crate) struct WaitResult {
     pub tid: usize,
@@ -125,4 +129,99 @@ fn find_zombie_child(parent: Tid, target: Option<Tid>) -> Option<usize> {
         }
     }
     None
+}
+
+pub fn user_execve(path: &str, argv: &[&str], envp: &[&str]) -> Option<()> {
+    let current_tid = (*CURRENT_TASK.current())?;
+
+    let f = match VFS.force().open(
+        &Path::from(path),
+        OpenFlags::read_only(),
+        crate::fs::Mode::from(0),
+    ) {
+        Ok(file) => file,
+        Err(err) => {
+            error!("failed to open {path}: {err}");
+            return None;
+        }
+    };
+
+    let Ok(size) = usize::try_from(match VFS.force().stat(&Path::from(path)) {
+        Ok(stat) => stat.size,
+        Err(err) => {
+            error!("failed to stat {path}: {err}");
+            return None;
+        }
+    }) else {
+        error!("{path} is too large to load");
+        return None;
+    };
+
+    let mut buf = vec![0u8; size];
+
+    let read = match f.read(&mut buf) {
+        Ok(read) => read,
+        Err(err) => {
+            error!("failed to read {path}: {err}");
+            return None;
+        }
+    };
+    if read != buf.len() {
+        error!("short read for {path}: expected {}, got {read}", buf.len());
+        return None;
+    }
+
+    // ---- 重建地址空间 ----
+    //
+    // 此刻 `satp` 仍指向本任务的用户根页表（内核经 `copy_low_half`
+    // 继承的低半区映射在其中）。必须先切回内核地址空间，再重建用户
+    // 地址空间：否则旧页表页在被释放后会立即被新程序的段分配复用并
+    // 清零，CPU 仍在用被抹掉的页表取指 / 访存，内核直接卡死。
+    if let Err(err) = ADDRESS_SPACE_MANAGER
+        .force()
+        .lock()
+        .activate(AddressSpaceId::Kernel)
+    {
+        error!("failed to activate kernel address space: {err}");
+        return None;
+    }
+    // 旧地址空间先取走暂存：加载失败时还能放回去，让系统调用带着
+    // -errno 安全返回旧程序继续执行。
+    let old_space = ADDRESS_SPACE_MANAGER
+        .force()
+        .lock()
+        .remove_user(current_tid);
+
+    let load = match load_elf(buf.as_slice(), argv, envp, current_tid) {
+        Ok(load) => load,
+        Err(err) => {
+            error!("failed to load {path}: {err}");
+            let mut manager = ADDRESS_SPACE_MANAGER.force().lock();
+            if let Some(old) = old_space {
+                manager.insert_user(current_tid, old);
+            }
+            if let Err(err) = manager.activate(AddressSpaceId::User(current_tid)) {
+                error!("failed to restore address space of {current_tid:?}: {err}");
+            }
+            return None;
+        }
+    };
+
+    let Load {
+        memory_set,
+        trap_context,
+    } = load;
+
+    if let Some(ref mut tcb) = TASKS.force().lock().get_mut(&current_tid) {
+        tcb.memory_set = memory_set;
+        tcb.trap_context = trap_context;
+
+        Some(())
+    } else {
+        error!("current task {current_tid:?} disappeared during execve");
+        None
+    }
+    // 成功路径上，`old_space` 的旧页表页与 `tcb.memory_set` 替换时释放
+    // 的旧数据帧都在内核 `satp` 下归还；新程序由调度器经
+    // `restore_context` 写入新的 `satp` 后从入口处开始执行。
 }

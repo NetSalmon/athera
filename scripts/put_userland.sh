@@ -33,7 +33,7 @@ fi
 
 if [ "$BUILD" = 1 ]; then
     echo "==> 构建用户程序"
-    cargo build -p athera-athera-userland --release
+    cargo build -p athera-userland --release
 fi
 
 for bin in $BINS; do

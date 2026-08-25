@@ -69,6 +69,39 @@ numeric! {
         ENOSYS = -38,
         ENOTEMPTY = -39,
         ELOOP = -40,
+        EOVERFLOW = -75,
+    }
+}
+
+// mmap 的 prot 参数（与 Linux <sys/mman.h> 对齐）。
+numeric! {
+    pub enum MmapProt: usize {
+        NONE = 0,
+        READ = 1,
+        WRITE = 2,
+        EXEC = 4,
+    }
+}
+
+// mmap 的 flags 参数（与 Linux asm-generic/mman-common.h 对齐）。
+numeric! {
+    pub enum MmapFlags: usize {
+        SHARED = 0x01,
+        PRIVATE = 0x02,
+        FIXED = 0x10,
+        ANONYMOUS = 0x20,
+        GROWSDOWN = 0x0100,
+        STACK = 0x020000,
+        FIXED_NOREPLACE = 0x100000,
+    }
+}
+
+// mremap 的 flags 参数（与 Linux asm-generic/mman-common.h 对齐）。
+numeric! {
+    pub enum MremapFlags: usize {
+        MAYMOVE = 1,
+        FIXED = 2,
+        DONTUNMAP = 4,
     }
 }
 

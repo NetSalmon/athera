@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //! Sv39 页表与地址空间管理。
 //!
-//! [`PageTable`] 是一页 512 项的页表；[`PageTableManager`] 维护内核
+//! [`PageTable`] 是一页 512 项的页表；[`AddressSpaceManager`] 维护内核
 //! 地址空间与按 TID 索引的用户地址空间，提供恒等映射、映射/解映射、
 //! 激活（写 `satp`）与 `sfence.vma` 刷新。
 mod entry;
@@ -32,7 +32,7 @@ use crate::{
 pub type MemResult<T> = core::result::Result<T, MemError>;
 
 #[lazy(spin)]
-pub static PAGE_TABLE_MANAGER: PageTableManager = PageTableManager::new();
+pub static ADDRESS_SPACE_MANAGER: AddressSpaceManager = AddressSpaceManager::new();
 
 pub fn identity_map() -> MemResult<()> {
     debug!("start identity mapping memory");
@@ -52,7 +52,7 @@ pub fn identity_map() -> MemResult<()> {
     let mut cursor = mem_start;
     while cursor < mem_end {
         let chunk_end = (cursor + IDENTITY_MAP_CHUNK).min(mem_end);
-        PAGE_TABLE_MANAGER.lock().identity_map(cursor, chunk_end)?;
+        ADDRESS_SPACE_MANAGER.lock().identity_map(cursor, chunk_end)?;
         cursor = chunk_end;
     }
 
@@ -77,18 +77,18 @@ pub fn identity_map() -> MemResult<()> {
             };
             let start = reg.starting_address as usize;
             let end = start + reg.size.unwrap_or(0);
-            PAGE_TABLE_MANAGER.lock().identity_map(start, end)?;
+            ADDRESS_SPACE_MANAGER.lock().identity_map(start, end)?;
         }
     }
 
     if let Some(range) = fw_cfg_range {
-        PAGE_TABLE_MANAGER
+        ADDRESS_SPACE_MANAGER
             .lock()
             .identity_map(range.start, range.end)?;
     }
 
     let root_addr = {
-        let mgr = PAGE_TABLE_MANAGER.lock();
+        let mgr = ADDRESS_SPACE_MANAGER.lock();
         let root = mgr.kernel_root_addr();
         mgr.activate(AddressSpaceId::Kernel)?;
         root
@@ -111,7 +111,7 @@ pub enum AddressSpaceId {
     User(Tid),
 }
 
-pub struct PageTableManager {
+pub struct AddressSpaceManager {
     kernel: AddressSpace,
     user: BTreeMap<Tid, AddressSpace>,
 }
@@ -292,7 +292,7 @@ impl Clone for AddressSpace {
     }
 }
 
-impl PageTableManager {
+impl AddressSpaceManager {
     pub fn create_user_address_space(&mut self, tid: Tid) -> MemResult<()> {
         let mut page_table = PageTableHandle::create()?;
         self.kernel.root.copy_low_half(&mut page_table);
@@ -304,6 +304,20 @@ impl PageTableManager {
 
         self.user.insert(tid, address);
         Ok(())
+    }
+
+    /// 取出并移除 `tid` 的用户地址空间，把所有权（含全部页表页）交给
+    /// 调用方；调用方 drop 返回值时才释放这些页表页。
+    ///
+    /// 用于 execve：在激活的 `satp` 仍指向旧用户根页表时，先把它从
+    /// 管理器中取走暂存，避免重建地址空间时释放仍在使用的页表。
+    pub fn remove_user(&mut self, tid: Tid) -> Option<AddressSpace> {
+        self.user.remove(&tid)
+    }
+
+    /// 把用户地址空间重新登记到 `tid` 名下（如加载失败时恢复原状）。
+    pub fn insert_user(&mut self, tid: Tid, space: AddressSpace) {
+        self.user.insert(tid, space);
     }
 
     pub fn new() -> Self {

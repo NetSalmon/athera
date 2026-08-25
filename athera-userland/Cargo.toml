@@ -74,3 +74,17 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "print_args"
+path = "src/bin/print_args.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "mmap_test"
+path = "src/bin/mmap_test.rs"
+test = false
+doctest = false
+bench = false
+
