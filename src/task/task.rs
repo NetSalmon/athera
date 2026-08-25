@@ -22,7 +22,7 @@ use crate::{
     mm::{
         address::{PhysicalAddr, VirtualAddr},
         frame::Frame,
-        page_table::{AddressSpaceId, PageTableEntryFlags, ADDRESS_SPACE_MANAGER},
+        page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceId, PageTableEntryFlags},
     },
     task::CURRENT_TASK,
 };
@@ -89,7 +89,10 @@ impl MemorySet {
             .force()
             .lock()
             .clone(AddressSpaceId::User(owner), new_tid)?;
-        let user_root_page_table = ADDRESS_SPACE_MANAGER.force().lock().user_root_addr(new_tid)?;
+        let user_root_page_table = ADDRESS_SPACE_MANAGER
+            .force()
+            .lock()
+            .user_root_addr(new_tid)?;
 
         // 先为所有映射分配好子进程帧，再统一改写子进程页表；这样即使
         // 中途分配失败，已分配帧随 `Vec` 的 `Drop` 归还，不会出现页表

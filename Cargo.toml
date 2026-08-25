@@ -22,6 +22,7 @@ athera-bitmap = { path = "crates/athera-bitmap" }
 athera-macros = { path = "crates/athera-macros" }
 athera-id-alloc = { path = "crates/athera-id-alloc" }
 athera-rand = { path = "crates/athera-rand" }
+athera-trie = { path = "crates/athera-trie" }
 
 [build-dependencies]
 toml = "1.1.2"

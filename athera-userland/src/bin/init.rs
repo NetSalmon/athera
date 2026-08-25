@@ -2,8 +2,11 @@
 #![no_main]
 
 use core::hint::spin_loop;
-use athera_userland::*;
-use athera_userland::syscall::{execve, fork};
+
+use athera_userland::{
+    syscall::{execve, fork},
+    *,
+};
 
 #[unsafe(no_mangle)]
 fn main() {

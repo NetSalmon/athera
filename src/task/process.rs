@@ -1,16 +1,20 @@
 //! Process lifecycle and file-descriptor services.
 
-use crate::fs::vfs::FileSystem;
-use alloc::vec;
-use alloc::vec::Vec;
-use crate::task::exec::{load_elf, Load};
-use crate::mm::page_table::{AddressSpaceId, ADDRESS_SPACE_MANAGER};
-use crate::{error, fs::{FsError, vfs::File}, task::{
-    CURRENT_TASK,
-    task::{TASKS, TaskStatus, Tid},
-}};
-use crate::fs::{Path, VFS};
-use crate::fs::vfs::OpenFlags;
+use alloc::{vec, vec::Vec};
+
+use crate::{
+    error,
+    fs::{
+        FsError, Path, VFS,
+        vfs::{File, FileSystem, OpenFlags},
+    },
+    mm::page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceId},
+    task::{
+        CURRENT_TASK,
+        exec::{Load, load_elf},
+        task::{TASKS, TaskStatus, Tid},
+    },
+};
 
 pub(crate) struct WaitResult {
     pub tid: usize,

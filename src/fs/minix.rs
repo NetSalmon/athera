@@ -409,7 +409,9 @@ where
             .open(path)
             .map_err(FsError::from)?
             .ok_or(FsError::NotFound)?;
-        let mode = Mode::from((file.file_type().0 << 12) | 0o644);
+
+        let mode = file.mode();
+
         Ok(VfsFile::from_ops(
             path.file_name().unwrap_or("/"),
             file.ino() as u64,
@@ -430,7 +432,7 @@ where
             .ok_or(FsError::NotFound)?;
         Ok(Stat {
             ino: file.ino() as u64,
-            mode: Mode::from((file.file_type().0 << 12) | 0o644),
+            mode: file.mode(),
             size: file.size() as u64,
             nlinks: 1,
             mtime: 0,

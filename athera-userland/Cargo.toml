@@ -88,3 +88,9 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "run"
+path = "src/bin/run.rs"
+test = false
+doctest = false
+bench = false

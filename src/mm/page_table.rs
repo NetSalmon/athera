@@ -52,7 +52,9 @@ pub fn identity_map() -> MemResult<()> {
     let mut cursor = mem_start;
     while cursor < mem_end {
         let chunk_end = (cursor + IDENTITY_MAP_CHUNK).min(mem_end);
-        ADDRESS_SPACE_MANAGER.lock().identity_map(cursor, chunk_end)?;
+        ADDRESS_SPACE_MANAGER
+            .lock()
+            .identity_map(cursor, chunk_end)?;
         cursor = chunk_end;
     }
 

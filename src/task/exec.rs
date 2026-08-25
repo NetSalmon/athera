@@ -4,12 +4,9 @@
 //! 映射进用户地址空间，最后按 Linux 标准建立初始用户栈（argc、argv、
 //! envp 依次压栈），并通过 [`restore_context`] 切换到用户态。
 
-use crate::error;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::ptr;
-use crate::fs::vfs::FileSystem;
-use crate::fs::{Path, VFS};
+
 use crate::{
     arch::riscv64::{
         registers::{
@@ -20,8 +17,12 @@ use crate::{
     },
     binfmt::elf::{ElfHeader, ProgramHeader, ProgramType},
     constants::{PAGE_SIZE, USER_STACK_LOWER_BOUND, USER_STACK_SIZE},
+    error,
     error::{Error, MemError, ProcError, Result},
-    fs::vfs::{File, OpenFlags},
+    fs::{
+        Path, VFS,
+        vfs::{File, FileSystem, OpenFlags},
+    },
     info,
     mm::{
         address::VirtualAddr,
@@ -53,11 +54,7 @@ const AT_ENTRY: usize = 9;
 fn initial_stack_size(argv: &[&str], envp: &[&str], auxv: &[(usize, usize)]) -> usize {
     let word = core::mem::size_of::<usize>();
     let pointer_block = (1 + argv.len() + 1 + envp.len() + 1 + auxv.len() * 2) * word;
-    let strings: usize = argv
-        .iter()
-        .chain(envp)
-        .map(|s| s.len() + 1)
-        .sum();
+    let strings: usize = argv.iter().chain(envp).map(|s| s.len() + 1).sum();
     (pointer_block + strings).next_multiple_of(STACK_ALIGN)
 }
 
@@ -186,10 +183,7 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
         .lock()
         .create_user_address_space(tid)?;
 
-    let page_table_address = ADDRESS_SPACE_MANAGER
-        .force()
-        .lock()
-        .user_root_addr(tid)?;
+    let page_table_address = ADDRESS_SPACE_MANAGER.force().lock().user_root_addr(tid)?;
 
     let mut memory_set = MemorySet {
         mappings: vec![],
@@ -375,6 +369,8 @@ pub fn exec_buffer(buffer: &[u8], argv: &[&str], envp: &[&str]) -> Result<()> {
 
 /// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
 pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
+    info!("execving {}", path);
+
     let f = match VFS.force().open(
         &Path::from(path),
         OpenFlags::read_only(),
@@ -397,7 +393,7 @@ pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
         error!("{path} is too large to load");
         return;
     };
-    
+
     let mut buf = vec![0u8; size];
 
     let read = match f.read(&mut buf) {

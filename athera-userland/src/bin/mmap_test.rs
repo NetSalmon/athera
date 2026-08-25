@@ -3,8 +3,7 @@
 
 use core::ptr;
 
-use athera_userland::syscall;
-use athera_userland::{println, syscall::exit};
+use athera_userland::{println, syscall, syscall::exit};
 
 fn errno(ret: isize) -> isize {
     -ret
@@ -26,7 +25,10 @@ fn main() {
     println!("mmap -> {addr:#x}");
 
     unsafe { ptr::write(addr as *mut u8, 0xAB) };
-    assert!(unsafe { ptr::read(addr as *const u8) } == 0xAB, "mmap readback failed");
+    assert!(
+        unsafe { ptr::read(addr as *const u8) } == 0xAB,
+        "mmap readback failed"
+    );
 
     // 2. 未按页对齐访问应越界测试：跨页写入（4 页映射，往最后一页写）。
     let addr4 = syscall::mmap(
@@ -49,7 +51,13 @@ fn main() {
     unsafe { ptr::write(addr4 as *mut u8, 0xAB) };
 
     // 3. mremap 扩张（MREMAP_MAYMOVE），内容应保留。
-    let moved = syscall::mremap(addr4 as usize, 4 * 4096, 8 * 4096, syscall::MREMAP_MAYMOVE, 0);
+    let moved = syscall::mremap(
+        addr4 as usize,
+        4 * 4096,
+        8 * 4096,
+        syscall::MREMAP_MAYMOVE,
+        0,
+    );
     assert!(moved > 0, "mremap expand failed: ret = {moved}");
     assert!(
         unsafe { ptr::read(moved as *const u8) } == 0xAB,
@@ -62,9 +70,18 @@ fn main() {
     println!("mremap expand {addr4:#x} -> {moved:#x}");
 
     // 4. mremap 收缩（原地），地址不变且内容保留。
-    let shrunk = syscall::mremap(moved as usize, 8 * 4096, 2 * 4096, syscall::MREMAP_MAYMOVE, 0);
+    let shrunk = syscall::mremap(
+        moved as usize,
+        8 * 4096,
+        2 * 4096,
+        syscall::MREMAP_MAYMOVE,
+        0,
+    );
     assert!(shrunk > 0, "mremap shrink failed: ret = {shrunk}");
-    assert_eq!(shrunk as usize, moved as usize, "mremap shrink should keep address");
+    assert_eq!(
+        shrunk as usize, moved as usize,
+        "mremap shrink should keep address"
+    );
     assert!(
         unsafe { ptr::read(shrunk as *const u8) } == 0xAB,
         "mremap shrink lost content"
@@ -81,7 +98,12 @@ fn main() {
     // 6. 错误路径。
     // 非匿名映射返回 -ENOSYS。
     let r = syscall::mmap(0, 4096, syscall::PROT_READ, syscall::MAP_PRIVATE, -1, 0);
-    assert_eq!(r, -38, "non-anonymous mmap should be ENOSYS, got {r} ({})", errno(r));
+    assert_eq!(
+        r,
+        -38,
+        "non-anonymous mmap should be ENOSYS, got {r} ({})",
+        errno(r)
+    );
 
     // MAP_FIXED 且地址未页对齐返回 -EINVAL。
     let r = syscall::mmap(
@@ -104,7 +126,10 @@ fn main() {
 
     // 7. mremap 对未映射区间应返回 -EFAULT。
     let r = syscall::mremap(0x0000_3000_0000, 4096, 8192, syscall::MREMAP_MAYMOVE, 0);
-    assert_eq!(r, -14, "mremap of unmapped region should be EFAULT, got {r}");
+    assert_eq!(
+        r, -14,
+        "mremap of unmapped region should be EFAULT, got {r}"
+    );
 
     // 8. 部分 munmap（拆分为两块），两端内容仍可读写、中间不可访问。
     let big = syscall::mmap(
@@ -146,7 +171,10 @@ fn main() {
     let r = syscall::munmap(g as usize + 4 * 4096, 2 * 4096);
     assert_eq!(r, 0, "growth munmap failed: ret = {r}");
     let grown = syscall::mremap(g as usize, 4 * 4096, 6 * 4096, syscall::MREMAP_MAYMOVE, 0);
-    assert_eq!(grown as usize, g as usize, "in-place growth should keep address, got {grown}");
+    assert_eq!(
+        grown as usize, g as usize,
+        "in-place growth should keep address, got {grown}"
+    );
     assert!(
         unsafe { ptr::read(grown as *const u8) } == 0x43,
         "in-place growth lost content"
@@ -163,7 +191,10 @@ fn main() {
         -1,
         0,
     );
-    assert_eq!(r as usize, fixed_addr, "MAP_FIXED should use the requested address, got {r}");
+    assert_eq!(
+        r as usize, fixed_addr,
+        "MAP_FIXED should use the requested address, got {r}"
+    );
     unsafe { ptr::write(fixed_addr as *mut u8, 0x77) };
     // 覆盖映射：再次 MAP_FIXED 同一地址，应替换旧映射。
     let r = syscall::mmap(
@@ -188,7 +219,10 @@ fn main() {
         -1,
         0,
     );
-    assert_eq!(r, -17, "MAP_FIXED_NOREPLACE conflict should be EEXIST, got {r}");
+    assert_eq!(
+        r, -17,
+        "MAP_FIXED_NOREPLACE conflict should be EEXIST, got {r}"
+    );
     let r = syscall::munmap(fixed_addr, 4096);
     assert_eq!(r, 0, "munmap fixed region failed: ret = {r}");
     println!("MAP_FIXED / NOREPLACE ok");

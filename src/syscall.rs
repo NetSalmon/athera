@@ -6,10 +6,8 @@
 
 pub(crate) mod abi;
 
-use alloc::borrow::ToOwned;
-use alloc::string::String;
-use alloc::vec::Vec;
-use crate::info;
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
+
 use abi::{ErrorCode, Syscall};
 #[allow(unused_imports)]
 pub use abi::{ResourceUsage, TimeVal, WaitOptions, WaitSignal, WaitStatus};
@@ -18,6 +16,7 @@ use crate::{
     arch::riscv64::trap::A0_INDEX,
     debug, error,
     error::{Error, MemError},
+    info,
     mm::mmap,
     task::{
         CURRENT_TASK,
@@ -69,9 +68,7 @@ unsafe fn read_user_cstr(ptr: *const u8) -> Result<String, ErrorCode> {
 ///
 /// `ptr` 必须指向当前任务用户地址空间内的合法映射，且数组以 NULL 指针
 /// 结尾。
-unsafe fn read_user_string_array(
-    ptr: *const *const u8,
-) -> Result<Vec<String>, ErrorCode> {
+unsafe fn read_user_string_array(ptr: *const *const u8) -> Result<Vec<String>, ErrorCode> {
     let mut out = Vec::new();
     let mut cur = ptr;
     loop {
@@ -166,9 +163,9 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let fd = trap_context[A0_INDEX + 4] as isize;
             let offset = trap_context[A0_INDEX + 5] as usize;
 
-            let ret = match current_tid().and_then(|tid| {
-                mmap::mmap(tid, addr, length, prot, flags, fd, offset)
-            }) {
+            let ret = match current_tid()
+                .and_then(|tid| mmap::mmap(tid, addr, length, prot, flags, fd, offset))
+            {
                 Ok(va) => va as u64,
                 Err(errno) => errno.0 as u64,
             };

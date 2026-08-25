@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 use core::fmt;
 
-use super::{FileType, MinixFs, types::DiskInode};
+use super::{FileType, MinixFs, Mode, types::DiskInode};
 use crate::{
     driver::traits::{BlockDevice, IoResult},
     fs::{
@@ -230,6 +230,11 @@ where
     /// 文件类型（普通文件 / 目录 / 符号链接 / 设备等）。
     pub fn file_type(&self) -> FileType {
         self.inode.mode.file_type()
+    }
+
+    /// 文件 mode（文件类型与 RWX 权限位），来自磁盘 inode。
+    pub fn mode(&self) -> Mode {
+        self.inode.mode
     }
 }
 

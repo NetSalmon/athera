@@ -3,25 +3,10 @@
 //! 从 virtio-blk 上的 MINIX 文件系统按路径读取用户程序 ELF，并交给
 //! `task::exec::exec_buffer` 加载执行。
 
-use crate::task::exec;
-use crate::{
-    error,
-    fs::{
-        Path, VFS,
-        vfs::{FileSystem, OpenFlags},
-    },
-    task::exec::exec_buffer,
-};
-use alloc::vec;
-
 /// 启动系统内置的用户程序。
 pub(crate) fn start_default_programs() {
-    for path in [
-        "/bin/init",
-        "/bin/fork",
-        "/bin/mmap_test",
-    ] {
-        exec::kernel_execve(path, &[path], &[]);
+    for path in ["/bin/init", "/bin/fork", "/bin/mmap_test"] {
+        crate::binfmt::route(path, &[path], &[]).unwrap();
     }
 
     let envp = [
@@ -70,57 +55,9 @@ pub(crate) fn start_default_programs() {
         "WAYLAND_DISPLAY=wayland-0",
     ];
 
-    exec::kernel_execve("/bin/print_args", &["/bin/print_args", "--help", "something"], &envp);
-}
-
-pub(crate) fn start_init(extra_argv: &[&str], envp: &[&str]) {
-    for path in ["/sbin/init", "/etc/init", "/bin/init", "/bin/sh"] {
-        let f = match VFS.force().open(
-            &Path::from(path),
-            OpenFlags::read_only(),
-            crate::fs::Mode::from(0),
-        ) {
-            Ok(file) => file,
-            Err(err) => {
-                error!("failed to open {path}: {err}");
-                continue;
-            }
-        };
-
-        let Ok(size) = usize::try_from(match VFS.force().stat(&Path::from(path)) {
-            Ok(stat) => stat.size,
-            Err(err) => {
-                error!("failed to stat {path}: {err}");
-                continue;
-            }
-        }) else {
-            error!("{path} is too large to load");
-            continue;
-        };
-        let mut buf = vec![0u8; size];
-
-        let read = match f.read(&mut buf) {
-            Ok(read) => read,
-            Err(err) => {
-                error!("failed to read {path}: {err}");
-                continue;
-            }
-        };
-        if read != buf.len() {
-            error!("short read for {path}: expected {}, got {read}", buf.len());
-            continue;
-        }
-
-        let mut argv = vec![path];
-        argv.extend(extra_argv);
-
-        if let Err(err) = exec_buffer(&buf, argv.as_slice(), envp) {
-            error!("failed to execute user program: {err}");
-            continue;
-        }
-
-        return;
-    }
-
-    panic!("failed to start init");
+    crate::binfmt::route(
+        "/bin/print_args",
+        &["/bin/print_args", "--help", "something"],
+        &envp,
+    ).unwrap();
 }

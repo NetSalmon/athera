@@ -87,7 +87,14 @@ pub fn fork() -> isize {
 /// 建立匿名内存映射，返回起始地址；出错返回负 errno。
 ///
 /// 内核当前只支持 `MAP_ANONYMOUS`：`fd` 必须为 `-1`、`offset` 为 `0`。
-pub fn mmap(addr: usize, length: usize, prot: usize, flags: usize, fd: isize, offset: usize) -> isize {
+pub fn mmap(
+    addr: usize,
+    length: usize,
+    prot: usize,
+    flags: usize,
+    fd: isize,
+    offset: usize,
+) -> isize {
     ecall!(MMAP => "a0" = addr, "a1" = length, "a2" = prot, "a3" = flags, "a4" = fd as usize, "a5" = offset)
 }
 

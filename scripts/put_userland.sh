@@ -50,7 +50,8 @@ echo "==> 写入 $IMAGE:/bin/"
 GUESTFISH_CMDS=()
 for bin in $BINS; do
     GUESTFISH_CMDS+=(upload "$TARGET_DIR/$bin" "/bin/$bin" :)
-    GUESTFISH_CMDS+=(chmod 0755 "/bin/$bin" :)
+    # 注意: 当前 guestfish 把 chmod 模式按十进制解析，493 = 0o755
+    GUESTFISH_CMDS+=(chmod 493 "/bin/$bin" :)
 done
 
 guestfish -a "$IMAGE" run : mount /dev/sda / : "${GUESTFISH_CMDS[@]}"

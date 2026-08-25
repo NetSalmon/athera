@@ -19,6 +19,7 @@ dependencies = [
  "athera-id-alloc",
  "athera-macros",
  "athera-rand",
+ "athera-trie",
  "chrono",
  "fdt",
  "paste",
@@ -65,6 +66,10 @@ dependencies = [
  "rand_core",
  "thiserror",
 ]
+
+[[package]]
+name = "athera-trie"
+version = "0.1.0"
 
 [[package]]
 name = "athera-userland"

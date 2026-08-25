@@ -87,7 +87,9 @@ fn range_is_free(ms: &MemorySet, start: usize, end: usize) -> bool {
 
 /// `[start, end)`（页对齐）是否被映射完全覆盖。
 fn range_fully_mapped(ms: &MemorySet, start: usize, end: usize) -> bool {
-    (start..end).step_by(PAGE_SIZE).all(|va| page_phys(ms, va).is_some())
+    (start..end)
+        .step_by(PAGE_SIZE)
+        .all(|va| page_phys(ms, va).is_some())
 }
 
 /// 页对齐虚拟地址 `va` 对应的物理页地址（依据映射表推算，不依赖页表）。
@@ -351,7 +353,8 @@ pub fn mmap(
             return Err(ErrorCode::EINVAL);
         }
         addr
-    } else if addr != 0 && addr % PAGE_SIZE == 0
+    } else if addr != 0
+        && addr % PAGE_SIZE == 0
         && let Some(hint_end) = addr.checked_add(length)
         && range_is_free(ms, addr, hint_end)
     {
@@ -448,7 +451,15 @@ pub fn mremap(
     if new_size < old_size {
         // 收缩：原地重建为更小映射。
         let prot_flags = flags_of_first(ms, old_address).ok_or(ErrorCode::EFAULT)?;
-        rebuild(ms, tid, old_address, old_end, old_address, new_size, prot_flags)?;
+        rebuild(
+            ms,
+            tid,
+            old_address,
+            old_end,
+            old_address,
+            new_size,
+            prot_flags,
+        )?;
         return Ok(old_address);
     }
 
@@ -460,7 +471,15 @@ pub fn mremap(
         && is_canonical_user_range(old_address, old_end + growth);
     if grow_in_place {
         let prot_flags = flags_of_first(ms, old_address).ok_or(ErrorCode::EFAULT)?;
-        rebuild(ms, tid, old_address, old_end, old_address, new_size, prot_flags)?;
+        rebuild(
+            ms,
+            tid,
+            old_address,
+            old_end,
+            old_address,
+            new_size,
+            prot_flags,
+        )?;
         return Ok(old_address);
     }
 

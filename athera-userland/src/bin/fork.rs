@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 
-use athera_userland::{println, syscall::fork};
-use athera_userland::syscall::exit;
+use athera_userland::{
+    println,
+    syscall::{exit, fork},
+};
 
 #[unsafe(no_mangle)]
 fn main() {
