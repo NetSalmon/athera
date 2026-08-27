@@ -160,7 +160,7 @@ pub struct Load {
 /// [`MemorySet`] 与 [`TrapContext`]）。`argv[0]` 依惯例为程序名，`envp`
 /// 为形如 `KEY=VALUE` 的环境变量列表。
 pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result<Load> {
-    let elf_header = ElfHeader::from(buffer);
+    let elf_header = ElfHeader::try_from(buffer)?;
 
     elf_header.validate()?;
 

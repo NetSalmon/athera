@@ -19,7 +19,7 @@ use crate::{
     info,
     mm::memory_map,
     task::{
-        CURRENT_TASK, Tid, clone_task,
+        CURRENT_TASK, TASKS, Tid, clone_task,
         process::{self, FdError},
     },
 };
@@ -39,6 +39,43 @@ fn errno_of(err: &Error) -> ErrorCode {
     }
 }
 
+/// 验证用户虚拟地址是否在当前任务的用户地址空间内。
+///
+/// 遍历当前任务的 `MemorySet.mappings`，检查 `addr` 是否落在某个
+/// `UserMapping` 的虚拟地址范围内。
+fn validate_user_address(addr: usize) -> Result<(), ErrorCode> {
+    let Some(tid) = *CURRENT_TASK.current() else {
+        return Err(ErrorCode::ESRCH);
+    };
+
+    let tasks = TASKS.force().lock();
+    let Some(tcb) = tasks.get(&tid) else {
+        return Err(ErrorCode::ESRCH);
+    };
+
+    for mapping in &tcb.memory_set.mappings {
+        let start = usize::from(mapping.va);
+        let size: usize = mapping.frames.iter().map(|f| f.size).sum();
+        let end = start + size;
+        if addr >= start && addr < end {
+            return Ok(());
+        }
+    }
+
+    Err(ErrorCode::EFAULT)
+}
+
+/// 验证用户虚拟地址范围是否在当前任务的用户地址空间内。
+fn validate_user_range(addr: usize, len: usize) -> Result<(), ErrorCode> {
+    if len == 0 {
+        return Ok(());
+    }
+    let end = addr.checked_add(len).ok_or(ErrorCode::EFAULT)?;
+    validate_user_address(addr)?;
+    validate_user_address(end - 1)?;
+    Ok(())
+}
+
 /// 单个用户参数字符串的最大长度（避免野指针导致无界扫描）。
 const MAX_ARG_LEN: usize = 4096;
 
@@ -48,6 +85,9 @@ const MAX_ARG_LEN: usize = 4096;
 ///
 /// `ptr` 必须指向当前任务用户地址空间内的合法映射。
 unsafe fn read_user_cstr(ptr: *const u8) -> Result<String, ErrorCode> {
+    let addr = ptr as usize;
+    validate_user_address(addr)?;
+
     let mut len = 0usize;
     while unsafe { *ptr.add(len) } != 0 {
         len += 1;
@@ -68,6 +108,9 @@ unsafe fn read_user_cstr(ptr: *const u8) -> Result<String, ErrorCode> {
 /// `ptr` 必须指向当前任务用户地址空间内的合法映射，且数组以 NULL 指针
 /// 结尾。
 unsafe fn read_user_string_array(ptr: *const *const u8) -> Result<Vec<String>, ErrorCode> {
+    let addr = ptr as usize;
+    validate_user_address(addr)?;
+
     let mut out = Vec::new();
     let mut cur = ptr;
     loop {
@@ -96,8 +139,14 @@ pub enum SyscallResult {
 pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
     match Syscall::from(trap_context[A0_INDEX + 7]) {
         Syscall::READ => {
-            let ptr = trap_context[A0_INDEX + 1] as *mut u8;
-            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
+            let ptr = trap_context[A0_INDEX + 1] as usize;
+            let len = trap_context[A0_INDEX + 2] as usize;
+
+            if let Err(errno) = validate_user_range(ptr, len) {
+                return SyscallResult::Return(errno.0 as u64, sepc + 4);
+            }
+
+            let buf = core::ptr::slice_from_raw_parts_mut(ptr as *mut u8, len);
             let ret = match process::read_fd(trap_context[A0_INDEX], unsafe { &mut *buf }) {
                 Ok(size) => size as u64,
                 Err(err) => fd_errno(err),
@@ -105,8 +154,14 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             SyscallResult::Return(ret, sepc + 4)
         }
         Syscall::WRITE => {
-            let ptr = trap_context[A0_INDEX + 1] as *mut u8;
-            let buf = core::ptr::slice_from_raw_parts_mut(ptr, trap_context[A0_INDEX + 2] as usize);
+            let ptr = trap_context[A0_INDEX + 1] as usize;
+            let len = trap_context[A0_INDEX + 2] as usize;
+
+            if let Err(errno) = validate_user_range(ptr, len) {
+                return SyscallResult::Return(errno.0 as u64, sepc + 4);
+            }
+
+            let buf = core::ptr::slice_from_raw_parts_mut(ptr as *mut u8, len);
             let buf = unsafe { &*buf };
             let ret = match process::write_fd(trap_context[A0_INDEX], buf) {
                 Ok(size) => size as u64,
@@ -121,18 +176,24 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
         }
         Syscall::WAIT4 => {
             let tid = trap_context[A0_INDEX] as isize;
-            let wait_status = trap_context[A0_INDEX + 1] as *mut WaitStatus;
+            let wait_status = trap_context[A0_INDEX + 1] as usize;
             let options = WaitOptions::from(trap_context[A0_INDEX + 2] as u32);
-            let resource_usage = trap_context[A0_INDEX + 3] as *mut ResourceUsage;
+            let resource_usage = trap_context[A0_INDEX + 3] as usize;
 
             match process::wait4(tid, options.nohang()) {
                 Some(result) => {
-                    if result.tid != 0 && !wait_status.is_null() {
+                    if result.tid != 0 && wait_status != 0 {
+                        if let Err(errno) = validate_user_range(wait_status, size_of::<WaitStatus>()) {
+                            return SyscallResult::Return(errno.0 as u64, sepc + 4);
+                        }
                         let status = WaitStatus::from(((result.exit_code as u32) & 0xff) << 8);
-                        unsafe { wait_status.write(status) };
+                        unsafe { (wait_status as *mut WaitStatus).write(status) };
                     }
-                    if result.tid != 0 && !resource_usage.is_null() {
-                        unsafe { resource_usage.write(ResourceUsage::default()) };
+                    if result.tid != 0 && resource_usage != 0 {
+                        if let Err(errno) = validate_user_range(resource_usage, size_of::<ResourceUsage>()) {
+                            return SyscallResult::Return(errno.0 as u64, sepc + 4);
+                        }
+                        unsafe { (resource_usage as *mut ResourceUsage).write(ResourceUsage::default()) };
                     }
                     SyscallResult::Return(result.tid as u64, sepc + 4)
                 }

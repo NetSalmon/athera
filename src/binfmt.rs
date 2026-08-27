@@ -154,12 +154,12 @@ fn exec_shebang(
 
     let argv_refs: Vec<&str> = new_argv.iter().map(String::as_str).collect();
 
-    route_inner(
-        tid,
-        new_argv.first().unwrap().as_str(),
-        argv_refs.as_slice(),
-        envp,
-    )
+    // shebang_args 之后总会 push 原 path，故 new_argv 非空。
+    let Some(interpreter) = new_argv.first() else {
+        return Err(Error::ExecFailed);
+    };
+
+    route_inner(tid, interpreter.as_str(), argv_refs.as_slice(), envp)
 }
 
 /// 把 `#!/usr/bin/env foo -bar "baz qux"` 形式的 shebang 续行切成参数列表。

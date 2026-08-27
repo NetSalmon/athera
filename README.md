@@ -12,7 +12,7 @@
 - 显示驱动：ramfb（QEMU RamFB，经 fw_cfg 的 `etc/ramfb` 文件下发帧缓冲配置；帧缓冲为 32bpp XRGB8888，`WIDTH x HEIGHT = 1024x768`，含 `clear` / `fill_rect` / `blit` / `draw_color_card` 绘制原语），并附带 `driver/fw_cfg.rs` 的 fw_cfg MMIO/DMA 驱动。`scripts/start.py` 的 `-b/--gui` 会添加 `-display gtk -device ramfb -serial stdio`
 - 随机数：`athera-rand` 提供 ChaCha20 CSPRNG，内核全局 `RNG` 经 virtio-rng 种子化（无设备时回退固定种子并告警）
 - 设备模型：`driver/descriptor.rs` 把设备树节点解析为统一描述符（compatible / reg / irq / 属性），`driver/tree.rs` 的设备管理器（`DEVICE_MANAGER`）按描述符登记驱动并分配 Linux 兼容的 `dev_t` 设备号（`Did`：12 位主号 + 20 位次号），`ManagedBlockDevice` 为文件系统提供稳定的块设备句柄
-- MINIX 文件系统：启动时从 virtio-blk 读取 MINIX V1 文件系统（超级块、inode、目录项），按路径查找并执行 `/bin/init`、`/bin/hello_world`、`/bin/quick_sort`、`/bin/panic`、`/bin/sort`、`/bin/add`、`/bin/fork` 等用户程序
+- MINIX 文件系统：启动时从 virtio-blk 读取 MINIX V1 文件系统（超级块、inode、目录项），按路径查找并执行 `/bin/init`、`/bin/fork`、`/bin/mmap_test`、`/bin/print_args`（带完整 argv/envp）等用户程序
 - VFS：`fs/vfs.rs` 提供统一文件系统接口——`FileSystem`（路径级）与 `FileOps`（文件对象级）trait、`OpenFlags` / `Stat` / `DirEntry` 等元数据、内存超级块 / inode / 目录项缓存、挂载表与最长前缀路径分发；启动时挂载 `/`（MINIX）与 `/dev`（devfs）
 - 设备文件系统：`fs/devfs.rs` 提供 `/dev/null`、`/dev/zero`、`/dev/console`、`/dev/vda` 等静态设备节点；内核控制台在 VFS 就绪后切换到 `/dev/console`，`read`/`write` 系统调用经每进程 fd 表 → VFS → 设备管理器完成
 - 内存管理：恒等映射页表、内核/用户地址空间分离（Sv39）、伙伴系统物理页帧分配器、SLUB 全局分配器
@@ -20,7 +20,7 @@
 - ELF 加载器：解析 ELF64 程序头，逐段拷贝 `PT_LOAD` 并建立用户映射与栈（`task/exec.rs`）
 - 可执行格式路由（binfmt）：基于前缀树的魔数注册表，支持 ELF（`\x7fELF`）与 shebang（`#!`）两种格式；shebang 解析器实现 POSIX shell 最小子集（引号、转义、续行），重组 argv 后重新路由执行
 - MBR 分区表：支持解析主引导记录（MBR）的 4 个分区表项，包含分区类型（FAT12/NTFS/Linux/EFI 等 80+ 种）、LBA 起始扇区与扇区数
-- 用户态进程管理与系统调用（read / write / exit / reboot / clone / wait4，调用号对齐 Linux asm-generic ABI）；每进程 `fd_table` 默认把 0/1/2 都连接到串口（`/dev/console`）
+- 用户态进程管理与系统调用（read / write / exit / reboot / clone / wait4 / execve / mmap / munmap / mremap，调用号对齐 Linux asm-generic ABI）；`read` / `write` / `wait4` / `execve` 传入的用户指针会先经地址空间校验（越界返回 `EFAULT`）；每进程 `fd_table` 默认把 0/1/2 都连接到串口（`/dev/console`）
 - TID 分配器（`athera-id-alloc`）
 - 同步原语：`SpinLock`（关中断自旋锁）/ `RwLock`（写优先读写自旋锁）/ `OnceLock` / `LazyLock`（懒加载静态）/ `PerCpu`（每 hart 存储）
 - 日志宏：`trace!` / `debug!` / `info!` / `warn!` / `error!`
@@ -37,14 +37,14 @@ athera/                       # 内核（根 crate）+ 工作区
 │   ├── arch.rs               架构模块根
 │   ├── arch/riscv64.rs       RISC-V 模块根（wfi / fence.i / sfence.vma / hart_id / ebreak）
 │   ├── arch/riscv64/
-│   │   ├── boot.rs           启动编排（start_default_programs：从 VFS 加载并执行用户程序）
+│   │   ├── boot.rs           启动编排（start_default_programs：经 binfmt 从 VFS 加载并执行用户程序）
 │   │   ├── registers.rs      寄存器抽象根
 │   │   │   └── registers/    csr.rs / gpr.rs / values.rs
 │   │   ├── sbi.rs            SBI 封装（base / time / ipi / rfence / hsm / srst / legacy / dbcn）
 │   │   └── trap.rs           陷阱处理、定时器与用户态上下文切换
 │   ├── binfmt.rs               可执行格式路由（binfmt：ELF / shebang 魔数注册与分发）
 │   ├── binfmt/                 binfmt 子模块
-│   │   └── elf.rs              ELF 结构定义（Elf64Header / ProgramHeader / SectionHeader）
+│   │   └── elf.rs              ELF 结构定义（ElfHeader / ProgramHeader / SectionHeader）
 │   ├── constants.rs / constants/   编译期常量（memory / symbols / task / cpu / fs / uname / virtio）
 │   ├── driver.rs             设备驱动模块根（RAMFB / SYSTEM_MEMORY / FDT 静态）
 │   ├── driver/
@@ -89,15 +89,13 @@ athera/                       # 内核（根 crate）+ 工作区
 │   │   │   └── page_table/   entry.rs / handle.rs
 │   ├── rand.rs               全局随机源（ChaCha20 CSPRNG）
 │   ├── sync.rs / sync/       SpinLock / RwLock / OnceLock / LazyLock / PerCpu
-│   ├── task.rs               进程管理模块根（CURRENT_TASK）
+│   ├── task.rs               进程管理（CURRENT_TASK / Task 任务控制块 / TASKS 任务表 / TID 分配器 / clone_task / MemorySet）
 │   ├── task/
-│   │   ├── task.rs           任务控制块、TID 分配器、任务表（TASKS / clone_task）
-│   │   ├── exec.rs           ELF 用户程序加载执行（exec_buffer，含 fd_table 初始化）
+│   │   ├── exec.rs           ELF 用户程序加载执行（load_elf / exec_buffer / kernel_execve，含 fd_table 初始化）
 │   │   ├── process.rs        进程生命周期与 fd 服务（exit / wait4 / read_fd / write_fd）
 │   │   └── scheduler.rs      任务切换（save_current / switch）
-│   ├── syscall.rs            系统调用处理（handle）
+│   ├── syscall.rs            系统调用处理（handle，含用户指针校验）
 │   │   └── syscall/abi.rs    系统调用号、错误码与用户态 ABI 类型
-│   ├── elf.rs                ELF 结构定义
 │   ├── io.rs                 控制台输出层（print!/println! / getchar，VFS 就绪前走 SBI）
 │   ├── log.rs                分级日志（trace!/debug!/info!/warn!/error!）
 │   ├── macros.rs             宏定义（bits! / numeric! / array_struct!）
@@ -105,7 +103,8 @@ athera/                       # 内核（根 crate）+ 工作区
 ├── athera-userland/          用户程序（工作区成员）
 │   ├── src/
 │   │   ├── bin/              init.rs / hello_world.rs / add.rs / sort.rs / panic.rs /
-│   │   │                    quick_sort.rs / fork.rs / heap.rs / conway.rs
+│   │   │                    quick_sort.rs / fork.rs / heap.rs / conway.rs / mmap_test.rs /
+│   │   │                    print_args.rs / run.rs
 │   │   ├── lib.rs            入口 _start
 │   │   ├── syscall.rs        用户态 ecall 封装
 │   │   ├── stdio.rs          print!/println!（经 write 系统调用）
@@ -221,8 +220,8 @@ cargo build --release
 内核启动时通过 VFS 从 virtio-blk 读取 MINIX V1 文件系统（`src/fs/minix.rs`）：解析
 超级块（`DiskSuperBlock`）、磁盘 inode（`DiskInode`）与目录项（`DirEntryV1_14` /
 `DirEntryV1_30`，根据魔数 `0x137F` / `0x138F` 区分文件名长度 14 / 30），通过
-`MinixFs::open` 按路径逐级查找并顺序读取文件内容，再交给 `task::exec::exec_buffer`
-加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，
+`MinixFs::open` 按路径逐级查找并顺序读取文件内容，再经 binfmt 按魔数路由（ELF /
+shebang）加载执行。写路径支持创建文件（`create_file`）、读写（`File::write` / `write_at`，
 自动分配数据块并维护直接/一级/二级间接块），inode 与数据块位图用 `athera-bitmap`
 的 `BitMapView` 零拷贝维护（`alloc_inode` / `free_inode` / `alloc_zone` /
 `free_zone`），并支持硬链接（`link`）、删除（`unlink` / `remove`，链接数归零时释放
@@ -244,9 +243,9 @@ cargo build --release
 > 此外内核尚未提供 `open`/`creat`/`mkdir`/`link` 等系统调用，用户程序暂时无法
 > 直接创建或修改磁盘文件（`read` / `write` 只作用于预置的 fd 0/1/2，即串口）。
 
-启动时会依次加载并执行磁盘上的 `/bin/init`、`/bin/hello_world`、`/bin/quick_sort`、
-`/bin/panic`、`/bin/sort`、`/bin/add`、`/bin/fork`。`--blk` 选项挂载的
-`resources/minix.qcow2` 即为 MINIX 文件系统镜像。
+启动时会依次加载并执行磁盘上的 `/bin/init`、`/bin/fork`、`/bin/mmap_test`，最后携带
+完整 argv 与 envp 执行 `/bin/print_args`；`init` 自身还会 `fork` 子进程并 `execve`
+`/bin/sort`。`--blk` 选项挂载的 `resources/minix.qcow2` 即为 MINIX 文件系统镜像。
 
 把用户程序复制到该镜像的 `/bin/` 目录下（依赖 libguestfs 的 `guestfish`，会自动构建 `athera-userland`）：
 
@@ -269,15 +268,17 @@ cargo build --release
 | 215  | munmap   | 解除 `[addr, addr + length)` 的匿名映射（`src/mm/memory_map.rs`，`addr` 需页对齐）|
 | 216  | mremap   | 重映射（`src/mm/memory_map.rs`：原地收缩/扩张，无法原地扩张时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）|
 | 220  | clone    | 创建子进程（当前仅实现 fork 语义：深拷贝地址空间与陷阱上下文）|
-| 221  | execve   | 执行新程序（未实现，返回 `ENOSYS`）|
+| 221  | execve   | 执行新程序（读 pathname / argv / envp 后经 `binfmt::route_at` 替换当前进程的地址空间与陷阱上下文）|
 | 222  | mmap     | 匿名内存映射（`src/mm/memory_map.rs`，仅支持 `MAP_ANONYMOUS`，`fd` 须为 `-1`）|
 | 260  | wait4    | 等待子进程（基础实现：支持 `WNOHANG`，非 `WNOHANG` 时让出 CPU）|
 
-> asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`PageTableManager::clone`（页表）、`MemorySet::try_clone`（内存集）、`TrapContext::clone_child`（子进程现场）与 `TaskControlBlock::try_clone`，由 `task::task::clone_task` 组合并登记子任务。子进程退出后由 `exit` 将其移交给 `init`（pid 1）收养。`execve` 尚未实现，返回 `ENOSYS`。
+> asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`AddressSpaceManager::clone`（页表）、`MemorySet::try_clone`（内存集，映射支持多段物理帧）、`TrapContext::clone_child`（子进程现场）与 `Task::try_clone`，由 `task::clone_task`（`src/task.rs`）组合并登记子任务。子进程退出后由 `exit` 将其移交给 `init`（pid 1）收养。
+>
+> `execve` 由 binfmt 模块实现：系统调用层读取并校验用户指针（`read_user_cstr` / `read_user_string_array`，单参数上限 4096 字节），`binfmt::route_at` 对当前任务按魔数路由（ELF 或 shebang），成功后替换 `memory_set` / `trap_context` 并让出 CPU（不返回调用者）；失败按 binfmt 错误映射为 `EACCES` / `ENOEXEC` / `ENOENT` 等 errno。内核侧 `task::exec::kernel_execve` 提供同等能力供启动编排使用。
 >
 > `mmap` / `munmap` / `mremap` 由 `src/mm/memory_map.rs` 实现，仅支持匿名映射：`mmap` 从用户栈下方按页查找空闲区间（`MAP_FIXED` 替换重叠映射、`MAP_FIXED_NOREPLACE` 冲突返回 `EEXIST`），`munmap` 对部分重叠的映射按页拆分重建，`mremap` 任意尺寸变化都会重建物理帧并保留内容（收缩保持起始地址，扩张无法原地进行时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）；`PROT_NONE` 不建立页表项、仅在映射表中登记（访问时按缺页异常处理），与 Linux riscv 一致地给所有可访问映射置读位（RISC-V 硬件要求叶项 `R=1` 或 `X=1`）。
 >
-> `read` / `write` 通过每进程的 `fd_table`（`Vec<File>`）查表，再经 VFS 的 `File`（`/dev/console` → 设备管理器 → UART）读写；`wait4` 的 `WNOHANG` 分支已实现；非 `WNOHANG` 分支会把父进程置为 `Waiting` 并让出 CPU，但当前缺少子进程退出时唤醒父进程的逻辑，阻塞等待并不完整。另外，文件系统的创建/删除/链接/目录等操作目前只在 MINIX 库层实现，尚未提供对应的系统调用。
+> `read` / `write` 通过每进程的 `fd_table`（`Vec<File>`）查表，再经 VFS 的 `File`（`/dev/console` → 设备管理器 → UART）读写；传入的用户缓冲区会先经 `validate_user_range` 校验是否落在当前任务的合法映射内，越界返回 `EFAULT`（`wait4` 的 `status` / `rusage` 输出指针同理）；`wait4` 的 `WNOHANG` 分支已实现；非 `WNOHANG` 分支会把父进程置为 `Waiting` 并让出 CPU，但当前缺少子进程退出时唤醒父进程的逻辑，阻塞等待并不完整。另外，文件系统的创建/删除/链接/目录等操作目前只在 MINIX 库层实现，尚未提供对应的系统调用。
 
 ## 初始化依赖
 

@@ -44,16 +44,21 @@ impl ElfHeader {
     }
 }
 
-impl<T: AsRef<[u8]>> From<T> for ElfHeader {
+impl TryFrom<&[u8]> for ElfHeader {
+    type Error = ElfError;
+
     /// 把 ELF 文件头按字节直读为结构体。
     ///
-    /// # Safety
+    /// # Errors
     ///
-    /// 调用方必须保证 `value` 至少包含一个完整的 `ElfHeader`（64 字节），
-    /// 且起始地址按 `align_of::<ElfHeader>()` 对齐。
-    fn from(value: T) -> Self {
-        let ptr = value.as_ref().as_ptr() as *const ElfHeader;
-        unsafe { ptr.read() }
+    /// 缓冲区长度不足 `size_of::<ElfHeader>()` 时返回 [`ElfError::NotElf`]。
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() < size_of::<Self>() {
+            return Err(ElfError::NotElf);
+        }
+        let ptr = bytes.as_ptr() as *const ElfHeader;
+        // SAFETY: 已校验缓冲区长度不小于 ElfHeader；ptr 按 ElfHeader 对齐读取。
+        Ok(unsafe { ptr.read() })
     }
 }
 

@@ -59,8 +59,10 @@ pub enum Trap {
 }
 
 impl From<i64> for Trap {
+    /// RISC-V `scause` 最高位（bit 63）表示中断（1）vs 异常（0）。
+    /// 作为有符号数解释时，中断为负值，异常为非负值（含 0）。
     fn from(value: i64) -> Trap {
-        if value > 0 {
+        if value >= 0 {
             Trap::Exception(Exception::from(value))
         } else {
             Trap::Interrupt(Interrupt::from(value))
