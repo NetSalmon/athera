@@ -59,5 +59,6 @@ pub(crate) fn start_default_programs() {
         "/bin/print_args",
         &["/bin/print_args", "--help", "something"],
         &envp,
-    ).unwrap();
+    )
+    .unwrap();
 }

@@ -107,8 +107,10 @@ pub enum Error {
     /// 设备子系统错误。
     #[error(transparent)]
     Dev(#[from] DevError),
+    /// 进程相关错误。
     #[error(transparent)]
     Proc(#[from] ProcError),
+    /// I/O 设备错误。
     #[error(transparent)]
     Io(#[from] IoError),
 }

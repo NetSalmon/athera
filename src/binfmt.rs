@@ -16,7 +16,7 @@ use crate::{
         vfs::{FileSystem, OpenFlags},
     },
     sync::{lazy::LazyLock, spin::SpinLock},
-    task::exec::kernel_execve,
+    task::{Tid, exec::kernel_execve, process::execve_into},
 };
 
 pub mod elf;
@@ -27,16 +27,26 @@ pub enum Error {
     NoAccess,
     #[error(transparent)]
     FsError(FsError),
-    #[error("unsupported bimfmt")]
+    #[error("unsupported binfmt")]
     UnsupportedBinfmt,
+    #[error("exec failed")]
+    ExecFailed,
 }
 
 /// 魔数处理器。
 ///
 /// `head` 是文件头读出的字节（含匹配到的魔数及其后内容），因此
 /// `&head[magic.len()..]` 可用于提取魔数后的附加信息（如 shebang 的
-/// 解释器行）；`path` / `argv` / `envp` 为本次 exec 的参数。
-pub type Handler = fn(head: &[u8], path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error>;
+/// 解释器行）；`path` / `argv` / `envp` 为本次 exec 的参数；`tid` 为
+/// `None` 时创建新任务执行，为 `Some(tid)` 时把程序加载进该既有任务
+/// （替换其 `memory_set` / `trap_context`，execve 语义）。
+pub type Handler = fn(
+    head: &[u8],
+    path: &str,
+    argv: &[&str],
+    envp: &[&str],
+    tid: Option<Tid>,
+) -> Result<(), Error>;
 
 /// 魔数注册表：魔数字节序列 -> 处理器。
 ///
@@ -64,11 +74,23 @@ pub fn unregister(magic: &[u8]) -> Option<Handler> {
     BINFMTS.force().lock().remove(magic)
 }
 
+/// 按魔数路由执行 `path`：创建新任务加载运行命中的可执行格式。
 pub fn route(path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
+    route_inner(None, path, argv, envp)
+}
+
+/// 与 [`route`] 相同的魔数路由，但把程序加载进 `tid` 指定的既有任务：
+/// 替换其 `memory_set` / `trap_context` 并标记可运行（execve 语义），
+/// 而不是创建新任务。目标不存在或加载失败时返回 [`Error`]。
+pub fn route_at(tid: Tid, path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
+    route_inner(Some(tid), path, argv, envp)
+}
+
+fn route_inner(tid: Option<Tid>, path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
     let file = VFS
         .force()
         .open(&Path::new(path), OpenFlags::read_only(), Mode::new())
-        .unwrap();
+        .map_err(Error::FsError)?;
 
     if !file.dentry.inode.mode.user_execute() {
         return Err(Error::NoAccess);
@@ -89,18 +111,34 @@ pub fn route(path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
         }
     };
 
-    handler(&head[..n], path, argv, envp)
+    handler(&head[..n], path, argv, envp, tid)
 }
 
 /// ELF 处理器：直接按 ELF 加载执行。
-fn exec_elf(_head: &[u8], path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
-    kernel_execve(path, argv, envp);
-
-    Ok(())
+fn exec_elf(
+    _head: &[u8],
+    path: &str,
+    argv: &[&str],
+    envp: &[&str],
+    tid: Option<Tid>,
+) -> Result<(), Error> {
+    match tid {
+        Some(tid) => execve_into(tid, path, argv, envp).ok_or(Error::ExecFailed),
+        None => {
+            kernel_execve(path, argv, envp);
+            Ok(())
+        }
+    }
 }
 
 /// shebang 处理器：解析 `#!` 后的解释器行，重组 argv 后重新路由。
-fn exec_shebang(head: &[u8], path: &str, argv: &[&str], envp: &[&str]) -> Result<(), Error> {
+fn exec_shebang(
+    head: &[u8],
+    path: &str,
+    argv: &[&str],
+    envp: &[&str],
+    tid: Option<Tid>,
+) -> Result<(), Error> {
     let raw_path = &head[b"#!".len()..];
     let raw_path = &raw_path[..raw_path
         .iter()
@@ -116,7 +154,8 @@ fn exec_shebang(head: &[u8], path: &str, argv: &[&str], envp: &[&str]) -> Result
 
     let argv_refs: Vec<&str> = new_argv.iter().map(String::as_str).collect();
 
-    route(
+    route_inner(
+        tid,
         new_argv.first().unwrap().as_str(),
         argv_refs.as_slice(),
         envp,

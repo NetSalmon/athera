@@ -30,7 +30,7 @@ use crate::{
         frame::Frame,
         page_table::{ADDRESS_SPACE_MANAGER, PageTableEntryFlags},
     },
-    task::task::{MemorySet, TASKS, TID_ALLOCATOR, TaskControlBlock, TaskStatus, Tid, UserMapping},
+    task::{MemorySet, TASKS, TID_ALLOCATOR, Task, TaskStatus, Tid, UserMapping},
     trace,
 };
 
@@ -334,7 +334,7 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
 /// 加载并执行一段用户程序 ELF。
 ///
 /// 分配 TID，调用 [`load_elf`] 得到用户地址空间与入口上下文，据此构造
-/// [`TaskControlBlock`] 并加入 [`TASKS`]，等待调度切换至用户态。
+/// [`Task`] 并加入 [`TASKS`]，等待调度切换至用户态。
 pub fn exec_buffer(buffer: &[u8], argv: &[&str], envp: &[&str]) -> Result<()> {
     let tid = TID_ALLOCATOR
         .force()
@@ -347,7 +347,7 @@ pub fn exec_buffer(buffer: &[u8], argv: &[&str], envp: &[&str]) -> Result<()> {
         trap_context,
     } = load_elf(buffer, argv, envp, tid)?;
 
-    let tcb = TaskControlBlock {
+    let tcb = Task {
         parent: None,
         children: vec![],
         status: TaskStatus::Running,
@@ -367,10 +367,8 @@ pub fn exec_buffer(buffer: &[u8], argv: &[&str], envp: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
-pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
-    info!("execving {}", path);
-
+/// 从 VFS 按路径读取整个文件到内存；任一步失败时记录日志并返回 `None`。
+pub(crate) fn read_file(path: &str) -> Option<Vec<u8>> {
     let f = match VFS.force().open(
         &Path::from(path),
         OpenFlags::read_only(),
@@ -379,7 +377,7 @@ pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
         Ok(file) => file,
         Err(err) => {
             error!("failed to open {path}: {err}");
-            return;
+            return None;
         }
     };
 
@@ -387,11 +385,11 @@ pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
         Ok(stat) => stat.size,
         Err(err) => {
             error!("failed to stat {path}: {err}");
-            return;
+            return None;
         }
     }) else {
         error!("{path} is too large to load");
-        return;
+        return None;
     };
 
     let mut buf = vec![0u8; size];
@@ -400,13 +398,24 @@ pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
         Ok(read) => read,
         Err(err) => {
             error!("failed to read {path}: {err}");
-            return;
+            return None;
         }
     };
     if read != buf.len() {
         error!("short read for {path}: expected {}, got {read}", buf.len());
-        return;
+        return None;
     }
+
+    Some(buf)
+}
+
+/// 从 virtio-blk 上的 MINIX 文件系统按路径读取文件并加载为进程。
+pub(crate) fn kernel_execve(path: &str, argv: &[&str], envp: &[&str]) {
+    info!("execving {path}");
+
+    let Some(buf) = read_file(path) else {
+        return;
+    };
 
     if let Err(err) = exec_buffer(&buf, argv, envp) {
         error!("failed to execute user program: {err}");

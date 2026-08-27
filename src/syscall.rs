@@ -17,11 +17,10 @@ use crate::{
     debug, error,
     error::{Error, MemError},
     info,
-    mm::mmap,
+    mm::memory_map,
     task::{
-        CURRENT_TASK,
+        CURRENT_TASK, Tid, clone_task,
         process::{self, FdError},
-        task::{Tid, clone_task},
     },
 };
 
@@ -164,7 +163,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let offset = trap_context[A0_INDEX + 5] as usize;
 
             let ret = match current_tid()
-                .and_then(|tid| mmap::mmap(tid, addr, length, prot, flags, fd, offset))
+                .and_then(|tid| memory_map::mmap(tid, addr, length, prot, flags, fd, offset))
             {
                 Ok(va) => va as u64,
                 Err(errno) => errno.0 as u64,
@@ -176,7 +175,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let addr = trap_context[A0_INDEX] as usize;
             let length = trap_context[A0_INDEX + 1] as usize;
 
-            let ret = match current_tid().and_then(|tid| mmap::munmap(tid, addr, length)) {
+            let ret = match current_tid().and_then(|tid| memory_map::munmap(tid, addr, length)) {
                 Ok(()) => 0,
                 Err(errno) => errno.0 as u64,
             };
@@ -191,7 +190,7 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let new_address = trap_context[A0_INDEX + 4] as usize;
 
             let ret = match current_tid().and_then(|tid| {
-                mmap::mremap(tid, old_address, old_size, new_size, flags, new_address)
+                memory_map::mremap(tid, old_address, old_size, new_size, flags, new_address)
             }) {
                 Ok(va) => va as u64,
                 Err(errno) => errno.0 as u64,
@@ -232,15 +231,33 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
             let envp: Vec<&str> = envp.iter().map(String::as_str).collect();
 
-            match process::user_execve(&path, &argv, &envp) {
+            let tid = match current_tid() {
+                Ok(tid) => tid,
+                Err(err) => return SyscallResult::Return(err.0 as u64, sepc + 4),
+            };
+
+            match crate::binfmt::route_at(tid, &path, &argv, &envp) {
                 // execve 成功不返回调用者：让出 CPU，由调度器按替换后的
                 // `memory_set` / `trap_context` 在入口处恢复新程序。
-                Some(()) => SyscallResult::Yield,
-                // `user_execve` 未透传具体错误，默认按 ENOENT 返回 -errno。
-                None => SyscallResult::Return(ErrorCode::ENOENT.0 as u64, sepc + 4),
+                Ok(()) => SyscallResult::Yield,
+                Err(err) => {
+                    let errno = binfmt_errno(&err).0 as u64;
+                    SyscallResult::Return(errno, sepc + 4)
+                }
             }
         }
         _ => SyscallResult::Return(ErrorCode::ENOSYS.0 as u64, sepc + 4),
+    }
+}
+
+fn binfmt_errno(error: &crate::binfmt::Error) -> ErrorCode {
+    use crate::binfmt::Error;
+
+    match error {
+        Error::NoAccess => ErrorCode::EACCES,
+        Error::FsError(err) => ErrorCode::from(-err.errno()),
+        Error::UnsupportedBinfmt => ErrorCode::ENOEXEC,
+        Error::ExecFailed => ErrorCode::ENOENT,
     }
 }
 
@@ -248,6 +265,6 @@ fn fd_errno(error: FdError) -> u64 {
     match error {
         FdError::NoTask => ErrorCode::ESRCH.0 as u64,
         FdError::BadFd | FdError::NotReadable | FdError::NotWritable => ErrorCode::EBADF.0 as u64,
-        FdError::Io(error) => (-(error.errno())) as u64,
+        FdError::Io(error) => -error.errno() as u64,
     }
 }

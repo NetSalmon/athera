@@ -1,32 +1,7 @@
 <component name="ProjectDictionaryState">
   <dictionary name="project">
     <words>
-      <w>Denso</w>
-      <w>Ehdr</w>
-      <w>Infineon</w>
-      <w>Matsushita</w>
-      <w>Phdr</w>
-      <w>Shmem</w>
-      <w>Virtq</w>
-      <w>balign</w>
-      <w>csrs</w>
-      <w>csrsi</w>
-      <w>ehsize</w>
-      <w>filesz</w>
-      <w>memsz</w>
-      <w>paddr</w>
-      <w>phentsize</w>
-      <w>phnum</w>
-      <w>phoff</w>
       <w>riscv</w>
-      <w>satp</w>
-      <w>shentsize</w>
-      <w>shnum</w>
-      <w>shoff</w>
-      <w>shstrndx</w>
-      <w>splitmix</w>
-      <w>stvec</w>
-      <w>writeonly</w>
     </words>
   </dictionary>
 </component>

@@ -1,18 +1,12 @@
 //! Process lifecycle and file-descriptor services.
 
-use alloc::{vec, vec::Vec};
-
 use crate::{
     error,
-    fs::{
-        FsError, Path, VFS,
-        vfs::{File, FileSystem, OpenFlags},
-    },
+    fs::{FsError, vfs::File},
     mm::page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceId},
     task::{
-        CURRENT_TASK,
-        exec::{Load, load_elf},
-        task::{TASKS, TaskStatus, Tid},
+        CURRENT_TASK, TASKS, TaskStatus, Tid,
+        exec::{Load, load_elf, read_file},
     },
 };
 
@@ -135,77 +129,52 @@ fn find_zombie_child(parent: Tid, target: Option<Tid>) -> Option<usize> {
     None
 }
 
-pub fn user_execve(path: &str, argv: &[&str], envp: &[&str]) -> Option<()> {
-    let current_tid = (*CURRENT_TASK.current())?;
-
-    let f = match VFS.force().open(
-        &Path::from(path),
-        OpenFlags::read_only(),
-        crate::fs::Mode::from(0),
-    ) {
-        Ok(file) => file,
-        Err(err) => {
-            error!("failed to open {path}: {err}");
-            return None;
-        }
-    };
-
-    let Ok(size) = usize::try_from(match VFS.force().stat(&Path::from(path)) {
-        Ok(stat) => stat.size,
-        Err(err) => {
-            error!("failed to stat {path}: {err}");
-            return None;
-        }
-    }) else {
-        error!("{path} is too large to load");
-        return None;
-    };
-
-    let mut buf = vec![0u8; size];
-
-    let read = match f.read(&mut buf) {
-        Ok(read) => read,
-        Err(err) => {
-            error!("failed to read {path}: {err}");
-            return None;
-        }
-    };
-    if read != buf.len() {
-        error!("short read for {path}: expected {}, got {read}", buf.len());
+/// execve 语义作用于任意任务：读取 ELF 文件，替换 `tid` 任务的用户地址
+/// 空间（`memory_set`）与陷阱上下文（`trap_context`），并标记为可运行，
+/// 等待调度器从新程序入口恢复执行；`fd_table` 等其余字段保持不变。
+///
+/// `tid` 为当前任务时即普通 `execve` 系统调用；为其他任务时其页表未被
+/// 激活，无需切换 `satp` 即可安全重建。
+pub fn execve_into(tid: Tid, path: &str, argv: &[&str], envp: &[&str]) -> Option<()> {
+    if TASKS.force().lock().get(&tid).is_none() {
+        error!("execve target {tid:?} not found");
         return None;
     }
 
+    let buf = read_file(path)?;
+
     // ---- 重建地址空间 ----
     //
-    // 此刻 `satp` 仍指向本任务的用户根页表（内核经 `copy_low_half`
-    // 继承的低半区映射在其中）。必须先切回内核地址空间，再重建用户
-    // 地址空间：否则旧页表页在被释放后会立即被新程序的段分配复用并
-    // 清零，CPU 仍在用被抹掉的页表取指 / 访存，内核直接卡死。
-    if let Err(err) = ADDRESS_SPACE_MANAGER
-        .force()
-        .lock()
-        .activate(AddressSpaceId::Kernel)
+    // 若目标就是当前任务：此刻 `satp` 仍指向其用户根页表（内核经
+    // `copy_low_half` 继承的低半区映射在其中）。必须先切回内核地址
+    // 空间，再重建用户地址空间：否则旧页表页在被释放后会立即被新程序
+    // 的段分配复用并清零，CPU 仍在用被抹掉的页表取指 / 访存，内核直接
+    // 卡死。
+    let is_current = *CURRENT_TASK.current() == Some(tid);
+
+    if is_current
+        && let Err(err) = ADDRESS_SPACE_MANAGER
+            .force()
+            .lock()
+            .activate(AddressSpaceId::Kernel)
     {
         error!("failed to activate kernel address space: {err}");
         return None;
     }
     // 旧地址空间先取走暂存：加载失败时还能放回去，让系统调用带着
     // -errno 安全返回旧程序继续执行。
-    let old_space = ADDRESS_SPACE_MANAGER
-        .force()
-        .lock()
-        .remove_user(current_tid);
+    let old_space = ADDRESS_SPACE_MANAGER.force().lock().remove_user(tid);
 
-    let load = match load_elf(buf.as_slice(), argv, envp, current_tid) {
+    let load = match load_elf(buf.as_slice(), argv, envp, tid) {
         Ok(load) => load,
         Err(err) => {
             error!("failed to load {path}: {err}");
             let mut manager = ADDRESS_SPACE_MANAGER.force().lock();
             if let Some(old) = old_space {
-                manager.insert_user(current_tid, old);
+                manager.insert_user(tid, old);
             }
-            if let Err(err) = manager.activate(AddressSpaceId::User(current_tid)) {
-                error!("failed to restore address space of {current_tid:?}: {err}");
+            if is_current && let Err(err) = manager.activate(AddressSpaceId::User(tid)) {
+                error!("failed to restore address space of {tid:?}: {err}");
             }
             return None;
         }
@@ -216,16 +185,18 @@ pub fn user_execve(path: &str, argv: &[&str], envp: &[&str]) -> Option<()> {
         trap_context,
     } = load;
 
-    if let Some(ref mut tcb) = TASKS.force().lock().get_mut(&current_tid) {
-        tcb.memory_set = memory_set;
-        tcb.trap_context = trap_context;
+    let mut tasks = TASKS.force().lock();
+    let Some(tcb) = tasks.get_mut(&tid) else {
+        error!("task {tid:?} disappeared during execve");
+        return None;
+    };
 
-        Some(())
-    } else {
-        error!("current task {current_tid:?} disappeared during execve");
-        None
-    }
+    tcb.memory_set = memory_set;
+    tcb.trap_context = trap_context;
+    tcb.mark_runnable();
+
+    Some(())
     // 成功路径上，`old_space` 的旧页表页与 `tcb.memory_set` 替换时释放
-    // 的旧数据帧都在内核 `satp` 下归还；新程序由调度器经
-    // `restore_context` 写入新的 `satp` 后从入口处开始执行。
+    // 的旧数据帧都在内核 `satp` 下（或本就未被激活）归还；新程序由调度
+    // 器经 `restore_context` 写入新的 `satp` 后从入口处开始执行。
 }

@@ -4,7 +4,7 @@
 use athera_userland::*;
 
 #[unsafe(no_mangle)]
-fn main(argc: usize, argv: *const *const u8) {
+fn main(_argc: usize, argv: *const *const u8) {
     let filepath = unsafe { argv.add(1).read() };
 
     let mut i = 0;

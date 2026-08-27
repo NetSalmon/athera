@@ -18,7 +18,6 @@ mod task;
 
 extern crate alloc;
 
-use alloc::{format, vec::Vec};
 use core::{arch::global_asm, panic::PanicInfo};
 
 use crate::{

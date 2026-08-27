@@ -314,10 +314,10 @@ pub static DEVICE_MANAGER: RwLock<DeviceManager> = {
     let mut manager = DeviceManager::new();
 
     for desc in &DEVICE_DESCRIPTORS.descriptors {
-        if desc.compatible.iter().any(|value| value == "ns16550a") {
-            if let Some(driver) = Ns16550a::from_desc(desc) {
-                manager.register_char(desc, driver);
-            }
+        if desc.compatible.iter().any(|value| value == "ns16550a")
+            && let Some(driver) = Ns16550a::from_desc(desc)
+        {
+            manager.register_char(desc, driver);
         }
 
         if desc.compatible.iter().any(|value| value == "virtio,mmio") {

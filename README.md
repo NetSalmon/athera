@@ -18,6 +18,8 @@
 - 内存管理：恒等映射页表、内核/用户地址空间分离（Sv39）、伙伴系统物理页帧分配器、SLUB 全局分配器
 - 陷阱处理与用户态上下文恢复（`TrapContext` / `restore_context`），S 模式定时器中断（10 Hz），用户态 `ecall` 分派到系统调用处理
 - ELF 加载器：解析 ELF64 程序头，逐段拷贝 `PT_LOAD` 并建立用户映射与栈（`task/exec.rs`）
+- 可执行格式路由（binfmt）：基于前缀树的魔数注册表，支持 ELF（`\x7fELF`）与 shebang（`#!`）两种格式；shebang 解析器实现 POSIX shell 最小子集（引号、转义、续行），重组 argv 后重新路由执行
+- MBR 分区表：支持解析主引导记录（MBR）的 4 个分区表项，包含分区类型（FAT12/NTFS/Linux/EFI 等 80+ 种）、LBA 起始扇区与扇区数
 - 用户态进程管理与系统调用（read / write / exit / reboot / clone / wait4，调用号对齐 Linux asm-generic ABI）；每进程 `fd_table` 默认把 0/1/2 都连接到串口（`/dev/console`）
 - TID 分配器（`athera-id-alloc`）
 - 同步原语：`SpinLock`（关中断自旋锁）/ `RwLock`（写优先读写自旋锁）/ `OnceLock` / `LazyLock`（懒加载静态）/ `PerCpu`（每 hart 存储）
@@ -40,6 +42,9 @@ athera/                       # 内核（根 crate）+ 工作区
 │   │   │   └── registers/    csr.rs / gpr.rs / values.rs
 │   │   ├── sbi.rs            SBI 封装（base / time / ipi / rfence / hsm / srst / legacy / dbcn）
 │   │   └── trap.rs           陷阱处理、定时器与用户态上下文切换
+│   ├── binfmt.rs               可执行格式路由（binfmt：ELF / shebang 魔数注册与分发）
+│   ├── binfmt/                 binfmt 子模块
+│   │   └── elf.rs              ELF 结构定义（Elf64Header / ProgramHeader / SectionHeader）
 │   ├── constants.rs / constants/   编译期常量（memory / symbols / task / cpu / fs / uname / virtio）
 │   ├── driver.rs             设备驱动模块根（RAMFB / SYSTEM_MEMORY / FDT 静态）
 │   ├── driver/
@@ -62,6 +67,7 @@ athera/                       # 内核（根 crate）+ 工作区
 │   ├── fs/
 │   │   ├── path.rs           路径类型（Path / PathBuf / Component）
 │   │   ├── types.rs          文件类型与 mode（FileType / Mode / S_IFMT）
+│   │   ├── mbr.rs            MBR 分区表（MbrSector / MbrPartitionEntry / PartitionType）
 │   │   ├── vfs.rs            VFS 统一接口（FileSystem / FileOps / 挂载表 / 最长前缀分发）
 │   │   │   └── vfs/file_ops.rs  FileOps trait（read / write / read_at / write_at / seek / ioctl / read_dir）
 │   │   ├── devfs.rs          设备文件系统（/dev/null / zero / console / vda）
@@ -260,16 +266,16 @@ cargo build --release
 | 64   | write    | 向当前进程 fd 写入（fd 1/2 为串口） |
 | 93   | exit     | 退出用户程序；`pid 1` 退出会触发内核 panic |
 | 142  | reboot   | 重启/关机/停机（`RebootCmd::RESTART` / `POWER_OFF` / `HALT`，经 `driver::reboot` 走 SBI）|
-| 215  | munmap   | 解除 `[addr, addr + length)` 的匿名映射（`src/mm/mmap.rs`，`addr` 需页对齐）|
-| 216  | mremap   | 重映射（`src/mm/mmap.rs`：原地收缩/扩张，无法原地扩张时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）|
+| 215  | munmap   | 解除 `[addr, addr + length)` 的匿名映射（`src/mm/memory_map.rs`，`addr` 需页对齐）|
+| 216  | mremap   | 重映射（`src/mm/memory_map.rs`：原地收缩/扩张，无法原地扩张时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）|
 | 220  | clone    | 创建子进程（当前仅实现 fork 语义：深拷贝地址空间与陷阱上下文）|
 | 221  | execve   | 执行新程序（未实现，返回 `ENOSYS`）|
-| 222  | mmap     | 匿名内存映射（`src/mm/mmap.rs`，仅支持 `MAP_ANONYMOUS`，`fd` 须为 `-1`）|
+| 222  | mmap     | 匿名内存映射（`src/mm/memory_map.rs`，仅支持 `MAP_ANONYMOUS`，`fd` 须为 `-1`）|
 | 260  | wait4    | 等待子进程（基础实现：支持 `WNOHANG`，非 `WNOHANG` 时让出 CPU）|
 
 > asm-generic 没有 fork / waitpid，libc 分别以 `clone`（flags 为 `SIGCHLD`）与 `wait4` 实现。`clone` 目前为最小实现（fork 语义，忽略 flags / stack 参数），各部分的克隆由对应类型分别实现：`Frame::try_clone`（物理帧）、`PageTableManager::clone`（页表）、`MemorySet::try_clone`（内存集）、`TrapContext::clone_child`（子进程现场）与 `TaskControlBlock::try_clone`，由 `task::task::clone_task` 组合并登记子任务。子进程退出后由 `exit` 将其移交给 `init`（pid 1）收养。`execve` 尚未实现，返回 `ENOSYS`。
 >
-> `mmap` / `munmap` / `mremap` 由 `src/mm/mmap.rs` 实现，仅支持匿名映射：`mmap` 从用户栈下方按页查找空闲区间（`MAP_FIXED` 替换重叠映射、`MAP_FIXED_NOREPLACE` 冲突返回 `EEXIST`），`munmap` 对部分重叠的映射按页拆分重建，`mremap` 任意尺寸变化都会重建物理帧并保留内容（收缩保持起始地址，扩张无法原地进行时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）；`PROT_NONE` 不建立页表项、仅在映射表中登记（访问时按缺页异常处理），与 Linux riscv 一致地给所有可访问映射置读位（RISC-V 硬件要求叶项 `R=1` 或 `X=1`）。
+> `mmap` / `munmap` / `mremap` 由 `src/mm/memory_map.rs` 实现，仅支持匿名映射：`mmap` 从用户栈下方按页查找空闲区间（`MAP_FIXED` 替换重叠映射、`MAP_FIXED_NOREPLACE` 冲突返回 `EEXIST`），`munmap` 对部分重叠的映射按页拆分重建，`mremap` 任意尺寸变化都会重建物理帧并保留内容（收缩保持起始地址，扩张无法原地进行时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动）；`PROT_NONE` 不建立页表项、仅在映射表中登记（访问时按缺页异常处理），与 Linux riscv 一致地给所有可访问映射置读位（RISC-V 硬件要求叶项 `R=1` 或 `X=1`）。
 >
 > `read` / `write` 通过每进程的 `fd_table`（`Vec<File>`）查表，再经 VFS 的 `File`（`/dev/console` → 设备管理器 → UART）读写；`wait4` 的 `WNOHANG` 分支已实现；非 `WNOHANG` 分支会把父进程置为 `Waiting` 并让出 CPU，但当前缺少子进程退出时唤醒父进程的逻辑，阻塞等待并不完整。另外，文件系统的创建/删除/链接/目录等操作目前只在 MINIX 库层实现，尚未提供对应的系统调用。
 

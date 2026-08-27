@@ -1,8 +1,16 @@
+//! `/dev/vda` 块设备节点的 [`FileOps`] 实现。
+//!
+//! 通过设备管理器（[`crate::driver::tree::DEVICE_MANAGER`]）获取首个块设备句柄，
+//! 委托 `read_at` / `write_at` 完成实际 I/O。
+
 use crate::{
     driver::tree::DEVICE_MANAGER,
     fs::{FsError, FsResult, vfs::file_ops::FileOps},
 };
 
+/// virtio-blk 块设备节点（`/dev/vda`）的文件操作实现。
+///
+/// 读写均委托给设备管理器中的首个块设备（[`DEVICE_MANAGER`]）。
 pub struct VirtioBlk;
 
 impl FileOps for VirtioBlk {

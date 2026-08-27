@@ -35,7 +35,7 @@ use crate::{
         page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceManager, PageTableEntryFlags},
     },
     syscall::abi::{ErrorCode, MmapFlags, MmapProt, MremapFlags},
-    task::task::{MemorySet, TASKS, Tid, UserMapping},
+    task::{MemorySet, TASKS, Tid, UserMapping},
 };
 
 /// Sv39 用户低半区上界（2^38，不含）。
@@ -349,12 +349,12 @@ pub fn mmap(
     let ms = &mut tcb.memory_set;
 
     let target = if fixed {
-        if addr % PAGE_SIZE != 0 {
+        if !addr.is_multiple_of(PAGE_SIZE) {
             return Err(ErrorCode::EINVAL);
         }
         addr
     } else if addr != 0
-        && addr % PAGE_SIZE == 0
+        && addr.is_multiple_of(PAGE_SIZE)
         && let Some(hint_end) = addr.checked_add(length)
         && range_is_free(ms, addr, hint_end)
     {
@@ -390,7 +390,7 @@ pub fn mmap(
 ///
 /// `addr` 必须页对齐、`length` 非零；对未映射区间解除映射是成功无操作。
 pub fn munmap(tid: Tid, addr: usize, length: usize) -> Result<(), ErrorCode> {
-    if addr % PAGE_SIZE != 0 || length == 0 {
+    if !addr.is_multiple_of(PAGE_SIZE) || length == 0 {
         return Err(ErrorCode::EINVAL);
     }
     let end = addr.checked_add(length).ok_or(ErrorCode::EINVAL)?;
@@ -417,11 +417,11 @@ pub fn mremap(
     flags: usize,
     new_address: usize,
 ) -> Result<usize, ErrorCode> {
-    if old_address % PAGE_SIZE != 0
+    if !old_address.is_multiple_of(PAGE_SIZE)
         || old_size == 0
         || new_size == 0
-        || old_size % PAGE_SIZE != 0
-        || new_size % PAGE_SIZE != 0
+        || !old_size.is_multiple_of(PAGE_SIZE)
+        || !new_size.is_multiple_of(PAGE_SIZE)
         || new_size >= usize::MAX - PAGE_SIZE
     {
         return Err(ErrorCode::EINVAL);
@@ -429,7 +429,7 @@ pub fn mremap(
     let old_end = old_address.checked_add(old_size).ok_or(ErrorCode::EINVAL)?;
 
     let fixed = flags & usize::from(MremapFlags::FIXED) != 0;
-    if fixed && new_address % PAGE_SIZE != 0 {
+    if fixed && !new_address.is_multiple_of(PAGE_SIZE) {
         return Err(ErrorCode::EINVAL);
     }
 

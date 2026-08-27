@@ -1,0 +1,727 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="ALL" />
+  </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml">
+      <package file="$PROJECT_DIR$">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-bitmap">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-id-alloc">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-macros">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-macros-impl">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-rand">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/crates/athera-trie">
+        <feature name="default" enabled="true" />
+      </package>
+      <package file="$PROJECT_DIR$/athera-userland">
+        <feature name="default" enabled="true" />
+      </package>
+    </cargoProject>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志&#10;- deps: 引入 athera-trie，统一导入与换行格式">
+      <change afterPath="$PROJECT_DIR$/src/fs/mbr.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/AICommit.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/athera.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dictionaries/project.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dictionaries/project.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/src/bin/run.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/bin/run.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/arch/riscv64/boot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/arch/riscv64/boot.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/binfmt.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/binfmt.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/driver/descriptor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/descriptor.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/driver/reboot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/reboot.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/driver/tree.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/tree.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/error.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/mmap.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/memory_map.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/page_table.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/page_table.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/syscall.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/syscall.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/task.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/task/exec.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/exec.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/task/process.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/process.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/task/scheduler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/scheduler.rs" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="13406" />
+  </component>
+  <component name="ExecutionTargetManager" SELECTED_TARGET="RsBuildProfile:release" />
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Rust File" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <favorite-branches>
+      <branch-storage>
+        <map>
+          <entry type="LOCAL">
+            <value>
+              <list>
+                <branch-info repo="$PROJECT_DIR$" source="arm" />
+              </list>
+            </value>
+          </entry>
+        </map>
+      </branch-storage>
+    </favorite-branches>
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="arm" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;NetSalmon&quot;
+  }
+}</component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="4c05adcf-5d5d-4924-aa04-5279f4cabe36" />
+  </component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/NetSalmon/athera.git&quot;,
+    &quot;accountId&quot;: &quot;4c05adcf-5d5d-4924-aa04-5279f4cabe36&quot;
+  }
+}</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/.gitignore" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.version" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/about.hbs" root0="FORCE_HIGHLIGHTING" root1="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/src/fs/vfs/null.rs" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/src/fs/vfs/zero.rs" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/src/syscall.rs" root0="SKIP_INSPECTION" />
+  </component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="JQ9MbeuT" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3EtJrDxsUGs8vN66MsJ1zXXIUUe" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Cargo.Install evcxr_repl.executor&quot;: &quot;Run&quot;,
+    &quot;Cargo.Run athera.executor&quot;: &quot;Run&quot;,
+    &quot;Cargo.Run risc_code.executor&quot;: &quot;Run&quot;,
+    &quot;Cargo.Test parse::tests.executor&quot;: &quot;Run&quot;,
+    &quot;Cargo.Test tests::test_parse.executor&quot;: &quot;Run&quot;,
+    &quot;CidrDebugProfileConversion&quot;: &quot;true&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.rust.reset.selective.auto.import&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;SHELLCHECK.PATH&quot;: &quot;/home/netsalmon/.local/share/JetBrains/RustRover2026.1/Shell Script/shellcheck&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/netsalmon/Projects/kyanos&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.jshint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.jshint&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;org.rust.cargo.project.model.PROJECT_DISCOVERY&quot;: &quot;true&quot;,
+    &quot;org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon&quot;: &quot;&quot;,
+    &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.general&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="QodanaHighlightedReportService">
+    <option name="localRunNotPublishedPersistedInfo">
+      <LocalReportPersistedInfo>
+        <option name="path" value="/tmp/qodana_output1/qodana.sarif.json" />
+        <option name="reportGuid" value="1d8a59b9-80bf-463f-bb1b-80e245352f79" />
+        <option name="reportName" value="athera/qodana/2026-08-27" />
+      </LocalReportPersistedInfo>
+    </option>
+  </component>
+  <component name="QodanaIsSelectedPersistenceService">
+    <option name="selectedOrLoading" value="true" />
+  </component>
+  <component name="QodanaReportsService">
+    <option name="descriptions">
+      <ReportDescription localRun="true" path="/tmp/qodana_output1/qodana.sarif.json" reportGuid="1d8a59b9-80bf-463f-bb1b-80e245352f79" reportId="athera/qodana/2026-08-27" />
+      <ReportDescription localRun="true" path="/tmp/qodana_output/qodana.sarif.json" reportGuid="29a96c89-17a8-47f4-aabd-c8d3b96bbf2f" reportId="athera/qodana/2026-08-27" />
+    </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/applications" />
+      <recent name="$PROJECT_DIR$/thaterror" />
+      <recent name="$PROJECT_DIR$/software" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/binfmt" />
+      <recent name="$PROJECT_DIR$/src/fs/dev_fs" />
+      <recent name="$PROJECT_DIR$/crates" />
+      <recent name="$PROJECT_DIR$/src" />
+      <recent name="$PROJECT_DIR$/src/dev/" />
+    </key>
+  </component>
+  <component name="RsExternalLinterProjectSettings">
+    <option name="tool" value="Clippy" />
+  </component>
+  <component name="RunManager">
+    <configuration name="Run athera" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+      <option name="buildProfileId" value="release" />
+      <option name="command" value="run" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <envs />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+  </component>
+  <component name="RustProjectSettings">
+    <option name="toolchainHomeDirectory" value="/usr/bin" />
+  </component>
+  <component name="StructureViewState">
+    <option name="selectedTab" value="HTML" />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="" />
+      <created>1780992128840</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1780992128840</updated>
+      <workItem from="1780992129891" duration="61527000" />
+      <workItem from="1781150848247" duration="25634000" />
+      <workItem from="1781241792230" duration="3250000" />
+      <workItem from="1781246886622" duration="381000" />
+      <workItem from="1781254940434" duration="7337000" />
+      <workItem from="1781330286965" duration="78319000" />
+      <workItem from="1781584119196" duration="5484000" />
+      <workItem from="1781601310695" duration="7000" />
+      <workItem from="1781601555548" duration="5000" />
+      <workItem from="1781663875235" duration="4960000" />
+      <workItem from="1781670247033" duration="1789000" />
+      <workItem from="1781672966635" duration="6577000" />
+      <workItem from="1781689740118" duration="35768000" />
+      <workItem from="1781857004176" duration="83450000" />
+      <workItem from="1782270626044" duration="356000" />
+      <workItem from="1782397602411" duration="3330000" />
+      <workItem from="1782724773014" duration="21256000" />
+      <workItem from="1782752007626" duration="424000" />
+      <workItem from="1782752454979" duration="6596000" />
+      <workItem from="1782809389541" duration="1804000" />
+      <workItem from="1782876010295" duration="1534000" />
+      <workItem from="1783046567564" duration="24597000" />
+      <workItem from="1783260147839" duration="11211000" />
+      <workItem from="1783313751583" duration="9333000" />
+      <workItem from="1783502550745" duration="56443000" />
+      <workItem from="1784099377554" duration="4792000" />
+      <workItem from="1784111110465" duration="22900000" />
+      <workItem from="1784482386699" duration="56521000" />
+      <workItem from="1784915485699" duration="18000" />
+      <workItem from="1785082970723" duration="479000" />
+      <workItem from="1785255998234" duration="8090000" />
+      <workItem from="1785298000042" duration="20506000" />
+      <workItem from="1785465226830" duration="32180000" />
+      <workItem from="1785558252542" duration="37832000" />
+      <workItem from="1785695548140" duration="1770000" />
+      <workItem from="1785697335516" duration="14698000" />
+      <workItem from="1785730643097" duration="31415000" />
+      <workItem from="1785925916402" duration="24051000" />
+      <workItem from="1786024826428" duration="5893000" />
+      <workItem from="1786032166392" duration="4785000" />
+      <workItem from="1786074455555" duration="19000" />
+      <workItem from="1786089626024" duration="116000" />
+      <workItem from="1786103171594" duration="15000" />
+    </task>
+    <task id="LOCAL-00014" summary="refactor: 重构内存子系统，重写页表，重命名伙伴分配器 (master)&#10;&#10;- 删除旧帧分配器 page_alloc.rs，新增简单帧分配器 frame.rs&#10;- 将 buddy.rs 重命名为 frame_allocator.rs，统一命名&#10;- 重写 page_table.rs：使用静态分配器，实现 init_page_table、map/unmap&#10;- 清理 entry.asm 堆栈命名（boot_stack → kernel_stack）&#10;- 更新 start.sh 直接使用 ELF 文件，移除 objcopy 步骤&#10;- 调整 main.rs 添加 ROOT_PAGE_TABLE_ADDRESS 和 page_offset&#10;- 修正 linker.ld 末尾换行，补充 OutOfMemory 错误枚举&#10;- 微调导入顺序和代码格式，删除 slub.rs 空行">
+      <option name="closed" value="true" />
+      <created>1782270946886</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1782270946886</updated>
+    </task>
+    <task id="LOCAL-00015" summary="feat: 添加 applications 用户库，封装系统调用 (main)&#10;&#10;- 新增 applications/src/lib.rs，提供 read/write/exit 系统调用封装&#10;- 新增 applications/.cargo/config.toml，设置 riscv64gc 目标及链接脚本&#10;- 更新 .gitignore，忽略 /applications/target 目录&#10;- 更新 .idea/risc_code.iml，添加 applications 源码目录和目标排除">
+      <option name="closed" value="true" />
+      <created>1782397741891</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1782397741891</updated>
+    </task>
+    <task id="LOCAL-00016" summary="refactor: 重写内存子系统，引入伙伴分配器和 ELF 解析 (main)&#10;&#10;- 删除 src/mem/frame.rs，分离 buddy_system 为独立模块&#10;- 重写 frame_allocator.rs：全局 BuddyAllocator 使用 LazyLock+SpinLock&#10;- 重写 page_table.rs：LazyLock 初始化根页表，新增 equal_mapping 函数&#10;- 新增 src/arch/registers/values.rs：定义 SatpValue 和 SatpMode&#10;- 新增 src/elf.rs：实现 ELF64/ELF32 头部解析&#10;- 修改 main.rs：注释用户模式，使用 equal_mapping 后关机&#10;- 修改 trap.rs：默认异常分支添加 spin_loop&#10;- 修改 marco.rs：numeric! 宏使用 paste::paste 和 const 常量&#10;- 修改 slub.rs：添加 SlubPage 和 Cache 结构体&#10;- 修改 addr.rs：添加 vpn 字段">
+      <option name="closed" value="true" />
+      <created>1782751005731</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1782751005731</updated>
+    </task>
+    <task id="LOCAL-00017" summary="refactor: 调整导入顺序和 ELF 格式 (main)&#10;&#10;- 重新排序 main.rs 中 page_table 模块的导入顺序&#10;- 对齐 ELF 枚举注释，简化 is_elf 方法格式&#10;- 移除 OsAbi 枚举中冗余的注释">
+      <option name="closed" value="true" />
+      <created>1782751908386</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1782751908386</updated>
+    </task>
+    <task id="LOCAL-00018" summary="feat: 添加进程管理、PLIC设备，重构 ELF 并完善宏文档 (main)&#10;&#10;- 为 marco.rs 中的宏添加完整文档注释&#10;- 新增 src/proc.rs，定义进程控制块结构体&#10;- 新增 src/dev/plic.rs，定义 PLIC 设备驱动框架&#10;- 重构 elf.rs：使用 array_struct! 宏重构 EIdent&#10;- 添加程序头相关结构体、PType 和 PFlags&#10;- 更新 .idea 配置，添加 novus_macros 源码目录">
+      <option name="closed" value="true" />
+      <created>1782876074731</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1782876074731</updated>
+    </task>
+    <task id="LOCAL-00019" summary="feat: 重构 ELF 宏，完善宏文档，新增 hello_world 用户程序 (main)&#10;&#10;- 重写 numeric! 宏：移除自定义属性支持，改为核心结构体参数&#10;- 新增 enumeration! 宏，用于透明包装枚举&#10;- 修复 array_struct! 宏 setter 命名错误（使用字段名而非索引）&#10;- 重构 elf.rs：使用 enumeration! 重构 EMachine、PType，扩展值列表&#10;- 删除 applications/.cargo/config.toml（链接器脚本移至 build.rs）&#10;- 移动 linker.ld 到项目根目录，修改 .cargo/config.toml 去掉 link-arg&#10;- 新增 hello_world 用户程序，嵌入内核并解析 ELF 头部&#10;- 添加 build.rs 控制内核构建流程&#10;- 移除 trap.rs 中枚举的 Debug, Clone, Copy 派生（由 numeric! 宏处理）&#10;- 更新 applications 库，添加 panic 处理函数&#10;- 优化内存模块导入和格式化">
+      <option name="closed" value="true" />
+      <created>1783063480631</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1783063480631</updated>
+    </task>
+    <task id="LOCAL-00020" summary="feat: 实现用户程序 ELF 加载器，重构 slub 和 csr (main)&#10;&#10;- csr宏：为CSR类型添加modify方法&#10;- applications：完善panic handler注释&#10;- 移除log依赖，清理Cargo.lock&#10;- main：重构入口，添加structs_layout_tests&#10;- usr：重写为exec函数，实现ELF段加载&#10;- proc：添加stack字段&#10;- slub：改为裸指针管理链表&#10;- elf：修正Endianess为Endianness，实现PFlags Display">
+      <option name="closed" value="true" />
+      <created>1783260392446</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1783260392446</updated>
+    </task>
+    <task id="LOCAL-00021" summary="refactor: 统一枚举命名规范，迁移到新numeric宏并移除fallback (main)&#10;&#10;- 所有枚举变体改为UPPER_SNAKE_CASE，移除Reserved变体&#10;- 重写numeric宏：透明包装，实现From转换&#10;- 移除旧numeric宏和enumeration宏&#10;- AllocPage移至frame_allocator模块&#10;- 调整导入顺序和代码格式">
+      <option name="closed" value="true" />
+      <created>1783261668709</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1783261668709</updated>
+    </task>
+    <task id="LOCAL-00022" summary="refactor: 统一枚举命名规范，迁移到新numeric宏并移除fallback (main)&#10;&#10;- 枚举变体: 改为UPPER_SNAKE_CASE，如U_MODE_ECALL&#10;- csr/gpr宏: 重构为子宏模式，增加modify方法&#10;- 移除ReadableRegister/WritableRegister trait&#10;- syscall: 引入ErrorCode，修改handle返回值为(u64, u64)&#10;- 删除旧宏: get_tag_address, mem_read, read_as_array&#10;- ELF加载: 增加校验，调整导入顺序&#10;- buddy_system: 移除debug方法&#10;- 清理导入和代码格式">
+      <option name="closed" value="true" />
+      <created>1783267139865</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1783267139865</updated>
+    </task>
+    <task id="LOCAL-00023" summary="refactor: 同步系统调用号至 Linux 标准，清理无用代码&#10;&#10;- 用户态库: 使用常量替代硬编码 syscall 号 (63/64/93)&#10;- 内核 syscall 枚举: 同步为 Linux 标准值 (READ=63, WRITE=64, EXIT=93)&#10;- 移除 main.rs 中未使用的 PAGE_OFFSET 外部符号和 page_offset 函数&#10;- 添加用户态错误码常量 EINVAL, EIO, ENOSYS&#10;- 更新 IDE 字典，添加相关汇编指令单词">
+      <option name="closed" value="true" />
+      <created>1783267568805</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1783267568805</updated>
+    </task>
+    <task id="LOCAL-00024" summary="feat: 引入 config.toml 常量配置，重构 syscall 并新增 reboot 支持&#10;&#10;- 新增 config.toml，定义 PAGE_SIZE、BUDDY_MAX_ORDER 等常量，在构建时注入&#10;  为环境变量&#10;- 用户态 syscall 抽离为独立模块，提供 ecall 宏和封装函数（read/write/&#10;  exit/reboot）&#10;- 内核 syscall 处理：ErrorCode 改为 isize，实现 reboot（power off/&#10;  restart/halt）&#10;- 搬移 panic 处理到单独模块，hello_world 改用新的 syscall API&#10;- 添加 const-num、const-val 等工作空间成员，更新依赖和 workspace 配&#10;  置&#10;- 清理旧代码（硬编码常量、内联汇编等），调整 IDE 配置和 .gitignore">
+      <option name="closed" value="true" />
+      <created>1783841010245</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1783841010245</updated>
+    </task>
+    <task id="LOCAL-00025" summary="feat: 实现SLUB全局分配器，更新文档并移除调试代码 (main)&#10;&#10;- 为SLUB添加GlobalAlloc实现，支持全局内存分配&#10;- 重写SlubPage::new，基于伙伴系统分配页面并初始化空闲链表&#10;- 移除main.rs中的structs_layout_tests函数和usr.rs中的调试打印&#10;- 更新README反映当前工作区目录结构和系统调用列表&#10;- 修改LICENSE中的联系邮箱，调整Cargo配置与导入顺序&#10;- 删除mem.rs中未使用的align_up与bytes_to_order函数">
+      <option name="closed" value="true" />
+      <created>1783928356825</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1783928356825</updated>
+    </task>
+    <task id="LOCAL-00026" summary="feat: 实现SLUB全局分配器并重构伙伴系统与链表 (main)&#10;&#10;- 实现Caches作为全局分配器，支持内核堆分配 (GlobalAlloc)&#10;- 重写SlubPage::new，基于伙伴系统分配页面并初始化空闲链表&#10;- 将LinkedList重命名为FreeList，移除未使用的RawLinkedList&#10;- 为NS16550a添加init和block_getchar，设备探测时初始化UART&#10;- 修复usr.rs中程序加载时复制目标地址错误&#10;- SpinLock在加锁时禁用中断，解锁时恢复&#10;- 调整buddy_system的size_to_order使用ilog2_ceil&#10;- 添加arch::breakpoint函数和调试输出&#10;- 在mem.rs添加ilog2_ceil辅助函数">
+      <option name="closed" value="true" />
+      <created>1783959649212</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1783959649212</updated>
+    </task>
+    <task id="LOCAL-00027" summary="refactor: 重构内存管理模块，移除未使用代码并统一命名 (main)&#10;&#10;- 删除旧 buddy_system、frame_allocator、linked_list 模块，以新模块替代&#10;- 重命名模块: buddy_system -&gt; buddy, frame_allocator -&gt; frame, linked_list -&gt; intrusive_list&#10;- 删除未使用的 plic 模块和 elf32 结构体&#10;- 重命名函数: equal_mapping -&gt; identity_map, kernel_do_no_thing -&gt; kernel_halt&#10;- 重命名 set_time -&gt; set_next_timer, flash -&gt; flush&#10;- 清理 marco.rs 重命名为 macros.rs，调整导入路径&#10;- 消除 `#[allow(unused)]` 和未使用的枚举变体">
+      <option name="closed" value="true" />
+      <created>1783960845456</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1783960845456</updated>
+    </task>
+    <task id="LOCAL-00028" summary="refactor: 重构内存管理模块，移除未使用代码并统一命名 (main)&#10;&#10;- 删除旧 buddy_system、frame_allocator、linked_list 模块，以新模块替代&#10;- 重命名模块: buddy_system -&gt; buddy, frame_allocator -&gt; frame, linked_list -&gt; intrusive_list&#10;- 删除未使用的 plic 模块和 elf32 结构体&#10;- 重命名函数: equal_mapping -&gt; identity_map, kernel_do_no_thing -&gt; kernel_halt&#10;- 重命名 set_time -&gt; set_next_timer, flash -&gt; flush&#10;- 清理 marco.rs 重命名为 macros.rs，调整导入路径&#10;- 消除 `#[allow(unused)]` 和未使用的枚举变体">
+      <option name="closed" value="true" />
+      <created>1783960865589</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1783960865589</updated>
+    </task>
+    <task id="LOCAL-00029" summary="feat: 构建时注入版本与构建时间，扩展 const-val 支持字符串 (main)&#10;&#10;- 将 SLUB_MAX_ORDER 从 11 提升至 12，增大 SLUB 最大块&#10;- 重写 build.rs，注入 VERSION 和 BUILD_INFO 环境变量（含 chrono 构建时间）&#10;- const-val 宏扩展支持 &amp;str 类型，用于注入字符串常量&#10;- 主程序添加版本信息输出，启动时打印 &quot;novus: VERSION BUILD_INFO&quot;&#10;- 清理导入顺序，移除未使用的 `snapshot` 单独调用改为完整路径">
+      <option name="closed" value="true" />
+      <created>1783969295438</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1783969295438</updated>
+    </task>
+    <task id="LOCAL-00030" summary="feat: 构建时注入版本与构建时间，扩展 const-val 支持字符串 (main)&#10;&#10;- 重写 build.rs，注入 VERSION 和 BUILD_INFO 环境变量&#10;  （含 chrono 构建时间、smp 配置和构建号）&#10;- const-val 宏扩展支持 &amp;str 类型，用于注入字符串常量&#10;- 引入基于 const-val 的 PID 分配器（PID_MAX 常量及&#10;  alloc_pid/free_pid 函数）&#10;- 清理导入顺序，移除 ProcessControlBlock 中的&#10;  未使用字段 AllocPage&#10;- 新增 .version 文件支持自动递增构建号&#10;- 添加 rerun-if-changed 指令确保构建缓存正确&#10;- 更新 config.toml 结构，增加 [build] 配置段&#10;- 更新 .gitignore 忽略 /.version&#10;- 调整 toml 依赖版本">
+      <option name="closed" value="true" />
+      <created>1784011822566</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1784011822566</updated>
+    </task>
+    <task id="LOCAL-00031" summary="feat: const-val 增加编译期约束并支持动态 SLUB 页面大小 (main)&#10;&#10;- const-val 宏新增 `max`、`min`、`multiple_of` 属性，编译期强制范围与倍数检查&#10;- 添加带约束常量的测试用例&#10;- 将 `ilog2_ceil` 改为 `const fn`，便于编译期计算&#10;- buddy.rs 用 `PAGE_SIZE_LOG_2` 替代硬编码 12，统一页尺寸计算&#10;- slub.rs: SlubPage 新增 `page_size` 字段，Cache 移除非必需的 `free_slubs`&#10;- SlubPage::new 动态计算页面大小（支持大于 4K 的页），dealloc 按实际页大小释放&#10;- 为 `SLUB_MAX_ORDER` 添加 `max=12` 约束，为 `SLUB_MIN_ORDER` 添加 `min=3` 约束">
+      <option name="closed" value="true" />
+      <created>1784115927275</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1784115927275</updated>
+    </task>
+    <task id="LOCAL-00032" summary="refactor: 提取 align 函数到 constants 模块，消除重复实现 (main)&#10;&#10;- 将 buddies.rs 中私有的 align 函数移到 constants.rs 作为公共函数&#10;- slub.rs 导入并使用 constants::align，简化 SlubPage::new 中页面对齐计算&#10;- 统一内存对齐辅助函数，减少代码冗余">
+      <option name="closed" value="true" />
+      <created>1784128487137</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1784128487137</updated>
+    </task>
+    <task id="LOCAL-00033" summary="refactor: 统一错误处理并引入 PHY_PAGE_SIZE 常量 (main)&#10;&#10;- 将 build.rs 中 build_info 重命名为 release，新增 SYS、ARCH 环境变量&#10;- 抽离物理页大小 PHY_PAGE_SIZE 常量，替代硬编码 4096&#10;- 将 DeviceTree::probe 改为返回 Result，错误向上传播&#10;- 重构 slub.rs：alloc_frame 返回 Option，Cache::alloc 返回 Option&#10;- 重构 usr.rs：exec 和 alloc_user_stack 返回 Result，使用 PHY_PAGE_SIZE&#10;- 新增 Error 枚举变体，virtio/ns16550a 改用 Error 替换 isize&#10;- start.sh 支持 -b 参数启用图形显示（ramfb）&#10;- 清理冗余 unwrap/expect，提高代码健壮性">
+      <option name="closed" value="true" />
+      <created>1784136687731</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1784136687731</updated>
+    </task>
+    <task id="LOCAL-00034" summary="refactor: 重构陷阱处理传递 satp 并重命名进程上下文 (main)&#10;&#10;- 扩展 trap_handler 参数：新增 stval、sstatus、satp 寄存器值&#10;- entry.asm 传递 satp 寄存器，调整栈指针位置（sp → a5）&#10;- main.rs 导出 trap_entry 符号供汇编使用&#10;- 重命名 PID_POOL 为 TID_POOL， alloc/free_pid 改为 alloc/free_tid&#10;- 将 ProcessControlBlock 重命名为 TrapContext，增加 stval 字段&#10;- 新增全局 TASKS：Arc&lt;SpinLock&lt;BTreeMap&lt;usize, TrapContext&gt;&gt;&gt;">
+      <option name="closed" value="true" />
+      <created>1784184730388</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1784184730388</updated>
+    </task>
+    <task id="LOCAL-00035" summary="refactor: 使用 lazy 宏重构静态初始化并移动 TrapContext (main)&#10;&#10;- 新增 lazy 属性宏（const-val）：简化 LazyLock+SpinLock 初始化  &#10;- 迁移 FRAME_ALLOCATOR、CACHES、TASKS、DEV_TREE 使用 #[lazy(spin)]  &#10;- 将 ROOT_PAGE_TABLE 改用 #[lazy] 替代 LazyLock  &#10;- 将 TrapContext 定义从 proc.rs 移至 trap.rs，并添加 TrapFrame 类型别名  &#10;- 在 proc.rs 新增 TaskStatus 枚举  &#10;- syscall.rs 添加 FORK、WAITPID、EXEC 系统调用号">
+      <option name="closed" value="true" />
+      <created>1784188731602</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1784188731602</updated>
+    </task>
+    <task id="LOCAL-00036" summary="refactor: 使用 lazy 宏重构静态初始化并移动 TrapContext (main)&#10;&#10;- 新增 `#[spin]` 属性宏简化 SpinLock 静态变量声明  &#10;- 重新排序导入语句，统一代码格式  &#10;- 修改 `exec` 返回 `Vec&lt;AllocPage&gt;` 并记录分配的页面  &#10;- 将 `AllocPage` 的 `start/size` 字段改为 `pub`  &#10;- 修复 `start.sh` 中 `QEMU_OPTS` 变量名拼写错误  &#10;- 更新 README：修正文件名、添加 `-b` 选项和初始化依赖图">
+      <option name="closed" value="true" />
+      <created>1784191110468</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1784191110468</updated>
+    </task>
+    <task id="LOCAL-00037" summary="refactor: 重组模块为独立工作空间并新增 virtio-mmio 传输层 (main)&#10;&#10;- 将 applications/、const-num/、const-val/ 替换为&#10;  novus-userland、novus-const 等独立 crate&#10;- 将 src/mem/ 下的 buddy/slub/intrusive_list 移到&#10;  src/mem/allocators/ 子目录，合并 frame 分配器为 alloc_page&#10;- 新增 src/constants/ 模块，统一管理内存范围、版本、ELF、&#10;  符号等常量与懒加载静态&#10;- 新增 src/dev/virtio_mmio/ 驱动，包含 MMIO 寄存器定义、&#10;  虚拟队列（VRingDesc/Avail/Used）与握手流程&#10;- 重写 dev.rs：DEV_TREE 通过 FDT_ADDR 符号直接读取，新增&#10;  FDT 懒加载备份与物理内存回收&#10;- 重构 Cargo.toml 工作区成员，更新依赖关系&#10;- 调整大量导入语句，统一代码格式，清理冗余引用">
+      <option name="closed" value="true" />
+      <created>1784635755177</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1784635755177</updated>
+    </task>
+    <task id="LOCAL-00038" summary="refactor: 用统一 virtio_mmio 握手替换旧 virtio_blk 模块 (main)&#10;&#10;- 删除 src/dev/virtio_blk/{legacy,modern,queue}.rs 旧握手与队列实现  &#10;- handshake.rs 引入 Handshaking / Ready 状态机，支持 legacy/modern  &#10;- virtio_blk 改用手写握手流程，通过 VirtqCfg 协商特征和设置队列  &#10;- 队列内存改为运行时分配（Virtq::new），使用 AllocPage  &#10;- 将 DEV_TREE 拆分为独立的 UART / VIRTIO_BLK / SYSTEM_MEMORY 静态  &#10;- 清理冗余导入，调整代码格式">
+      <option name="closed" value="true" />
+      <created>1785264787433</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1785264787433</updated>
+    </task>
+    <task id="LOCAL-00039" summary="```&#10;feat: 新增页表管理器与用户态上下文恢复 (main)&#10;&#10;- 新增 PageTableManager 管理页表映射/翻译，支持按根页表操作&#10;- 新增 PageTableHandle 封装页表指针与页面生命周期&#10;- 重写 identity_map：登记根页表并映射 UART/VIRTIO_BLK&#10;- 新增 restore_context 汇编恢复 CSRs 与通用寄存器&#10;- usr::exec 改为 load_elf，返回 MemorySet 并处理段对齐&#10;- main.rs 移除 virtio 握手测试，改为加载 ELF&#10;- proc.rs 引入 Tid/TaskControlBlock，TASKS 存储 TCB&#10;- 新增 USERLAND_OFFSET 常量并修正 userland BASE_ADDRESS&#10;- 顺带整理 virtio_mmio/virtio_blk 代码格式&#10;```">
+      <option name="closed" value="true" />
+      <created>1785468552335</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1785468552335</updated>
+    </task>
+    <task id="LOCAL-00040" summary="```&#10;refactor: 将页表管理重构为内核/用户地址空间 (main)&#10;&#10;- alloc_frame/dealloc_frame 改用 AllocPage 传递页面信息&#10;- PageTableHandle 去除泛型，支持 create/from_raw 与复制页表项&#10;- 新增 AddressSpace 与 AddressSpaceId，区分内核和用户地址空间&#10;- map/unmap/activate 按地址空间 ID 分发，支持创建用户地址空间&#10;- identity_map 改为使用内核根页表，并映射 UART/VIRTIO_BLK&#10;- 移除 ROOT_PAGE_TABLE 静态变量，由 PageTableHandle 管理生命周期&#10;- 新增 PTE_NUMBER 常量替代硬编码 512，调整 USERLAND_OFFSET 格式&#10;```">
+      <option name="closed" value="true" />
+      <created>1785477407034</created>
+      <option name="number" value="00040" />
+      <option name="presentableId" value="LOCAL-00040" />
+      <option name="project" value="LOCAL" />
+      <updated>1785477407034</updated>
+    </task>
+    <task id="LOCAL-00041" summary="feat: 支持 ELF 用户地址空间映射并重构 VirtioBlk 驱动 (main)&#10;&#10;- PageTableManager::create_user_address_space 改为按值传递 Tid&#10;- usr::load_elf 分配 Tid 并创建用户地址空间，映射各程序段&#10;- 映射时从 p_flags 设置 R/W/X 与 U 位，按 p_memsz 清零 BSS&#10;- proc.rs 用 alloc_tid/dealloc_tid 替代 Tid::new&#10;- bits! 宏新增 builder 模式，提供 set_* 与 Builder 类型&#10;- dev.rs 拆出 legacy/modern/queue，VirtioBlk 增加 probe/test_read&#10;- 移除 UART/VIRTIO_BLK/SYSTEM_MEMORY/FDT 懒加载静态变量，改为 probe 扫描 FDT">
+      <option name="closed" value="true" />
+      <created>1785480660499</created>
+      <option name="number" value="00041" />
+      <option name="presentableId" value="LOCAL-00041" />
+      <option name="project" value="LOCAL" />
+      <updated>1785480660499</updated>
+    </task>
+    <task id="LOCAL-00042" summary="feat: 支持 ELF 用户地址空间映射并重构 VirtioBlk 驱动 (main)&#10;&#10;- PageTableManager::create_user_address_space 改为按值传递 Tid&#10;- usr::load_elf 分配 Tid 并创建用户地址空间，映射各程序段&#10;- 映射时从 p_flags 设置 R/W/X 与 U 位，按 p_memsz 清零 BSS&#10;- proc.rs 用 alloc_tid/dealloc_tid 替代 Tid::new&#10;- bits! 宏新增 builder 模式，提供 set_* 与 Builder 类型&#10;- dev.rs 拆出 legacy/modern/queue，VirtioBlk 增加 probe/test_read&#10;- 移除 UART/VIRTIO_BLK/SYSTEM_MEMORY/FDT 懒加载静态变量，改为 probe 扫描 FDT">
+      <option name="closed" value="true" />
+      <created>1785513804392</created>
+      <option name="number" value="00042" />
+      <option name="presentableId" value="LOCAL-00042" />
+      <option name="project" value="LOCAL" />
+      <updated>1785513804392</updated>
+    </task>
+    <task id="LOCAL-00043" summary="```&#10;chore: 移除 locks.rs 中未使用的导入 (main)&#10;&#10;- 删除 `PhysicalAddr` 与 `Tid` 的导入&#10;- 简化 use 语句为仅保留 `Sie`&#10;```">
+      <option name="closed" value="true" />
+      <created>1785513943482</created>
+      <option name="number" value="00043" />
+      <option name="presentableId" value="LOCAL-00043" />
+      <option name="project" value="LOCAL" />
+      <updated>1785513943482</updated>
+    </task>
+    <task id="LOCAL-00044" summary="chore: 更新 README 并移除 entry.asm 未使用空间 (main)&#10;&#10;- 更新工作区结构，按新模块布局整理目录树&#10;- 更新功能清单，补充用户态上下文恢复、TID 分配器等&#10;- 更新初始化依赖图，适配新模块布局与删除的静态变量&#10;- 移除 entry.asm 中预留的用户栈与 virtio 队列区">
+      <option name="closed" value="true" />
+      <created>1785515058318</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1785515058318</updated>
+    </task>
+    <task id="LOCAL-00045" summary="```text&#10;refactor: 移除 usr 模块并迁移常量与错误处理 (main)&#10;&#10;- 删除 src/usr.rs，SStatusBits 与用户栈常量分别移入 arch 与 constants&#10;- proc.rs 改为转发 exec/task 子模块&#10;- 将 virtio 魔数、队列尺寸/版本常量集中到 constants/virtio.rs&#10;- page_table/virtio_blk 改用 Result 传播错误，移除多处 unwrap&#10;- log/sbi 枚举改用 numeric! 并统一大写变体命名&#10;- 为多处模块补充 #![allow(dead_code)]，减少编译警告&#10;- 内嵌 ELF 切换为 add，新增对应 userland bin&#10;- 新增 MMAP/MUNMAP/MREMAP 系统调用占位&#10;- README 初始化图移除用户栈与 virtio 队列区&#10;```">
+      <option name="closed" value="true" />
+      <created>1785521196205</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1785521196205</updated>
+    </task>
+    <task id="LOCAL-00046" summary="```&#10;fix: 修复 slub 边界、任务退出与错误处理，并新增 PerCPU (main)&#10;&#10;- slub: order &gt;= SLUB_MAX_ORDER 时回退到帧分配器，避免越界&#10;- syscall: EXIT 移除当前任务并记录退出码，无任务时记录错误&#10;- syscall: REBOOT 校验参数并增加请求/失败日志&#10;- trap: 未处理陷阱改为 error 日志并停机；TrapContext 派生 Debug&#10;- sbi: 未知 SBI 错误码保留原值，不再触发 unreachable&#10;- dev: 不再从顶层导出 Device/Resource，统一使用 dev::device 路径&#10;- proc: 移除 glob 导出，新增 CURRENT_TASK per-CPU 变量&#10;- locks: 新增 PerCPU/PerCPUGuard，基于 tp 寄存器中的 hart id&#10;- main: 启动时将 hart id 写入 tp，为 PerCPU 提供依据&#10;- virtio_blk: 用 first_mut 处理队列，移除裸打印缓冲区逻辑&#10;- log: 日志标签大写，模块名只显示最后一段，保持对齐&#10;- panic: 先打印 panic 消息，再输出位置信息&#10;```">
+      <option name="closed" value="true" />
+      <created>1785606890133</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1785606890133</updated>
+    </task>
+    <task id="LOCAL-00047" summary="refactor: 拆分锁原语并补充模块文档 (main)&#10;&#10;- locks: 按 spin/once/lazy/per_cpu 拆分子模块，更新引用路径&#10;- per_cpu: 重写 PerCpu 存储，按 tp 寄存器 hart id 索引槽位&#10;- proc: CURRENT_TASK 改为懒加载 PerCpu，并引入 MAX_CPU 上限&#10;- macros: #[lazy]/#[spin] 展开路径改用 locks 子模块&#10;- docs: 为 arch/mem/dev/proc/trap/syscall 等模块补充中文文档&#10;- alloc_page: 新增 as_ptr 方法，便于只读访问物理页帧&#10;- README: 更新同步原语说明与模块目录树&#10;- entry.asm: 补充启动流程与陷阱保存恢复注释">
+      <option name="closed" value="true" />
+      <created>1785651838973</created>
+      <option name="number" value="00047" />
+      <option name="presentableId" value="LOCAL-00047" />
+      <option name="project" value="LOCAL" />
+      <updated>1785651838973</updated>
+    </task>
+    <task id="LOCAL-00048" summary="chore: 清理末尾空行并精简 virtio_blk 调试代码 (main)&#10;&#10;- 移除多个模块文件末尾多余空行，统一文件结尾格式&#10;- buddy: 修正 alloc_frame/dealloc_frame 的缩进&#10;- virtio_blk: 删除 mmio_regs 寄存器映射、print_info 与 test_read&#10;- virtio_blk: 清理不再使用的导入与常量">
+      <option name="closed" value="true" />
+      <created>1785681244944</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1785681244944</updated>
+    </task>
+    <task id="LOCAL-00049" summary="chore: 清理末尾空行并精简 virtio_blk 调试代码 (main)&#10;&#10;- 移除多个模块文件末尾多余空行，统一文件结尾格式&#10;- buddy: 修正 alloc_frame/dealloc_frame 的缩进&#10;- virtio_blk: 删除 mmio_regs 寄存器映射、print_info 与 test_read&#10;- virtio_blk: 清理不再使用的导入与常量">
+      <option name="closed" value="true" />
+      <created>1785683162521</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1785683162521</updated>
+    </task>
+    <task id="LOCAL-00050" summary="feat: 读取virtio-mmio-blk设备加载elf文件并执行(main)&#10;&#10;- 新增 schedule 模块，预留 ScheduleRule 与 schedule 占位&#10;- 错误类型新增 NoVirtioBlock 变体，对应设备缺失提示&#10;- main: 启动时向 virtio-blk 写入内嵌 ELF，再从设备读取并交给 exec&#10;- exec: execute_buffer 增加 priority 参数，默认未提供时取 0&#10;- task: TaskControlBlock 新增 priority 字段&#10;- 项目更名 novus -&gt; athera，同步更新 crate、启动脚本与文档&#10;- 更新 LICENSE 项目名与 README 工作区结构描述">
+      <option name="closed" value="true" />
+      <created>1785695697431</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1785695697432</updated>
+    </task>
+    <task id="LOCAL-00051" summary="feat: 设置定时器并增加 halt_directly 停机特性 (main)&#10;&#10;- trap: 启动时调用 set_next_timer 安排定时中断&#10;- main: kernel_halt 仅在启用 halt_directly 特性时执行 SBI 关机&#10;- virtio_blk: 简化 used 环元素读取，移除未使用的 VirtqUsedElem&#10;- queue: 使用 size_of 替代 core::mem::size_of&#10;- exec: 合并 Class/Endianness 到 elf 导入块&#10;- deps: 将 syn 升级到 3.0.3、quote 升级到 1.0.47&#10;- Cargo: 新增 halt_directly feature 控制停机行为&#10;- constants: 允许存在未使用的常量项">
+      <option name="closed" value="true" />
+      <created>1785698432493</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1785698432493</updated>
+    </task>
+    <task id="LOCAL-00052" summary="```&#10;perf: 缩短持锁时间以让定时器中断及时触发 (main)&#10;&#10;- syscall: write 改为一次持 UART 锁写入整个缓冲区，避免逐字节加锁/关中断&#10;- syscall: exit 在锁内生成任务快照，锁外打印调试信息，缩短锁区&#10;- page_table: 物理内存按 8 MiB 分块映射，块间释放页表锁并恢复中断&#10;- page_table: 预先取出 UART/VIRTIO_BLK 的 MMIO 区间，避免设备锁嵌套&#10;- main: 块设备读写分别持锁，ELF 执行移至锁外&#10;- schedule/abstracts: 添加 #[allow(unused)] 消除未使用项警告&#10;```">
+      <option name="closed" value="true" />
+      <created>1785719889164</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1785719889164</updated>
+    </task>
+    <task id="LOCAL-00053" summary="feat: 支持 virtio-rng 并让 virtio-blk 探测跳过非块设备 (main)&#10;&#10;- virtio_blk: 遍历所有 virtio,mmio 节点并校验 device_id，跳过空槽位与非块设备&#10;- dev: 新增 VIRTIO_RNG 懒加载静态与 VirtioRngFailed 错误变体&#10;- page_table: 对 virtio-rng 的 MMIO 区间做恒等映射&#10;- rand: 引入 athera-rand，启动时用 virtio-rng 种子化全局随机源&#10;- main: 打印随机数示例；start.sh 新增 -r 参数挂载 virtio-rng&#10;- chore: 删除 .idea/risc_code.iml，更新 IDE 词典">
+      <option name="closed" value="true" />
+      <created>1785727260815</created>
+      <option name="number" value="00053" />
+      <option name="presentableId" value="LOCAL-00053" />
+      <option name="project" value="LOCAL" />
+      <updated>1785727260815</updated>
+    </task>
+    <task id="LOCAL-00054" summary="refactor(virtio-mmio): 抽取 VirtioDevice 通用逻辑 (main)&#10;&#10;- virtio_mmio: 新增 VirtioDevice trait，统一 probe/handshake/queue/notify&#10;- probe 校验 device_id，继续跳过空槽位与非目标设备&#10;- virtio_blk/virtio_rng: 改为实现 VirtioDevice，删除重复探测与握手代码&#10;- queue: 新增 post_avail/wait_used 封装 avail/used 环操作&#10;- main: 移除临时随机数输出示例">
+      <option name="closed" value="true" />
+      <created>1785727953549</created>
+      <option name="number" value="00054" />
+      <option name="presentableId" value="LOCAL-00054" />
+      <option name="project" value="LOCAL" />
+      <updated>1785727953549</updated>
+    </task>
+    <task id="LOCAL-00055" summary="feat(syscall): 支持 fork 系统调用 (main)&#10;&#10;- syscall: 新增 FORK(220) 处理，分配新 Tid、克隆地址空间并创建子 TCB&#10;- syscall: handle 改为接收完整 trap_context，按 ARGS_START 读取参数&#10;- entry: 新增 user_trap_entry，用户态陷入保存/恢复 32 个通用寄存器&#10;- trap: restore_context 将 stvec 切到 user_trap_entry，并处理 sscratch 交换&#10;- page_table: AddressSpace 新增 try_clone 深拷贝，支持按 tid 登记副本&#10;- task: TCB parent/children 改为 Tid，消除 Arc/Weak 循环引用&#10;- userland: ecall 宏支持无参调用，新增 fork() 封装&#10;- add: 示例程序增加 fork 基本验证&#10;- main: 移除块设备读写临时示例，直接加载内嵌 ELF">
+      <option name="closed" value="true" />
+      <created>1785748611591</created>
+      <option name="number" value="00055" />
+      <option name="presentableId" value="LOCAL-00055" />
+      <option name="project" value="LOCAL" />
+      <updated>1785748611592</updated>
+    </task>
+    <task id="LOCAL-00056" summary="```&#10;feat(syscall): 支持 fork 系统调用 (main)&#10;&#10;- syscall: 修正 fork 返回值，子进程 a0 置 0，父进程返回子 Tid&#10;- task: 新增 TCB::run 与 Tasks::run/add/snapshot&#10;- sync: 将 locks 重命名为 sync，更新宏与导入路径&#10;- fs: 新增 File/Index，启动时读取并打印块设备索引块&#10;- main: 用索引块输出替换随机数示例，删除 schedule 桩&#10;- userland: add 示例移除 fork 临时验证代码&#10;- chore: 统一导入格式与文件尾换行&#10;```">
+      <option name="closed" value="true" />
+      <created>1785920798782</created>
+      <option name="number" value="00056" />
+      <option name="presentableId" value="LOCAL-00056" />
+      <option name="project" value="LOCAL" />
+      <updated>1785920798782</updated>
+    </task>
+    <task id="LOCAL-00057" summary="feat(fs): 支持索引块文件名并调整磁盘格式 (main)&#10;&#10;- fs: 新增 OsString 定长文件名，File 增加 file_name 字段&#10;- fs: Index 文件数组由 63 改为 21，保持 512 字节磁盘格式&#10;- fs: from_slice 改用 read_unaligned 按值返回，避免对齐要求&#10;- main: 启动时读取索引块，仅打印非空文件的名称/起始块/大小&#10;- chore: 清理 main 导入顺序，移除未使用的 Deref">
+      <option name="closed" value="true" />
+      <created>1785926283879</created>
+      <option name="number" value="00057" />
+      <option name="presentableId" value="LOCAL-00057" />
+      <option name="project" value="LOCAL" />
+      <updated>1785926283880</updated>
+    </task>
+    <task id="LOCAL-00058" summary="```text&#10;refactor: 调整工作区与 fs 模块结构 (main)&#10;&#10;- workspace: 将 athera-* 子 crate 移入 crates/，成员改为 crates/*&#10;- Cargo.toml: 依赖路径同步改为 crates/athera-*&#10;- fs: 将 OsString/File/Index 移入 record 子模块，OsString 更名为 RecordString&#10;- fs: 新增 vfs 模块，fs.rs 仅导出 record 与 vfs&#10;- main: 更新 Index 导入路径为 fs::record::Index&#10;- docs: 更新 README 工作区结构、磁盘格式与系统调用说明&#10;```">
+      <option name="closed" value="true" />
+      <created>1786000482933</created>
+      <option name="number" value="00058" />
+      <option name="presentableId" value="LOCAL-00058" />
+      <option name="project" value="LOCAL" />
+      <updated>1786000482933</updated>
+    </task>
+    <task id="LOCAL-00059" summary="feat: 添加`mkdisk.py`便于向qcow2镜像简便写入文件(main)">
+      <option name="closed" value="true" />
+      <created>1786000649981</created>
+      <option name="number" value="00059" />
+      <option name="presentableId" value="LOCAL-00059" />
+      <option name="project" value="LOCAL" />
+      <updated>1786000649981</updated>
+    </task>
+    <task id="LOCAL-00060" summary="```&#10;chore: 更新 .gitignore 忽略 __pycache__ (main)&#10;&#10;- 添加 /__pycache__ 忽略规则&#10;- 清理 applications/target、const-num/target、const-val/target 忽略项&#10;- 补充文件末尾换行&#10;```">
+      <option name="closed" value="true" />
+      <created>1786000836375</created>
+      <option name="number" value="00060" />
+      <option name="presentableId" value="LOCAL-00060" />
+      <option name="project" value="LOCAL" />
+      <updated>1786000836376</updated>
+    </task>
+    <task id="LOCAL-00061" summary="feat(fs): 支持 MINIX 文件系统 (main)&#10;&#10;- fs: 新增 SuperBlock/DINode/DirEntry 等布局，支持 MINIX V1 14/30 字符文件名&#10;- fs: 将 vfs 模块重命名为 minix_fs，并补充 Mode bits 与文件类型定义&#10;- main: 启动时读取超级块与根目录 inode，按文件名查找并打印目标文件 inode&#10;- start.sh: 默认磁盘镜像改为 minix.qcow2，统一 case 分支缩进">
+      <option name="closed" value="true" />
+      <created>1786014817263</created>
+      <option name="number" value="00061" />
+      <option name="presentableId" value="LOCAL-00061" />
+      <option name="project" value="LOCAL" />
+      <updated>1786014817263</updated>
+    </task>
+    <task id="LOCAL-00062" summary="feat(fs): 支持从 MINIX 文件系统加载并执行程序 (main)&#10;&#10;- fs: 新增 MinixFs::open、File::read 与按需读取的 DirEntries 迭代器&#10;- fs: 新增 Path 类型，按路径逐级查找目录项并展开 inode 数据块&#10;- fs: 原 DirEntry 更名为 DirEntryRaw，对外返回去除结尾 NUL 的目录项&#10;- error: 使用 thiserror 拆分 Elf/Mem/Dev 错误域，并实现 From 转换&#10;- dev: VirtioBlk/VirtioRng/queue 等改用 DevError 与局部 Result 别名&#10;- main: 启动时读取 /bin/hello_world 的 inode 并执行其内容&#10;- build: 为 athera-rand/athera-id-alloc 引入 thiserror 依赖">
+      <option name="closed" value="true" />
+      <created>1786071904388</created>
+      <option name="number" value="00062" />
+      <option name="presentableId" value="LOCAL-00062" />
+      <option name="project" value="LOCAL" />
+      <updated>1786071904388</updated>
+    </task>
+    <option name="localTasksCounter" value="63" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="*.py" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="main" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="```&#10;feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志&#10;- deps: 引入 athera-trie，统一导入与换行格式&#10;```" />
+    <MESSAGE value="feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志&#10;- deps: 引入 athera-trie，统一导入与换行格式" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志&#10;- deps: 引入 athera-trie，统一导入与换行格式" />
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
+  </component>
+</project>

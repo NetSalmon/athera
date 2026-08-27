@@ -3,6 +3,7 @@
 //! 以及具体文件系统实现。
 
 pub(crate) mod devfs;
+pub(crate) mod mbr;
 pub(crate) mod minix;
 mod path;
 mod types;

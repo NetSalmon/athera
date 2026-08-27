@@ -170,6 +170,7 @@ impl FileSystem for DevFs {
     }
 }
 
+/// `/dev` 目录的文件操作实现，按顺序遍历 [`DEVICES`] 中的设备节点。
 struct DeviceDirectory {
     next: AtomicUsize,
 }

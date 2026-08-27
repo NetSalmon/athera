@@ -11,7 +11,7 @@ pub(crate) fn reboot(command: u64) -> bool {
                 sbi::srst::ResetReason::NONE,
             );
         }
-        0x1234_567 => {
+        0x0123_4567 => {
             info!("reboot: restart requested");
             let _ = sbi::srst::system_reset(
                 sbi::srst::ResetType::COLD_REBOOT,

@@ -25,7 +25,7 @@ use crate::{
         address::{PhysicalAddr, VirtualAddr},
         page_table::handle::PageTableHandle,
     },
-    task::task::Tid,
+    task::Tid,
 };
 
 /// 本模块统一结果类型。
