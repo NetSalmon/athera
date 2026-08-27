@@ -75,7 +75,9 @@ impl TaskStatus {
 #[derive(Debug)]
 pub struct UserMapping {
     pub va: VirtualAddr,
-    pub frame: Frame,
+    /// 支撑本映射的物理段列表（段间虚拟地址连续，段内 `va + k*PAGE` 映射
+    /// 到 `frames[i].start + k*PAGE`；见 `mm::memory_map` 模块约定）。
+    pub frames: Vec<Frame>,
     pub flags: PageTableEntryFlags,
 }
 
@@ -101,39 +103,44 @@ impl MemorySet {
             .lock()
             .user_root_addr(new_tid)?;
 
-        // 先为所有映射分配好子进程帧，再统一改写子进程页表；这样即使
-        // 中途分配失败，已分配帧随 `Vec` 的 `Drop` 归还，不会出现页表
-        // 指向已释放帧的情况。
+        // 先为所有映射的每个物理段分配好子进程帧，再统一改写子进程页表；
+        // 这样即使中途分配失败，已分配帧随 `Vec` 的 `Drop` 归还，不会出现
+        // 页表指向已释放帧的情况。
         let mut frames = Vec::with_capacity(self.mappings.len());
         for mapping in &self.mappings {
-            frames.push((
-                mapping,
-                mapping.frame.try_clone().ok_or(MemError::OutOfMemory)?,
-            ));
+            let mut cloned = Vec::with_capacity(mapping.frames.len());
+            for f in &mapping.frames {
+                cloned.push(f.try_clone().ok_or(MemError::OutOfMemory)?);
+            }
+            frames.push((mapping, cloned));
         }
 
         let mut mappings = Vec::with_capacity(self.mappings.len());
         let mut manager = ADDRESS_SPACE_MANAGER.force().lock();
-        for (mapping, frame) in frames {
+        for (mapping, frames) in frames {
             // 把子进程页表里对应虚拟地址的叶映射从父进程帧改写为刚
             // 分配的子进程帧，否则子进程仍会读写父进程的物理页。
             // `PROT_NONE`（rwx 全 0）的映射在父进程页表中不占条目，克隆时
             // 同样跳过，保持两进程行为一致（访问时均按缺页异常处理）。
             if mapping.flags.r() || mapping.flags.w() || mapping.flags.x() {
-                for step in (0..frame.size).step_by(PAGE_SIZE) {
-                    manager.user_map(
-                        new_tid,
-                        (*mapping.va + step).into(),
-                        (frame.start + step).into(),
-                        mapping.flags,
-                        false,
-                    )?;
+                let mut off = 0usize;
+                for f in &frames {
+                    for step in (0..f.size).step_by(PAGE_SIZE) {
+                        manager.user_map(
+                            new_tid,
+                            (*mapping.va + off + step).into(),
+                            (f.start + step).into(),
+                            mapping.flags,
+                            false,
+                        )?;
+                    }
+                    off += f.size;
                 }
             }
 
             mappings.push(UserMapping {
                 va: mapping.va,
-                frame,
+                frames,
                 flags: mapping.flags,
             });
         }

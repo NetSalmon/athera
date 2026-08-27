@@ -227,6 +227,73 @@ fn main() {
     assert_eq!(r, 0, "munmap fixed region failed: ret = {r}");
     println!("MAP_FIXED / NOREPLACE ok");
 
+    // 11. 超过内核伙伴系统单段上限（4 MiB）的多段拼接映射：mmap 8 MiB，
+    //     跨段写入读回，mremap 扩/缩后内容保留，munmap 整段归还。
+    let big_len = 8 * 1024 * 1024usize;
+    let multi = syscall::mmap(
+        0,
+        big_len,
+        syscall::PROT_READ | syscall::PROT_WRITE,
+        syscall::MAP_PRIVATE | syscall::MAP_ANONYMOUS,
+        -1,
+        0,
+    );
+    assert!(multi > 0, "8 MiB mmap failed: ret = {multi}");
+    unsafe {
+        ptr::write(multi as *mut u8, 0x11);
+        // 首段与第二段的边界附近、以及映射尾部各写一个字节并读回。
+        ptr::write((multi as usize + 4 * 1024 * 1024 - 1) as *mut u8, 0x22);
+        ptr::write((multi as usize + 4 * 1024 * 1024) as *mut u8, 0x33);
+        ptr::write((multi as usize + big_len - 1) as *mut u8, 0x44);
+    }
+    assert!(unsafe { ptr::read(multi as *const u8) } == 0x11);
+    assert!(
+        unsafe { ptr::read((multi as usize + 4 * 1024 * 1024 - 1) as *const u8) } == 0x22,
+        "段边界前内容损坏"
+    );
+    assert!(
+        unsafe { ptr::read((multi as usize + 4 * 1024 * 1024) as *const u8) } == 0x33,
+        "段边界内容损坏"
+    );
+    assert!(
+        unsafe { ptr::read((multi as usize + big_len - 1) as *const u8) } == 0x44,
+        "映射尾部内容损坏"
+    );
+
+    // mremap 扩大（8 MiB → 12 MiB），跨段内容应保留。
+    let grown = syscall::mremap(
+        multi as usize,
+        big_len,
+        12 * 1024 * 1024,
+        syscall::MREMAP_MAYMOVE,
+        0,
+    );
+    assert!(grown > 0, "8 MiB mremap expand failed: ret = {grown}");
+    assert!(
+        unsafe { ptr::read((grown as usize + 4 * 1024 * 1024) as *const u8) } == 0x33,
+        "mremap 扩大丢失跨段内容"
+    );
+    assert!(
+        unsafe { ptr::read((grown as usize + big_len - 1) as *const u8) } == 0x44,
+        "mremap 扩大丢失尾部内容"
+    );
+    // mremap 收缩（12 MiB → 6 MiB），保留部分内容应不变。
+    let shrunk = syscall::mremap(
+        grown as usize,
+        12 * 1024 * 1024,
+        6 * 1024 * 1024,
+        syscall::MREMAP_MAYMOVE,
+        0,
+    );
+    assert!(shrunk > 0, "12 MiB mremap shrink failed: ret = {shrunk}");
+    assert!(
+        unsafe { ptr::read((shrunk as usize + 4 * 1024 * 1024 - 1) as *const u8) } == 0x22,
+        "mremap 收缩丢失内容"
+    );
+    let r = syscall::munmap(shrunk as usize, 6 * 1024 * 1024);
+    assert_eq!(r, 0, "8 MiB munmap failed: ret = {r}");
+    println!("multi-frame mmap/mremap/munmap ok");
+
     println!("mmap test passed");
     exit(0);
 }

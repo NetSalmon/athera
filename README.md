@@ -109,7 +109,7 @@ athera/                       # 内核（根 crate）+ 工作区
 │   │   ├── lib.rs            入口 _start
 │   │   ├── syscall.rs        用户态 ecall 封装
 │   │   ├── stdio.rs          print!/println!（经 write 系统调用）
-│   │   ├── alloc.rs          用户态堆分配器
+│   │   ├── alloc.rs          用户态堆分配器（talc + mmap/mremap/munmap，不预留内存）
 │   │   ├── panic.rs
 │   │   └── linker.ld
 │   └── build.rs

@@ -26,7 +26,7 @@ use crate::{
     info,
     mm::{
         address::VirtualAddr,
-        allocator::alloc_frame,
+        allocator::{alloc_frame, alloc_frames},
         frame::Frame,
         page_table::{ADDRESS_SPACE_MANAGER, PageTableEntryFlags},
     },
@@ -214,7 +214,9 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
             continue;
         }
 
-        let frame = alloc_frame(Some(memsz)).ok_or(MemError::OutOfMemory)?;
+        // 段物理内存可能由多段拼接（超过伙伴单块上限时），段间虚拟地址
+        // 连续：段 `i` 覆盖 `vaddr + Σf[j].size .. + f[i].size`。
+        let frames = alloc_frames(memsz).ok_or(MemError::OutOfMemory)?;
 
         let mapping_flags = PageTableEntryFlags::builder()
             .set_u(true)
@@ -225,27 +227,33 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
             .set_d(true)
             .build();
 
-        for step in (0..frame.size).step_by(PAGE_SIZE) {
-            let va = vaddr as usize + step;
-            let pa = frame.start + step;
+        let mut off = 0usize;
+        for f in &frames {
+            for step in (0..f.size).step_by(PAGE_SIZE) {
+                let va = vaddr as usize + off + step;
+                let pa = f.start + step;
 
-            ADDRESS_SPACE_MANAGER.force().lock().user_map(
-                tid,
-                va.into(),
-                pa.into(),
-                mapping_flags,
-                false,
-            )?;
+                ADDRESS_SPACE_MANAGER.force().lock().user_map(
+                    tid,
+                    va.into(),
+                    pa.into(),
+                    mapping_flags,
+                    false,
+                )?;
+            }
+            off += f.size;
         }
 
-        let start = frame.start as *mut u8;
+        // clean（覆盖全部段，含 .bss 与段尾）
+        for f in &frames {
+            unsafe { ptr::write_bytes(f.start as *mut u8, 0, f.size) };
+        }
 
-        // clean
-        unsafe { ptr::write_bytes(start, 0, memsz) };
+        let start = frames[0].start as *mut u8;
 
         let inside_offset = (vaddr % align) as usize;
 
-        // copy
+        // copy（`filesz` 从段首开始，通常落在首段内）
         unsafe {
             // from buffer[offset] copy filesz bytes to page
             ptr::copy(
@@ -257,7 +265,7 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
 
         memory_set.mappings.push(UserMapping {
             va: VirtualAddr::from(vaddr as usize),
-            frame,
+            frames,
             flags: mapping_flags,
         });
     }
@@ -297,7 +305,7 @@ pub fn load_elf(buffer: &[u8], argv: &[&str], envp: &[&str], tid: Tid) -> Result
 
     memory_set.mappings.push(UserMapping {
         va: VirtualAddr::from(USER_STACK_LOWER_BOUND),
-        frame: user_stack,
+        frames: vec![user_stack],
         flags: stack_flags,
     });
 

@@ -9,12 +9,13 @@
 //!   收缩/扩张，无法原地扩张时按 `MREMAP_MAYMOVE` / `MREMAP_FIXED` 移动。
 //!
 //! 与 `MemorySet` 的约定：每个 [`UserMapping`] 表示一段连续的虚拟区间，
-//! 由一块连续物理帧支撑，且 `mapping.va` 与 `mapping.frame.start` 严格
-//! 一一对应（页表里 `va + k*PAGE` 恒映射到 `frame.start + k*PAGE`）。本
-//! 模块的所有操作（按页解除 / 移动 / 重建）都维护这一不变量；物理帧只在
-//! 整段不再被映射时才归还。部分解除映射时先为保留部分预分配新帧并拷贝
-//! 内容（事务式失败回滚），再拆除原映射，因此不会出现把仍被页表引用的
-//! 物理帧归还给伙伴系统的悬垂情况。
+//! 由一或多个物理帧（段）拼接支撑：段间虚拟地址连续，且段内
+//! `mapping.va + k*PAGE` 恒映射到 `frames[i].start + k*PAGE`。每段是伙伴
+//! 系统按 2 的幂阶分配的一块（单段上限 `BUDDY_MAX_ORDER`，约 4 MiB），
+//! 因此超过单段上限的映射由多段拼接而成。本模块的所有操作（按页解除 /
+//! 移动 / 重建）都维护这一不变量；物理帧只在整段不再被映射时才归还。部分
+//! 解除映射时先为保留部分预分配新帧并拷贝内容（事务式失败回滚），再拆除
+//! 原映射，因此不会出现把仍被页表引用的物理帧归还给伙伴系统的悬垂情况。
 //!
 //! 已知限制：用户地址空间的低半区与内核共享（`copy_low_half`），因此
 //! `MAP_FIXED` 落到内核已恒等映射的物理区域（如 UART / virtio 所在的
@@ -30,7 +31,7 @@ use crate::{
     error::MemError,
     mm::{
         address::VirtualAddr,
-        allocator::alloc_frame,
+        allocator::alloc_frames,
         frame::Frame,
         page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceManager, PageTableEntryFlags},
     },
@@ -62,7 +63,7 @@ fn mem_errno(err: MemError) -> ErrorCode {
 /// 一个映射覆盖的（页对齐）虚拟区间 `[start, end)`。
 fn mapping_range(m: &UserMapping) -> (usize, usize) {
     let start = usize::from(m.va) & !(PAGE_SIZE - 1);
-    let size = align_up(m.frame.size);
+    let size: usize = m.frames.iter().map(|f| align_up(f.size)).sum();
     (start, start + size)
 }
 
@@ -92,12 +93,25 @@ fn range_fully_mapped(ms: &MemorySet, start: usize, end: usize) -> bool {
         .all(|va| page_phys(ms, va).is_some())
 }
 
+/// 虚拟偏移 `off`（相对映射起始）对应的物理地址；`frames` 段内线性、
+/// 段间跳变。调用方须保证 `off` 落在段列表覆盖的范围内。
+fn phys_at_offset(frames: &[Frame], off: usize) -> usize {
+    let mut remaining = off;
+    for f in frames {
+        if remaining < f.size {
+            return f.start + remaining;
+        }
+        remaining -= f.size;
+    }
+    unreachable!("offset {off:#x} beyond frame segments");
+}
+
 /// 页对齐虚拟地址 `va` 对应的物理页地址（依据映射表推算，不依赖页表）。
 fn page_phys(ms: &MemorySet, va: usize) -> Option<usize> {
     for m in &ms.mappings {
         let (s, e) = mapping_range(m);
         if va >= s && va < e {
-            return Some(m.frame.start + (va - s));
+            return Some(phys_at_offset(&m.frames, va - s));
         }
     }
     None
@@ -160,42 +174,60 @@ fn prot_to_page_flags(prot: usize) -> PageTableEntryFlags {
     flags
 }
 
-/// 把一块已分配、已清零的物理帧映射到 `addr`（页对齐）并登记进映射表。
+/// 把一组已分配的物理段映射到 `addr`（页对齐）并登记进映射表。
 ///
-/// `PROT_NONE`（`rwx` 全 0）不写页表项，仅登记映射。失败时回滚已建立的
-/// 页表项并归还该帧，不留下半成品。
+/// 段间虚拟地址连续：段 `i` 覆盖虚拟区间
+/// `[addr + Σf[j].size, addr + Σf[j].size + f[i].size)`。调用方负责在
+/// 映射前按需清零（[`zero_frames`]）。`PROT_NONE`（`rwx` 全 0）不写页表项，
+/// 仅登记映射。失败时回滚已建立的页表项并归还各段（`frames` drop），不留
+/// 半成品。
 fn map_frame(
     ms: &mut MemorySet,
     tid: Tid,
     addr: usize,
-    frame: Frame,
+    frames: Vec<Frame>,
     flags: PageTableEntryFlags,
 ) -> Result<(), ErrorCode> {
     if flags.r() || flags.w() || flags.x() {
         let mut manager = ADDRESS_SPACE_MANAGER.force().lock();
-        for step in (0..frame.size).step_by(PAGE_SIZE) {
-            if let Err(err) = manager.user_map(
-                tid,
-                (addr + step).into(),
-                (frame.start + step).into(),
-                flags,
-                false,
-            ) {
-                for rollback in (0..step).step_by(PAGE_SIZE) {
-                    let _ = manager.user_unmap(tid, (addr + rollback).into(), false);
+        let mut mapped = 0usize;
+        for f in &frames {
+            for step in (0..f.size).step_by(PAGE_SIZE) {
+                if let Err(err) = manager.user_map(
+                    tid,
+                    (addr + mapped + step).into(),
+                    (f.start + step).into(),
+                    flags,
+                    false,
+                ) {
+                    for rollback in (0..mapped + step).step_by(PAGE_SIZE) {
+                        let _ = manager.user_unmap(tid, (addr + rollback).into(), false);
+                    }
+                    AddressSpaceManager::flush();
+                    return Err(mem_errno(err));
                 }
-                AddressSpaceManager::flush();
-                return Err(mem_errno(err));
             }
+            mapped += f.size;
         }
         AddressSpaceManager::flush();
     }
     ms.mappings.push(UserMapping {
         va: VirtualAddr::from(addr),
-        frame,
+        frames,
         flags,
     });
     Ok(())
+}
+
+/// 把 `frames` 各段清零（调用方须持有这些物理段的所有权，尚未映射或映射
+/// 前使用）。
+fn zero_frames(frames: &[Frame]) {
+    for f in frames {
+        // Safety: 帧内 `f.size` 字节全部可写。
+        unsafe {
+            ptr::write_bytes(f.start as *mut u8, 0, f.size);
+        }
+    }
 }
 
 /// 解除 `[start, end)`（页对齐）的映射。
@@ -206,7 +238,6 @@ fn map_frame(
 fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result<(), ErrorCode> {
     struct Keep {
         va: usize,
-        pa: usize,
         size: usize,
         flags: PageTableEntryFlags,
     }
@@ -224,7 +255,6 @@ fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result
         if s < o_start {
             keeps.push(Keep {
                 va: s,
-                pa: m.frame.start,
                 size: o_start - s,
                 flags: m.flags,
             });
@@ -232,7 +262,6 @@ fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result
         if o_end < e {
             keeps.push(Keep {
                 va: o_end,
-                pa: m.frame.start + (o_end - s),
                 size: e - o_end,
                 flags: m.flags,
             });
@@ -240,17 +269,23 @@ fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result
     }
 
     // 2) 预分配新帧并拷贝内容（事务式：任一步失败则整体回滚，映射表与页
-    //    表都保持原状）。
-    let mut buffers: Vec<(Frame, Keep)> = Vec::with_capacity(keeps.len());
+    //    表都保持原状）。保留区可能跨越原映射的多个物理段，故按页经
+    //    `page_phys` 拷贝（此时原映射尚未拆除，`page_phys` 仍有效）。
+    let mut buffers: Vec<(Vec<Frame>, Keep)> = Vec::with_capacity(keeps.len());
     for k in keeps {
-        let Some(frame) = alloc_frame(Some(k.size)) else {
+        let Some(frames) = alloc_frames(k.size) else {
             return Err(ErrorCode::ENOMEM);
         };
-        // Safety: `k.pa..k.pa + k.size` 位于原映射对应物理帧的已分配块内。
-        unsafe {
-            ptr::copy(k.pa as *const u8, frame.start as *mut u8, k.size);
+        for off in (0..k.size).step_by(PAGE_SIZE) {
+            let Some(src) = page_phys(ms, k.va + off) else {
+                return Err(ErrorCode::EFAULT);
+            };
+            // Safety: 源/目标均为页对齐的已分配物理区间。
+            unsafe {
+                ptr::copy(src as *const u8, phys_at_offset(&frames, off) as *mut u8, PAGE_SIZE);
+            }
         }
-        buffers.push((frame, k));
+        buffers.push((frames, k));
     }
 
     // 3) 拆除重叠映射的页表项并移除映射项（内容已备份，物理帧可安全归还）。
@@ -262,21 +297,22 @@ fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result
             for page in (s..e).step_by(PAGE_SIZE) {
                 let _ = manager.user_unmap(tid, page.into(), false);
             }
-            // mapping.frame 在此 drop，归还物理帧。
+            // mapping.frames 在此 drop，归还全部物理段。
         }
         AddressSpaceManager::flush();
     }
 
     // 4) 重新映射保留片段。
-    for (frame, k) in buffers {
-        map_frame(ms, tid, k.va, frame, k.flags)?;
+    for (frames, k) in buffers {
+        map_frame(ms, tid, k.va, frames, k.flags)?;
     }
     Ok(())
 }
 
 /// 把 `[old_start, old_end)` 的内容重建为 `[dest, dest + new_size)` 的
-/// 单段匿名映射：分配新帧、按页拷贝内容、（可选地）在 `dest` 处替换既有
-/// 映射，最后拆除旧映射。各步骤失败都会回滚，不会留下悬垂指针。
+/// 匿名映射：分配新的物理段（可能多段拼接）、整段清零、按页拷贝内容、
+/// （可选地）在 `dest` 处替换既有映射，最后拆除旧映射。各步骤失败都会
+/// 回滚，不会留下悬垂指针。
 fn rebuild(
     ms: &mut MemorySet,
     tid: Tid,
@@ -289,13 +325,10 @@ fn rebuild(
     let old_size = old_end - old_start;
     let copy_len = old_size.min(new_size);
 
-    let Some(frame) = alloc_frame(Some(new_size)) else {
+    let Some(frames) = alloc_frames(new_size) else {
         return Err(ErrorCode::ENOMEM);
     };
-    // Safety: 帧内 `new_size` 字节全部可写。
-    unsafe {
-        ptr::write_bytes(frame.start as *mut u8, 0, new_size);
-    }
+    zero_frames(&frames);
 
     for off in (0..copy_len).step_by(PAGE_SIZE) {
         let Some(src) = page_phys(ms, old_start + off) else {
@@ -303,12 +336,12 @@ fn rebuild(
         };
         // Safety: 源/目标均是页对齐的已分配物理区间。
         unsafe {
-            ptr::copy(src as *const u8, (frame.start + off) as *mut u8, PAGE_SIZE);
+            ptr::copy(src as *const u8, phys_at_offset(&frames, off) as *mut u8, PAGE_SIZE);
         }
     }
 
     unmap_range(ms, tid, old_start, old_end)?;
-    map_frame(ms, tid, dest, frame, flags)
+    map_frame(ms, tid, dest, frames, flags)
 }
 
 /// `mmap(addr, length, prot, flags, fd, offset)`。
@@ -375,14 +408,13 @@ pub fn mmap(
         unmap_range(ms, tid, target, end)?;
     }
 
-    let Some(frame) = alloc_frame(Some(length)) else {
+    // 分配物理内存并清零。超过伙伴系统单块上限（约 4 MiB）的请求由多个
+    // 段拼接支撑（`alloc_frames` 保证段总大小不小于请求）。
+    let Some(frames) = alloc_frames(length) else {
         return Err(ErrorCode::ENOMEM);
     };
-    // Safety: 帧内 `length` 字节全部可写。
-    unsafe {
-        ptr::write_bytes(frame.start as *mut u8, 0, length);
-    }
-    map_frame(ms, tid, target, frame, prot_to_page_flags(prot))?;
+    zero_frames(&frames);
+    map_frame(ms, tid, target, frames, prot_to_page_flags(prot))?;
     Ok(target)
 }
 

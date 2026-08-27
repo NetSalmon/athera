@@ -32,35 +32,19 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志&#10;- deps: 引入 athera-trie，统一导入与换行格式">
-      <change afterPath="$PROJECT_DIR$/src/fs/mbr.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/AICommit.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/athera.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dictionaries/project.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dictionaries/project.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+    <list default="true" id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="feat(binfmt): 支持 shebang 脚本与魔数路由 (main)&#10;&#10;- binfmt: 新增基于 Trie 的魔数注册表，route 按最长前缀分发&#10;- binfmt: 注册 ELF 与 #! 处理器，支持运行时注册与注销&#10;- binfmt: 解析 shebang 参数，支持引号、转义与 UTF-8 替换&#10;- binfmt: route_at 支持 execve 语义，可加载程序到指定任务&#10;- boot: 内置程序改用 binfmt::route 启动，移除 start_init&#10;- fs: minix open/stat 改用磁盘真实 mode，替代硬编码 0644&#10;- fs: 新增 MBR 分区表解析（MbrSector/MbrPartitionEntry）&#10;- minix: File 新增 mode() 访问器，供可执行位判断使用&#10;- userland: Cargo 注册 run bin，作为 shebang 解释器&#10;- scripts: guestfish chmod 改用十进制 493（即 0o755）&#10;- main: 启动后通过 binfmt 执行 /bin/test.sh 示例&#10;- exec: kernel_execve 补充加载日志，抽取 read_file 辅助函数&#10;- task: 任务控制块改名 Task，任务表/内存集并入 task.rs&#10;- process: user_execve 重构为 execve_into，失败可恢复旧地址空间&#10;- mm: mmap 模块更名为 memory_map，改用 is_multiple_of&#10;- deps: 引入 athera-trie，统一导入与换行格式&#10;- docs: 更新 README，补充 binfmt/MBR 与模块文档&#10;- chore: 清理 .idea 配置及未使用导入，修正重启命令字">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/athera-userland/src/bin/run.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/bin/run.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/arch/riscv64/boot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/arch/riscv64/boot.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/binfmt.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/binfmt.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/driver/descriptor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/descriptor.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/driver/reboot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/reboot.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/driver/tree.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/tree.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/error.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fs/devfs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/src/alloc.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/alloc.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/src/bin/heap.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/bin/heap.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/src/bin/mmap_test.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/bin/mmap_test.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/mm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/mm/mmap.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/memory_map.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/mm/page_table.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/page_table.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/syscall.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/syscall.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/allocator.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/allocator.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/memory_map.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/memory_map.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/task.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/task/exec.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/exec.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/task/process.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/process.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/task/scheduler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/scheduler.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -179,18 +163,6 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="QodanaHighlightedReportService">
-    <option name="localRunNotPublishedPersistedInfo">
-      <LocalReportPersistedInfo>
-        <option name="path" value="/tmp/qodana_output1/qodana.sarif.json" />
-        <option name="reportGuid" value="1d8a59b9-80bf-463f-bb1b-80e245352f79" />
-        <option name="reportName" value="athera/qodana/2026-08-27" />
-      </LocalReportPersistedInfo>
-    </option>
-  </component>
-  <component name="QodanaIsSelectedPersistenceService">
-    <option name="selectedOrLoading" value="true" />
-  </component>
   <component name="QodanaReportsService">
     <option name="descriptions">
       <ReportDescription localRun="true" path="/tmp/qodana_output1/qodana.sarif.json" reportGuid="1d8a59b9-80bf-463f-bb1b-80e245352f79" reportId="athera/qodana/2026-08-27" />

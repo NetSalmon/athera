@@ -82,7 +82,7 @@ fn main(hart_id: usize, dev_tree_address: usize) -> ! {
 
     // 从 MINIX 文件系统加载并执行磁盘上的用户程序。
     arch::riscv64::boot::start_default_programs();
-    binfmt::route("/bin/test.sh", &[&"/bin/test.sh"], &[]).unwrap(); // #!/bin/run 开头的/bin/test.sh文件需自备
+    binfmt::route("/bin/test.sh", &["/bin/test.sh"], &[]).unwrap(); // #!/bin/run 开头的/bin/test.sh文件需自备
 
     // 只有在初始任务创建完成后才启动时钟，避免定时器中断进入空调度器。
     arch::riscv64::trap::set_next_timer(None);
