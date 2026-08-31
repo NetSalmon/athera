@@ -23,21 +23,21 @@ use alloc::{sync::Arc, vec, vec::Vec};
 use core::{fmt, slice};
 
 use athera_bitmap::BitMapView;
-pub(crate) use dir::{DirEntries, DirEntry};
 pub(crate) use file::File;
 pub(crate) use types::{
-    DirEntryRaw, DirEntryV1_14, DirEntryV1_30, DiskInode, DiskSuperBlock, MinixFsMagic, MinixString,
+    DirEntryRaw, DiskInode, DiskSuperBlock, MinixFsMagic,
 };
 
 pub(crate) use super::{
-    path::{Component, Path, PathBuf},
-    types::{FileType, Mode, S_IFMT},
+    path::{Path, PathBuf},
+    types::{FileType, Mode},
 };
+use crate::fs::fs_error::{FsError, FsResult};
 use crate::{
     constants::SUPERBLOCK_OFFSET,
     driver::traits::{BlockDevice, IoResult},
     fs::vfs::{
-        File as VfsFile, FileSystem, FsError, FsResult, OpenFlags, Stat,
+        File as VfsFile, FileSystem, OpenFlags, Stat,
         file_ops::{FileOps, Whence},
     },
     sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},

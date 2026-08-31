@@ -10,9 +10,10 @@ use alloc::{string::String, vec::Vec};
 
 use athera_trie::Trie;
 
+use crate::fs::fs_error::FsError;
 use crate::{
     fs::{
-        FsError, Mode, Path, VFS,
+        Mode, Path, VFS,
         vfs::{FileSystem, OpenFlags},
     },
     sync::{lazy::LazyLock, spin::SpinLock},

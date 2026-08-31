@@ -3,9 +3,10 @@
 //! 通过设备管理器（[`crate::driver::tree::DEVICE_MANAGER`]）获取首个块设备句柄，
 //! 委托 `read_at` / `write_at` 完成实际 I/O。
 
+use crate::fs::fs_error::{FsError, FsResult};
 use crate::{
     driver::tree::DEVICE_MANAGER,
-    fs::{FsError, FsResult, vfs::file_ops::FileOps},
+    fs::vfs::file_ops::FileOps,
 };
 
 /// virtio-blk 块设备节点（`/dev/vda`）的文件操作实现。

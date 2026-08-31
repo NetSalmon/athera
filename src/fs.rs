@@ -8,14 +8,16 @@ pub(crate) mod minix;
 mod path;
 mod types;
 pub(crate) mod vfs;
+pub mod fs_error;
 
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use athera_macros::lazy;
-pub(crate) use path::{Component, Path, PathBuf};
-pub(crate) use types::{FileType, Mode, S_IFMT};
-pub(crate) use vfs::{FsError, FsResult};
+pub(crate) use fs_error::FsError;
+pub(crate) use fs_error::FsResult;
+pub(crate) use path::{Path, PathBuf};
+pub(crate) use types::{FileType, Mode};
 
 use crate::{driver::tree::DEVICE_MANAGER, sync::rwlock::RwLock};
 

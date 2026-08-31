@@ -1,6 +1,7 @@
 //! 内核伪设备。
 
-use crate::fs::{FsResult, vfs::file_ops::FileOps};
+use crate::fs::fs_error::FsResult;
+use crate::fs::vfs::file_ops::FileOps;
 
 /// 丢弃所有写入并立即返回 EOF 的字符设备。
 pub(crate) struct Null;

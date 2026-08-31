@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[cfg(target_arch = "riscv64")]
-global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("entry/riscv64gc/entry.asm"));
 
 #[unsafe(no_mangle)]
 /// 内核入口（由 `entry.asm` 的 `_start` 调用）。

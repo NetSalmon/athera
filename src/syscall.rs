@@ -183,17 +183,23 @@ pub fn handle(sepc: u64, trap_context: &[u64; 32]) -> SyscallResult {
             match process::wait4(tid, options.nohang()) {
                 Some(result) => {
                     if result.tid != 0 && wait_status != 0 {
-                        if let Err(errno) = validate_user_range(wait_status, size_of::<WaitStatus>()) {
+                        if let Err(errno) =
+                            validate_user_range(wait_status, size_of::<WaitStatus>())
+                        {
                             return SyscallResult::Return(errno.0 as u64, sepc + 4);
                         }
                         let status = WaitStatus::from(((result.exit_code as u32) & 0xff) << 8);
                         unsafe { (wait_status as *mut WaitStatus).write(status) };
                     }
                     if result.tid != 0 && resource_usage != 0 {
-                        if let Err(errno) = validate_user_range(resource_usage, size_of::<ResourceUsage>()) {
+                        if let Err(errno) =
+                            validate_user_range(resource_usage, size_of::<ResourceUsage>())
+                        {
                             return SyscallResult::Return(errno.0 as u64, sepc + 4);
                         }
-                        unsafe { (resource_usage as *mut ResourceUsage).write(ResourceUsage::default()) };
+                        unsafe {
+                            (resource_usage as *mut ResourceUsage).write(ResourceUsage::default())
+                        };
                     }
                     SyscallResult::Return(result.tid as u64, sepc + 4)
                 }

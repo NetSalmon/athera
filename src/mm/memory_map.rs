@@ -282,7 +282,11 @@ fn unmap_range(ms: &mut MemorySet, tid: Tid, start: usize, end: usize) -> Result
             };
             // Safety: 源/目标均为页对齐的已分配物理区间。
             unsafe {
-                ptr::copy(src as *const u8, phys_at_offset(&frames, off) as *mut u8, PAGE_SIZE);
+                ptr::copy(
+                    src as *const u8,
+                    phys_at_offset(&frames, off) as *mut u8,
+                    PAGE_SIZE,
+                );
             }
         }
         buffers.push((frames, k));
@@ -336,7 +340,11 @@ fn rebuild(
         };
         // Safety: 源/目标均是页对齐的已分配物理区间。
         unsafe {
-            ptr::copy(src as *const u8, phys_at_offset(&frames, off) as *mut u8, PAGE_SIZE);
+            ptr::copy(
+                src as *const u8,
+                phys_at_offset(&frames, off) as *mut u8,
+                PAGE_SIZE,
+            );
         }
     }
 

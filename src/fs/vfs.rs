@@ -5,10 +5,8 @@
 //! - 元数据与打开标志（[`Stat`]、[`OpenFlags`]、[`DirEntry`]、[`SeekFrom`]）；
 //! - 操作 trait：路径级 [`FileSystem`]、文件对象级 [`FileOps`]；
 //! - 通用结构：内存超级块 [`SuperBlock`]、内存 inode [`Inode`]、目录项缓存
-//!   [`Dentry`]、打开的文件 [`File`]，以及挂载表（[`MOUNT_TABLE`]）。
-//!
-//! 目前只完成类型与接口设计，具体逻辑（挂载分发、路径解析、dentry 缓存、
-//! 具体文件系统实现等）尚未实现。
+//!   [`Dentry`]、打开的文件 [`File`]，以及按路径分量组织的前缀树挂载表
+//!   （[`Vfs`]）。
 
 #![allow(unused)]
 
@@ -25,11 +23,11 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use athera_macros::lazy;
+use athera_trie::Trie;
 
+use crate::fs::fs_error::{FsError, FsResult};
 use crate::{
     bits,
-    driver::traits::IoError,
     fs::{
         FileType, Mode, Path, PathBuf,
         devfs::uart,
@@ -38,85 +36,6 @@ use crate::{
     numeric,
     sync::rwlock::RwLock,
 };
-
-/// 统一文件系统错误，语义对应 POSIX errno（见 [`FsError::errno`]）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum FsError {
-    /// 路径分量不存在（ENOENT）。
-    #[error("not found")]
-    NotFound,
-    /// 路径上的某个分量不是目录（ENOTDIR）。
-    #[error("not a directory")]
-    NotDir,
-    /// 目标本身是目录，却按普通文件操作（EISDIR）。
-    #[error("is a directory")]
-    IsDir,
-    /// 已存在（EEXIST）。
-    #[error("already exists")]
-    AlreadyExists,
-    /// 目录非空（ENOTEMPTY）。
-    #[error("directory not empty")]
-    NotEmpty,
-    /// 权限不足（EACCES）。
-    #[error("permission denied")]
-    PermissionDenied,
-    /// 文件名过长（ENAMETOOLONG）。
-    #[error("name too long")]
-    NameTooLong,
-    /// 符号链接跳数过多（ELOOP）。
-    #[error("too many symbolic links")]
-    TooManyLinks,
-    /// 跨设备（EXDEV）。
-    #[error("cross-device operation")]
-    CrossDevice,
-    /// 磁盘空间不足（ENOSPC）。
-    #[error("no space left on device")]
-    NoSpace,
-    /// 参数非法（EINVAL）。
-    #[error("invalid argument")]
-    Invalid,
-    /// 设备 I/O 错误（EIO）。
-    #[error("I/O error")]
-    Io,
-    /// 内存不足（ENOMEM）。
-    #[error("out of memory")]
-    OutOfMemory,
-    /// 不支持的操作（ENOTSUP）。
-    #[error("operation not supported")]
-    Unsupported,
-}
-
-impl FsError {
-    /// 映射为 Linux errno 数值，供系统调用层直接返回。
-    pub const fn errno(self) -> isize {
-        use FsError::*;
-        match self {
-            NotFound => 2,          // ENOENT
-            Io => 5,                // EIO
-            OutOfMemory => 12,      // ENOMEM
-            PermissionDenied => 13, // EACCES
-            AlreadyExists => 17,    // EEXIST
-            CrossDevice => 18,      // EXDEV
-            NotDir => 20,           // ENOTDIR
-            IsDir => 21,            // EISDIR
-            Invalid => 22,          // EINVAL
-            NoSpace => 28,          // ENOSPC
-            NameTooLong => 36,      // ENAMETOOLONG
-            NotEmpty => 39,         // ENOTEMPTY
-            TooManyLinks => 40,     // ELOOP
-            Unsupported => 95,      // ENOTSUP
-        }
-    }
-}
-
-impl From<IoError> for FsError {
-    fn from(_: IoError) -> Self {
-        Self::Io
-    }
-}
-
-/// 统一错误类型别名。
-pub type FsResult<T> = core::result::Result<T, FsError>;
 
 /// 文件元数据（对应 `stat` / `fstat` 系统调用返回的核心字段）。
 #[derive(Debug, Clone)]
@@ -409,10 +328,12 @@ pub struct MountEntry {
 
 /// 内核统一文件系统入口：基于全局挂载表做路径前缀分发。
 ///
-/// 逻辑尚未实现：各方法只是占位，后续会按路径最长前缀在 [`MOUNT_TABLE`]
-/// 中查找挂载点，再把剩余路径交给对应 [`SuperBlock`] 的 [`FileSystem`]。
+/// 挂载表是一棵以路径分量为键的前缀树（[`Trie`]）：根挂载 `/` 对应空键，
+/// 路径解析沿查询路径的分量下行，命中最深的挂载点后把剩余分量交给其
+/// [`SuperBlock`] 的 [`FileSystem`]。分量边界匹配由树结构保证——`/dev`
+/// 不会匹配 `/devx`，无需字符串边界判断。
 pub struct Vfs {
-    mount_table: RwLock<BTreeMap<String, Arc<MountEntry>>>,
+    mount_table: RwLock<Trie<String, Arc<MountEntry>>>,
     super_blocks: RwLock<Vec<Arc<SuperBlock>>>,
 }
 
@@ -420,7 +341,7 @@ impl Vfs {
     /// 创建一个空的 VFS。
     pub const fn new() -> Self {
         Self {
-            mount_table: RwLock::new(BTreeMap::new()),
+            mount_table: RwLock::new(Trie::new()),
             super_blocks: RwLock::new(Vec::new()),
         }
     }
@@ -432,12 +353,13 @@ impl Vfs {
     pub fn mount(&self, path: &Path, fs: Arc<dyn FileSystem>) -> FsResult<()> {
         let mount_path = Self::mount_path(path)?;
         let stat = fs.stat(&Path::from("/"))?;
+        let key = Self::components(&mount_path);
         let mut mounts = self.mount_table.write();
-        if mounts.contains_key(&mount_path) {
+        if mounts.contains_key(&key) {
             return Err(FsError::AlreadyExists);
         }
 
-        let root = Self::root_dentry(&mount_path, &stat);
+        let root = Self::root_dir_entry(&mount_path, &stat);
         let superblock = Arc::new(SuperBlock {
             fs,
             root: root.clone(),
@@ -448,7 +370,7 @@ impl Vfs {
             superblock: superblock.clone(),
         });
 
-        mounts.insert(mount_path, entry);
+        mounts.insert(&key, entry);
         drop(mounts);
         self.super_blocks.write().push(superblock);
         Ok(())
@@ -466,7 +388,7 @@ impl Vfs {
         })
     }
 
-    fn root_dentry(path: &str, stat: &Stat) -> Arc<Dentry> {
+    fn root_dir_entry(path: &str, stat: &Stat) -> Arc<Dentry> {
         let name = if path == "/" {
             "/"
         } else {
@@ -496,42 +418,37 @@ impl Vfs {
             return Err(FsError::Invalid);
         }
 
+        let components = Self::components(path.as_str());
         let mounts = self.mount_table.read();
-        let Some((mount_path, mount)) = mounts
-            .iter()
-            .filter(|(mount_path, _)| Self::mount_matches(mount_path, path.as_str()))
-            .max_by_key(|(mount_path, _)| mount_path.len())
-        else {
+        let Some((key, mount)) = mounts.longest_prefix(&components) else {
             return Err(FsError::NotFound);
         };
 
-        let relative = Self::relative_path(mount_path, path.as_str());
+        let relative = Self::relative_path(&components[key.len()..]);
         Ok((mount.superblock.fs.clone(), relative))
     }
 
-    fn mount_matches(mount: &str, path: &str) -> bool {
-        if mount == "/" {
-            return path.starts_with('/');
-        }
-        let mount = mount.trim_end_matches('/');
-        path == mount
-            || path
-                .strip_prefix(mount)
-                .is_some_and(|rest| rest.starts_with('/'))
+    /// 把路径拆成挂载键分量：跳过分隔符产生的空段，`.` / `..` 作为
+    /// 字面分量保留（`"/"` → `[]`、`"/a/b"` → `["a", "b"]`）。
+    fn components(path: &str) -> Vec<String> {
+        path.split('/')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect()
     }
 
-    fn relative_path(mount: &str, path: &str) -> PathBuf {
-        if mount == "/" {
-            return PathBuf::from(path);
+    /// 把挂载点之后的剩余分量拼回文件系统内路径（`/` 开头；剩余为空
+    /// 即挂载点自身，对应文件系统根目录）。
+    fn relative_path(rest: &[String]) -> PathBuf {
+        let mut path = String::new();
+        for component in rest {
+            path.push('/');
+            path.push_str(component);
         }
-
-        let mount = mount.trim_end_matches('/');
-        let rest = path.strip_prefix(mount).unwrap_or("");
-        if rest.is_empty() {
-            PathBuf::from("/")
-        } else {
-            PathBuf::from(rest)
+        if path.is_empty() {
+            path.push('/');
         }
+        PathBuf::from(path)
     }
 
     /// 在两个路径属于同一文件系统时执行操作，否则返回 `EXDEV`。

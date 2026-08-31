@@ -1,8 +1,9 @@
 //! Process lifecycle and file-descriptor services.
 
+use crate::fs::fs_error::FsError;
 use crate::{
     error,
-    fs::{FsError, vfs::File},
+    fs::vfs::File,
     mm::page_table::{ADDRESS_SPACE_MANAGER, AddressSpaceId},
     task::{
         CURRENT_TASK, TASKS, TaskStatus, Tid,

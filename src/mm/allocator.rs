@@ -14,7 +14,7 @@ use crate::{
     debug,
     mm::{
         allocator::{
-            buddy::{order_size, size_to_order, BuddyAllocator},
+            buddy::{BuddyAllocator, order_size, size_to_order},
             slub::Caches,
         },
         frame::Frame,
@@ -48,7 +48,10 @@ pub fn alloc_frame(size: Option<usize>) -> Option<Frame> {
             // 大）。`Frame.size` 必须反映真实块大小，否则调用方会按请求大小
             // 越界访问（如 `mmap` 对超过 4 MiB 的请求整段清零时写穿内存）。
             let actual = order_size(size_to_order(size));
-            Frame { start, size: actual }
+            Frame {
+                start,
+                size: actual,
+            }
         })
 }
 

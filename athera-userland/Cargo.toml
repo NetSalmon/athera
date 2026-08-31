@@ -23,13 +23,6 @@ doctest = false
 bench = false
 
 [[bin]]
-name = "hello_world"
-path = "src/bin/hello_world.rs"
-test = false
-doctest = false
-bench = false
-
-[[bin]]
 name = "add"
 path = "src/bin/add.rs"
 test = false
@@ -95,6 +88,13 @@ bench = false
 [[bin]]
 name = "run"
 path = "src/bin/run.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "hello_world"
+path = "src/bin/hello_world.rs"
 test = false
 doctest = false
 bench = false

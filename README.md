@@ -122,7 +122,7 @@ athera/                       # 内核（根 crate）+ 工作区
 ├── config.toml              构建时配置
 ├── build.rs
 └── scripts/
-    ├── put_userland.sh      构建并把用户程序复制到 MINIX 镜像 /bin/
+    ├── usr                 用户程序管理：add / rm / put（写入 MINIX 镜像 /bin/）
     └── start.py            QEMU 启动脚本
 ```
 
@@ -137,7 +137,7 @@ athera/                       # 内核（根 crate）+ 工作区
 
 ```bash
 # 构建用户程序并写入 MINIX 镜像
-./scripts/put_userland.sh
+./scripts/usr put
 
 # 构建内核并启动
 cargo build --release
@@ -250,9 +250,12 @@ shebang）加载执行。写路径支持创建文件（`create_file`）、读写
 把用户程序复制到该镜像的 `/bin/` 目录下（依赖 libguestfs 的 `guestfish`，会自动构建 `athera-userland`）：
 
 ```bash
-./scripts/put_userland.sh              # 构建并写入全部 [[bin]]
-./scripts/put_userland.sh -n           # 不重新构建，直接用现有 ELF
-./scripts/put_userland.sh -i disk.img  # 指定其他镜像
+./scripts/usr put                  # 构建并写入全部 [[bin]]
+./scripts/usr put -n               # 不重新构建，直接用现有 ELF
+./scripts/usr put -i disk.img      # 指定其他镜像
+
+`./scripts/usr` 还可用于管理用户程序本身：`./scripts/usr add <name>` 注册
+`[[bin]]` 并生成骨架源码，`./scripts/usr rm <name>` 移除注册并删除源码。
 ```
 
 ## 系统调用

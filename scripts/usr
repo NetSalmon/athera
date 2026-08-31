@@ -1,20 +1,33 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """usr - 管理 athera-userland 的用户程序（bin）。
 
 用法:
-  ./usr add <name>     添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码
-  ./usr rm <name>      删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码
-  ./usr rm 与 ./usr remove 等价
+  ./usr add <name>           添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码
+  ./usr rm <name>            删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码
+                              （rm 与 remove 等价）
+  ./usr put [-i IMAGE] [-n]  构建并把全部用户程序写入 MINIX 镜像 /bin/
 """
 
+import argparse
 import re
+import shutil
+import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
-MANIFEST = Path("athera-userland/Cargo.toml")
-BIN_DIR = Path("athera-userland/src/bin")
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SCRIPT_DIR.parent
+
+MANIFEST = ROOT_DIR / "athera-userland" / "Cargo.toml"
+BIN_DIR = ROOT_DIR / "athera-userland" / "src" / "bin"
+TARGET_DIR = ROOT_DIR / "target" / "riscv64gc-unknown-none-elf" / "release"
+DEFAULT_IMAGE = ROOT_DIR / "resources" / "minix.qcow2"
 
 NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+# 注意: guestfish 把 chmod 的模式参数按十进制解析，493 = 0o755
+BIN_MODE = "493"
 
 BIN_TABLE = """[[bin]]
 name = "{name}"
@@ -33,70 +46,76 @@ use athera_userland::*;
 fn main() {
     println!("Hello world!!!");
 }
-
 """
 
 
-def usage():
-    print(__doc__, end="")
+def run(cmd):
+    proc = subprocess.run(cmd, cwd=ROOT_DIR)
+    if proc.returncode != 0:
+        sys.exit(proc.returncode)
 
 
 def normalize(text):
     return text.rstrip() + "\n"
 
 
-def find_bin_sections(text):
+def load_bins():
+    """按声明顺序返回 Cargo.toml 中全部 [[bin]] 的 name。"""
+    with MANIFEST.open("rb") as f:
+        data = tomllib.load(f)
+    return [entry["name"] for entry in data.get("bin", [])]
+
+
+def section_name(section_lines):
+    """从 [[bin]] 段落的行中提取 name 字段。"""
+    for line in section_lines[1:]:
+        m = re.match(r"""^\s*name\s*=\s*["']([^"']+)["']\s*$""", line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def find_bin_section(text, name):
+    """返回 [[bin]] name = <name> 段落的行号范围 (start, end)，未找到返回 None。"""
     lines = text.splitlines()
-    sections = []
     start = None
-    current_name = None
     for i, line in enumerate(lines):
-        if re.match(r"^\[\[bin\]\]\s*$", line):
-            if start is not None:
-                sections.append((start, i - 1, current_name))
+        if re.match(r"^\s*\[\[bin\]\]\s*$", line):
+            if start is not None and section_name(lines[start:i]) == name:
+                return start, i - 1
             start = i
-            current_name = None
         elif re.match(r"^\s*\[", line):
-            if start is not None:
-                sections.append((start, i - 1, current_name))
-                start = None
-                current_name = None
-        elif start is not None and current_name is None:
-            m = re.match(r"^\s*name\s*=\s*[\"']([^\"']+)[\"']\s*$", line)
-            if m:
-                current_name = m.group(1)
-    if start is not None:
-        sections.append((start, len(lines) - 1, current_name))
-    return sections
+            if start is not None and section_name(lines[start:i]) == name:
+                return start, i - 1
+            start = None
+    if start is not None and section_name(lines[start:]) == name:
+        return start, len(lines) - 1
+    return None
 
 
-def add_program(name):
+def add_program(args):
+    name = args.name
+    if name in load_bins():
+        sys.exit(f"error: 程序 '{name}' 已存在于 {MANIFEST}")
     text = MANIFEST.read_text()
-    for _, _, existing in find_bin_sections(text):
-        if existing == name:
-            print(f"error: 程序 '{name}' 已存在于 {MANIFEST}", file=sys.stderr)
-            sys.exit(1)
     MANIFEST.write_text(
         normalize(text.rstrip("\n") + "\n\n" + BIN_TABLE.format(name=name))
     )
     src = BIN_DIR / f"{name}.rs"
+    src.parent.mkdir(parents=True, exist_ok=True)
     src.write_text(TEMPLATE)
     print(f"已添加程序 '{name}':")
     print(f"  - 注册 bin: {MANIFEST}")
     print(f"  - 生成源码: {src}")
 
 
-def remove_program(name):
+def remove_program(args):
+    name = args.name
     text = MANIFEST.read_text()
-    target = None
-    for start, end, existing in find_bin_sections(text):
-        if existing == name:
-            target = (start, end)
-            break
-    if target is None:
-        print(f"error: 未找到程序 '{name}'（{MANIFEST} 中没有该 bin）", file=sys.stderr)
-        sys.exit(1)
-    start, end = target
+    section = find_bin_section(text, name)
+    if section is None:
+        sys.exit(f"error: 未找到程序 '{name}'（{MANIFEST} 中没有该 bin）")
+    start, end = section
     lines = text.splitlines()
     new_lines = lines[:start] + lines[end + 1:]
     if start < len(new_lines) and new_lines[start] == "":
@@ -109,22 +128,70 @@ def remove_program(name):
     print(f"已从 {MANIFEST} 移除 bin '{name}'")
 
 
+def put_programs(args):
+    bins = load_bins()
+    if not bins:
+        sys.exit(f"error: 未从 {MANIFEST} 解析到任何 bin")
+    if not args.image.is_file():
+        sys.exit(f"error: 找不到磁盘镜像: {args.image}")
+    if shutil.which("guestfish") is None:
+        sys.exit("error: 找不到 guestfish（请安装 libguestfs-tools）")
+
+    if not args.no_build:
+        print("==> 构建用户程序")
+        run(["cargo", "build", "-p", "athera-userland", "--release"])
+
+    for name in bins:
+        src = TARGET_DIR / name
+        if not src.is_file():
+            sys.exit(f"error: 未找到 {src}，请先构建（或用 --no-build 跳过）")
+        print(f"==> {name} ({src.stat().st_size} bytes)")
+
+    print(f"==> 写入 {args.image}:/bin/")
+    cmd = ["guestfish", "-a", str(args.image), "run", ":", "mount", "/dev/sda", "/"]
+    for name in bins:
+        dst = f"/bin/{name}"
+        cmd += [":", "upload", str(TARGET_DIR / name), dst]
+        cmd += [":", "chmod", BIN_MODE, dst]
+    cmd += [":", "ls", "/bin/"]
+    run(cmd)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="usr",
+        description="管理 athera-userland 的用户程序（bin）。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("add", help="添加程序：在 Cargo.toml 注册 [[bin]] 并生成骨架源码")
+    p.add_argument("name", metavar="NAME", help="程序名")
+    p.set_defaults(handler=add_program)
+
+    p = sub.add_parser("rm", aliases=["remove"],
+                       help="删除程序：从 Cargo.toml 移除 [[bin]] 并删除源码")
+    p.add_argument("name", metavar="NAME", help="程序名")
+    p.set_defaults(handler=remove_program)
+
+    p = sub.add_parser("put", help="构建并把用户程序写入 MINIX 镜像 /bin/")
+    p.add_argument("-i", "--image", type=Path, default=DEFAULT_IMAGE, metavar="FILE",
+                   help="磁盘镜像（默认: resources/minix.qcow2）")
+    p.add_argument("-n", "--no-build", action="store_true",
+                   help="不重新构建，直接使用现有 ELF")
+    p.set_defaults(handler=put_programs)
+
+    return parser
+
+
 def main():
-    args = sys.argv[1:]
-    if len(args) < 2 or args[0] not in ("add", "rm", "remove"):
-        usage()
-        sys.exit(1)
-    cmd, name = args[0], args[1]
-    if not NAME_RE.match(name):
-        print(
-            f"error: 无效的程序名 '{name}'（仅允许字母/数字/下划线，且不能以数字开头）",
-            file=sys.stderr,
+    args = build_parser().parse_args()
+    name = getattr(args, "name", None)
+    if name is not None and not NAME_RE.match(name):
+        sys.exit(
+            f"error: 无效的程序名 '{name}'（仅允许字母/数字/下划线，且不能以数字开头）"
         )
-        sys.exit(1)
-    if cmd == "add":
-        add_program(name)
-    else:
-        remove_program(name)
+    args.handler(args)
 
 
 if __name__ == "__main__":

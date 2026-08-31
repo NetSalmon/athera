@@ -32,14 +32,30 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="feat(mm): 支持多段物理帧映射，用户堆改用 talc 动态分配 (main)&#10;&#10;- userland: alloc.rs 由固定 .bss bump 改为 talc + mmap/mremap/munmap，&#10;  堆内存按需申请并可归还，不再预留固定大小堆&#10;- userland: MmapSource 用区域链表追踪映射，尺寸统一为 2 的幂；&#10;  mremap 支持原地扩/缩，munmap 整块归还&#10;- mm: 新增 alloc_frames，超过伙伴单块上限（约 4 MiB）的请求&#10;  按多段拼接，Frame.size 记录实际块大小&#10;- mm: UserMapping.frame 改为 frames: Vec&lt;Frame&gt;，段间虚拟地址&#10;  连续，mmap/fork/unmap/rebuild 均适配多段映射&#10;- exec: ELF 段加载改用 alloc_frames，按段间偏移映射，清零后&#10;  拷贝 filesz，保证 .bss 与段尾内容正确&#10;- test: mmap_test 增加 8 MiB 跨段 mmap/mremap/munmap 用例；&#10;  heap 增加大分配、churn、fork 深拷贝与 mremap 扩缩用例&#10;- deps: 引入 talc 和 spinning_top，更新 Cargo.lock&#10;- docs: README 同步用户态堆分配器说明&#10;- chore: 清理 .idea 中残留的 Qodana 状态">
+    <list default="true" id="c5918b93-4d13-42dc-a530-16f3d8a394ec" name="更改" comment="fix: 加固系统调用与 ELF 解析，修复 scause 误判 (main)&#10;&#10;- syscall: read/write/wait4 改用 validate_user_range 校验用户缓冲区，&#10;  非法地址返回 EFAULT，避免内核解引用野指针&#10;- trap: scause 以有符号数解释时 0 属于异常，修复中断/异常误判&#10;- elf: ElfHeader 由 From 改为 TryFrom&lt;&amp;[u8]&gt;，长度不足返回 NotElf&#10;- exec: 同步改用 ElfHeader::try_from 加载 ELF 头&#10;- binfmt: shebang 解释器改用 first() 获取，避免 unwrap 崩溃&#10;- task: 删除旧 task/task.rs，任务表改由 task 模块统一提供&#10;- chore: 同步 .idea/workspace.xml 的变更列表">
+      <change afterPath="$PROJECT_DIR$/src/entry/riscv64gc/entry.asm" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/fs/fs_error.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/arch/riscv64/trap.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/arch/riscv64/trap.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/athera-userland/src/bin/hello_world.rs" beforeDir="false" afterPath="$PROJECT_DIR$/athera-userland/src/bin/hello_world.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/put_userland.sh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/usr" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/usr" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/binfmt.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/binfmt.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/binfmt/elf.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/binfmt/elf.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/entry.asm" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs/pseudo.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs/pseudo.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs/uart.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs/uart.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/devfs/virtio_blk.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/minix.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/minix.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/vfs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/vfs.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/fs/vfs/file_ops.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/allocator.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/allocator.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/mm/memory_map.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/mm/memory_map.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/syscall.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/syscall.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/task/exec.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/exec.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/task/task.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/task/process.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/task/process.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -142,7 +158,7 @@
     &quot;SHELLCHECK.PATH&quot;: &quot;/home/netsalmon/.local/share/JetBrains/RustRover2026.1/Shell Script/shellcheck&quot;,
     &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
     &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/netsalmon/Projects/kyanos&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/netsalmon/Projects/athera&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.jshint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
@@ -154,7 +170,7 @@
     &quot;org.rust.cargo.project.model.impl.CargoExternalSystemProjectAware.subscribe.first.balloon&quot;: &quot;&quot;,
     &quot;org.rust.first.attach.projects&quot;: &quot;true&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.general&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;language.rust.rustfmt&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -171,11 +187,11 @@
       <recent name="$PROJECT_DIR$/software" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/entry/riscv64gc" />
       <recent name="$PROJECT_DIR$/src/binfmt" />
       <recent name="$PROJECT_DIR$/src/fs/dev_fs" />
       <recent name="$PROJECT_DIR$/crates" />
       <recent name="$PROJECT_DIR$/src" />
-      <recent name="$PROJECT_DIR$/src/dev/" />
     </key>
   </component>
   <component name="RsExternalLinterProjectSettings">
@@ -203,6 +219,17 @@
   </component>
   <component name="RustProjectSettings">
     <option name="toolchainHomeDirectory" value="/usr/bin" />
+  </component>
+  <component name="RustfmtProjectSettings">
+    <option name="channel" value="nightly" />
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-PY-262.9437.214" />
+        <option value="bundled-python-sdk-821f704e66d9-5bd6d13a2a75-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-262.9437.214" />
+      </set>
+    </attachedChunks>
   </component>
   <component name="StructureViewState">
     <option name="selectedTab" value="HTML" />
