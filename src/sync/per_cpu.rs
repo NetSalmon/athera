@@ -16,7 +16,7 @@ use core::{
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
 };
-
+use crate::arch::riscv64::{disable_interrupt, enable_interrupt};
 use crate::arch::riscv64::registers::gpr::Tp;
 
 /// 当前 hart 槽位的守卫，由 [`PerCpu::current`] 返回。
@@ -25,6 +25,7 @@ use crate::arch::riscv64::registers::gpr::Tp;
 /// 该 hart 的值。
 pub struct PerCpuGuard<'a, T> {
     storage: &'a PerCpuStorage<T>,
+    sie: u64,
 }
 
 impl<'a, T> Deref for PerCpuGuard<'a, T> {
@@ -41,6 +42,12 @@ impl<'a, T> DerefMut for PerCpuGuard<'a, T> {
         // SAFETY: `&mut self` 保证不存在其它活跃引用，同一 hart 的槽位
         // 不会被同时可变借用两次。
         unsafe { &mut *self.storage.0.get() }
+    }
+}
+
+impl<'a, T> Drop for PerCpuGuard<'a, T> {
+    fn drop(&mut self) {
+        enable_interrupt(self.sie);
     }
 }
 
@@ -68,9 +75,12 @@ impl<T, const N: usize> PerCpu<T, N> {
 
     /// 返回当前 hart（由 `tp` 决定）槽位的可变守卫。
     pub fn current(&self) -> PerCpuGuard<'_, T> {
+        let sie = disable_interrupt();
+        
         let tp = Tp::read() as usize;
         PerCpuGuard {
             storage: &self.data[tp],
+            sie,
         }
     }
 }

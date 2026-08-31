@@ -8,6 +8,7 @@
 //! - [`sbi`]：Supervisor Binary Interface 调用封装；
 //! - [`wait_for_interrupt`]、[`instruction_fence`]、[`address_translation_fence`]
 //!   等：没有合适寄存器类型的架构指令。
+use crate::arch::riscv64::registers::csr::Sie;
 use core::arch::asm;
 
 pub(crate) mod boot;
@@ -53,4 +54,14 @@ pub fn breakpoint() {
     unsafe {
         asm!("ebreak");
     }
+}
+
+pub fn disable_interrupt() -> u64 {
+    let sie = Sie::read();
+    Sie::write(0);
+    sie
+}
+
+pub fn enable_interrupt(sie: u64) {
+    Sie::write(sie);
 }

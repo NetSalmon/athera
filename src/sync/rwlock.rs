@@ -11,7 +11,7 @@ use core::{
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicUsize, Ordering},
 };
-
+use crate::arch::riscv64::{disable_interrupt, enable_interrupt};
 use crate::arch::riscv64::registers::csr::Sie;
 
 const WRITER: usize = 1;
@@ -41,8 +41,7 @@ impl<T> RwLock<T> {
 
     /// 获取读锁。有写者等待时不会接纳新的读者。
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
-        let sie = Sie::read();
-        Sie::write(0);
+        let sie = disable_interrupt();
 
         loop {
             if self.waiting_writers.load(Ordering::Acquire) != 0 {
@@ -138,6 +137,6 @@ impl<T> DerefMut for RwLockWriteGuard<'_, T> {
 impl<T> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         self.lock.state.store(0, Ordering::Release);
-        Sie::write(self.sie);
+        enable_interrupt(self.sie);
     }
 }

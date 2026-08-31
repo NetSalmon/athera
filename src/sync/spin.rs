@@ -12,13 +12,12 @@
 //! - `SpinLock` 基于 `UnsafeCell` 提供内部可变性，`unsafe impl Sync`
 //!   要求 `T: Send`。
 
+use crate::arch::riscv64;
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
-
-use crate::arch::riscv64::registers::csr::Sie;
 
 /// 关中断自旋锁。
 ///
@@ -47,8 +46,7 @@ impl<T> SpinLock<T> {
     ///
     /// 守卫持有期间调用者拥有 `T` 的独占访问权。
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
-        let sie = Sie::read();
-        Sie::write(0);
+        let sie = riscv64::disable_interrupt();
         while self
             .lock
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
@@ -88,6 +86,6 @@ impl<'a, T> DerefMut for SpinLockGuard<'a, T> {
 impl<'a, T> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.lock.store(false, Ordering::Release);
-        Sie::write(self.sie);
+        riscv64::enable_interrupt(self.sie);
     }
 }
