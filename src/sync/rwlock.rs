@@ -11,8 +11,8 @@ use core::{
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicUsize, Ordering},
 };
+
 use crate::arch::riscv64::{disable_interrupt, enable_interrupt};
-use crate::arch::riscv64::registers::csr::Sie;
 
 const WRITER: usize = 1;
 const READER: usize = 2;
@@ -72,8 +72,7 @@ impl<T> RwLock<T> {
 
     /// 获取写锁。等待中的写者会阻止后续读者进入。
     pub fn write(&self) -> RwLockWriteGuard<'_, T> {
-        let sie = Sie::read();
-        Sie::write(0);
+        let sie = disable_interrupt();
         self.waiting_writers.fetch_add(1, Ordering::AcqRel);
 
         loop {
@@ -93,7 +92,7 @@ impl<T> RwLock<T> {
 /// [`RwLock::read`] 返回的读守卫。
 pub struct RwLockReadGuard<'a, T> {
     lock: &'a RwLock<T>,
-    sie: u64,
+    sie: bool,
 }
 
 impl<T> Deref for RwLockReadGuard<'_, T> {
@@ -108,14 +107,14 @@ impl<T> Deref for RwLockReadGuard<'_, T> {
 impl<T> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         self.lock.state.fetch_sub(READER, Ordering::Release);
-        Sie::write(self.sie);
+        enable_interrupt(self.sie);
     }
 }
 
 /// [`RwLock::write`] 返回的写守卫。
 pub struct RwLockWriteGuard<'a, T> {
     lock: &'a RwLock<T>,
-    sie: u64,
+    sie: bool,
 }
 
 impl<T> Deref for RwLockWriteGuard<'_, T> {

@@ -3,19 +3,18 @@
 //! 以及具体文件系统实现。
 
 pub(crate) mod devfs;
+pub mod fs_error;
 pub(crate) mod mbr;
 pub(crate) mod minix;
 mod path;
 mod types;
 pub(crate) mod vfs;
-pub mod fs_error;
 
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use athera_macros::lazy;
-pub(crate) use fs_error::FsError;
-pub(crate) use fs_error::FsResult;
+pub(crate) use fs_error::{FsError, FsResult};
 pub(crate) use path::{Path, PathBuf};
 pub(crate) use types::{FileType, Mode};
 

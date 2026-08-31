@@ -4,9 +4,10 @@
 //! 设备节点（devfs）和文件系统（minix）各自实现此 trait 提供具体行为。
 
 pub use crate::driver::traits::Whence;
-use crate::fs::fs_error::{FsError, FsResult};
-use crate::fs::
-vfs::DirEntry;
+use crate::fs::{
+    fs_error::{FsError, FsResult},
+    vfs::DirEntry,
+};
 
 /// 文件对象级别的操作接口。
 ///

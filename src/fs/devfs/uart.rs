@@ -1,9 +1,11 @@
 //! 串口设备的 VFS 文件操作。
 
-use crate::fs::fs_error::{FsError, FsResult};
 use crate::{
     driver::tree::DEVICE_MANAGER,
-    fs::vfs::file_ops::FileOps,
+    fs::{
+        fs_error::{FsError, FsResult},
+        vfs::file_ops::FileOps,
+    },
 };
 
 /// 通过 VFS `File` 访问设备管理器中的串口。

@@ -6,14 +6,15 @@
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use uart::Uart;
+use virtio_blk::VirtioBlk;
+
 use self::pseudo::{Null, Zero};
 use super::{
     FileType, Mode, Path,
     vfs::{DirEntry, File, FileSystem, OpenFlags, Stat, file_ops::FileOps},
 };
 use crate::fs::fs_error::{FsError, FsResult};
-use uart::Uart;
-use virtio_blk::VirtioBlk;
 
 mod pseudo;
 pub mod uart;

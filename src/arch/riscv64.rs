@@ -8,7 +8,6 @@
 //! - [`sbi`]：Supervisor Binary Interface 调用封装；
 //! - [`wait_for_interrupt`]、[`instruction_fence`]、[`address_translation_fence`]
 //!   等：没有合适寄存器类型的架构指令。
-use crate::arch::riscv64::registers::csr::Sie;
 use core::arch::asm;
 
 pub(crate) mod boot;
@@ -56,12 +55,35 @@ pub fn breakpoint() {
     }
 }
 
-pub fn disable_interrupt() -> u64 {
-    let sie = Sie::read();
-    Sie::write(0);
-    sie
+/// 关中断并返回此前是否处于开中断状态。
+///
+/// 使用 RISC-V `csrrc` 原子指令清除 `sstatus.SIE` 位（bit 1）并返回旧状态。
+#[inline]
+pub fn disable_interrupt() -> bool {
+    let sstatus: u64;
+    unsafe {
+        asm!(
+            "csrrc {}, sstatus, {}",
+            out(reg) sstatus,
+            in(reg) 1 << 1,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    (sstatus & (1 << 1)) != 0
 }
 
-pub fn enable_interrupt(sie: u64) {
-    Sie::write(sie);
+/// 恢复中断使能状态。
+///
+/// 若此前处于开中断状态（`prev_sie == true`），则重新置位 `sstatus.SIE`。
+#[inline]
+pub fn enable_interrupt(prev_sie: bool) {
+    if prev_sie {
+        unsafe {
+            asm!(
+                "csrrs zero, sstatus, {}",
+                in(reg) 1 << 1,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+    }
 }

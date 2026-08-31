@@ -25,12 +25,12 @@ use core::{
 
 use athera_trie::Trie;
 
-use crate::fs::fs_error::{FsError, FsResult};
 use crate::{
     bits,
     fs::{
         FileType, Mode, Path, PathBuf,
         devfs::uart,
+        fs_error::{FsError, FsResult},
         vfs::file_ops::{FileOps, Whence},
     },
     numeric,

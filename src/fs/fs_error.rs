@@ -50,8 +50,12 @@ pub enum FsError {
 impl FsError {
     /// 映射为 Linux errno 数值，供系统调用层直接返回。
     pub const fn errno(self) -> isize {
-        use crate::fs::FsError::{AlreadyExists, CrossDevice, Invalid, Io, IsDir, NameTooLong, NoSpace, NotDir, NotEmpty, NotFound, OutOfMemory, PermissionDenied, TooManyLinks, Unsupported};
         use FsError::*;
+
+        use crate::fs::FsError::{
+            AlreadyExists, CrossDevice, Invalid, Io, IsDir, NameTooLong, NoSpace, NotDir, NotEmpty,
+            NotFound, OutOfMemory, PermissionDenied, TooManyLinks, Unsupported,
+        };
         match self {
             NotFound => 2,          // ENOENT
             Io => 5,                // EIO

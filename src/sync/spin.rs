@@ -1,7 +1,7 @@
 //! 关中断自旋锁 [`SpinLock`]。
 //!
-//! 进入临界区前先把 SIE（`sie` CSR）置 0 关中断，然后通过原子
-//! `compare_exchange` 自旋抢锁；释放时清锁并恢复进入前的 SIE 值。
+//! 进入临界区前先关中断（清除 `sstatus.SIE`），然后通过原子
+//! `compare_exchange` 自旋抢锁；释放时清锁并恢复进入前的中断使能状态。
 //! 这样普通执行流与中断处理程序之间的竞争被“关中断”消解，同一时刻
 //! 只有一条执行流能进入临界区。
 //!
@@ -12,12 +12,13 @@
 //! - `SpinLock` 基于 `UnsafeCell` 提供内部可变性，`unsafe impl Sync`
 //!   要求 `T: Send`。
 
-use crate::arch::riscv64;
 use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
 };
+
+use crate::arch::riscv64;
 
 /// 关中断自旋锁。
 ///
@@ -42,7 +43,7 @@ impl<T> SpinLock<T> {
         }
     }
 
-    /// 关闭中断并自旋获取锁，返回一个在 `Drop` 时释放锁并恢复 SIE 的守卫。
+    /// 关闭中断并自旋获取锁，返回一个在 `Drop` 时释放锁并恢复中断状态的守卫。
     ///
     /// 守卫持有期间调用者拥有 `T` 的独占访问权。
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
@@ -61,10 +62,10 @@ impl<T> SpinLock<T> {
 /// [`SpinLock::lock`] 返回的守卫。
 ///
 /// 通过 `Deref` / `DerefMut` 访问被保护的数据；`Drop` 时释放自旋锁并
-/// 把 SIE 恢复为加锁前的值。
+/// 恢复加锁前的中断使能状态。
 pub struct SpinLockGuard<'a, T> {
     lock: &'a SpinLock<T>,
-    sie: u64,
+    sie: bool,
 }
 
 impl<'a, T> Deref for SpinLockGuard<'a, T> {
